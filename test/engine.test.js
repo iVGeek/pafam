@@ -10,6 +10,7 @@ const incoterms = require('../src/lib/incoterms');
 const trends = require('../server/services/trends');
 const orders = require('../server/services/orders');
 const { orderQuantityFor, roundUpTo } = require('../server/services/recommend');
+const { consolidateDemands } = require('../server/services/purchasePlan');
 
 test('GTIN check digit validates real EAN-13', () => {
   assert.equal(gtin.analyse('4006714008789').valid, true);
@@ -349,4 +350,15 @@ test('orderQuantityFor rounds demand up to MOQ then a whole order multiple', () 
   // No multiples configured: just satisfy the demand.
   assert.equal(orderQuantityFor({ moq: null, order_multiple: null }, 7), 7);
   assert.equal(orderQuantityFor(null, 5), 5);
+});
+
+test('purchasePlan consolidates demands per product and aggregates totals', () => {
+  const plan = consolidateDemands({});
+  assert.ok(Array.isArray(plan.items));
+  assert.ok(plan.items.length >= 1);
+  assert.ok(plan.totals && typeof plan.totals.count === 'number');
+  assert.ok('actionable' in plan.totals && 'capital' in plan.totals && 'contribution' in plan.totals);
+  const withCustomers = plan.items.find((i) => i.customers && i.customers.length);
+  assert.ok(withCustomers);
+  assert.ok(withCustomers.demandQty >= withCustomers.orderQty); // rounded up, never below
 });

@@ -151,7 +151,12 @@ const server = app.listen(PORT, async () => {
     console.log('webhook wrong secret (expect 401):', hook.status);
   } catch (e) {
     console.error('SMOKE ERROR', e);
-  } finally {
+    } finally {
     server.close();
   }
 });
+
+async function run() {
+  // quick check via direct HTTP? easier: call a second spawn? just inline with the same pattern
+}
+
