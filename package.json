@@ -4,6 +4,9 @@
   "private": true,
   "description": "Standalone perfume wholesale trading platform",
   "main": "server/index.js",
+  "engines": {
+    "node": "24.x"
+  },
   "scripts": {
     "start": "node --no-warnings server/index.js",
     "dev": "node --no-warnings server/index.js",

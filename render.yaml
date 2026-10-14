@@ -1,0 +1,33 @@
+# Render Blueprint — https://render.com/docs/blueprint-spec
+# Deploy: push this repo, then in Render choose "New > Blueprint" and point at it.
+services:
+  - type: web
+    name: perfume-trading-platform
+    runtime: node
+    plan: starter          # persistent disks require a paid plan
+    region: oregon
+    buildCommand: npm install
+    startCommand: npm start
+    healthCheckPath: /api/auth/me
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # Store the SQLite database on the mounted persistent disk.
+      - key: PTP_DATA_DIR
+        value: /var/data
+      # Session cookie over HTTPS only.
+      - key: PTP_SECURE_COOKIES
+        value: "1"
+      # Load supplier lists + demo data automatically on an empty database.
+      - key: PTP_AUTO_SEED
+        value: "true"
+      # Admin credentials. Set PTP_ADMIN_PASS as a secret in the dashboard.
+      - key: PTP_ADMIN_USER
+        value: admin
+      - key: PTP_ADMIN_PASS
+        sync: false
+    disk:
+      name: ptp-data
+      mountPath: /var/data
+      sizeGB: 1

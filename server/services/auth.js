@@ -7,6 +7,12 @@ const ROLES = ['viewer', 'analyst', 'buyer', 'admin'];
 const RANK = { viewer: 1, analyst: 2, buyer: 3, admin: 4 };
 const COOKIE = 'ptp_session';
 
+// Send the session cookie over HTTPS only when running in production or when
+// explicitly enabled (hosted behind a TLS-terminating proxy such as Render).
+const COOKIE_SECURE = process.env.PTP_SECURE_COOKIES === '1'
+  || process.env.NODE_ENV === 'production'
+  || process.env.RENDER === 'true';
+
 function hashPassword(password, salt) {
   const s = salt || crypto.randomBytes(16).toString('hex');
   const hash = crypto.scryptSync(String(password), s, 64).toString('hex');
@@ -141,11 +147,14 @@ function setSessionCookie(res, token, maxAgeMs) {
     'SameSite=Lax',
     `Max-Age=${Math.floor(maxAgeMs / 1000)}`,
   ];
+  if (COOKIE_SECURE) parts.push('Secure');
   res.setHeader('Set-Cookie', parts.join('; '));
 }
 
 function clearSessionCookie(res) {
-  res.setHeader('Set-Cookie', `${COOKIE}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`);
+  const parts = [`${COOKIE}=`, 'Path=/', 'HttpOnly', 'SameSite=Lax', 'Max-Age=0'];
+  if (COOKIE_SECURE) parts.push('Secure');
+  res.setHeader('Set-Cookie', parts.join('; '));
 }
 
 // Ensure there is at least one admin so a fresh install is reachable.

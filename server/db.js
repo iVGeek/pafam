@@ -4,7 +4,9 @@ const path = require('path');
 const fs = require('fs');
 const { DatabaseSync } = require('node:sqlite');
 
-const DATA_DIR = path.join(__dirname, '..', 'data');
+// Configurable so a hosted deploy can point at a persistent disk
+// (e.g. Render's mounted disk at /var/data).
+const DATA_DIR = process.env.PTP_DATA_DIR || path.join(__dirname, '..', 'data');
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
 
 const DB_PATH = process.env.PTP_DB || path.join(DATA_DIR, 'ptp.db');
