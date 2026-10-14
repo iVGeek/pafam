@@ -121,6 +121,26 @@ function seedData(opts = {}) {
     if (d.in) ordersSvc.recordPayment(r.id, { direction: 'inbound', amount: d.in, method: 'Transfer', reference: 'INV-' + r.id });
   }
 
+  // Several months of delivered history for one product/customer so the demand
+  // forecast has enough observations to be meaningful (never extrapolate noise).
+  const histPid = pids[0];
+  const histCust = custIds[0];
+  if (histPid != null) {
+    const histQtys = [80, 95, 110, 90, 120, 105];
+    histQtys.forEach((qty, i) => {
+      const monthsAgo = histQtys.length - i;
+      const r = ordersSvc.createOrder({
+        customerId: histCust, productId: histPid, supplierCode: 'ALCODIS',
+        quantity: qty, unitCost: 8.5, unitPrice: 12.5, status: 'delivered',
+        orderDate: new Date(Date.now() - monthsAgo * 30 * 864e5).toISOString().slice(0, 10),
+        supplierDue: new Date(Date.now() - (monthsAgo - 1) * 30 * 864e5).toISOString().slice(0, 10),
+        customerDue: new Date(Date.now() - (monthsAgo - 0.5) * 30 * 864e5).toISOString().slice(0, 10),
+        notes: 'Historical delivery (forecast baseline)',
+      });
+      if (!r.error) ordersCreated++;
+    });
+  }
+
   // Users (roles). Passwords are env-overridable so a hosted instance is not
   // left on known demo credentials.
   const demoUsers = process.env.PTP_SEED_DEMO_USERS !== 'false';

@@ -39,6 +39,7 @@ app.use('/api', require('./routes/orders'));
 app.use('/api', require('./routes/recommend'));
 app.use('/api', require('./routes/purchase-plan'));
 app.use('/api', require('./routes/kpis'));
+app.use('/api', require('./routes/forecast'));
 app.use('/api', require('./routes/export'));
 
 // SPA fallback

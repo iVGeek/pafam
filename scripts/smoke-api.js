@@ -156,6 +156,10 @@ const server = app.listen(PORT, async () => {
     const kp = await admin.req('GET', '/kpis');
     console.log('kpis:', kp.status, '| grossProfit:', kp.body.summary && kp.body.summary.grossProfit, '| grossMargin:', kp.body.summary && kp.body.summary.grossMarginPct, '| ar:', kp.body.cash && kp.body.cash.ar, '| capitalRequired:', kp.body.cash && kp.body.cash.capitalRequired);
 
+    // demand forecast baseline
+    const fc = await admin.req('GET', '/forecast');
+    console.log('forecast:', fc.status, '| products:', (fc.body.byProduct || []).length, '| forecastable:', fc.body.sufficientCount, '| minObs:', fc.body.minObservations);
+
     // webhook with secret
     const hook = await anon.req('POST', '/captures/webhook', { source: 'plaud', text: 'Client wants 50 units of Tanqueray. secret: nope' });
     console.log('webhook wrong secret (expect 401):', hook.status);

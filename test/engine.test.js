@@ -12,6 +12,7 @@ const orders = require('../server/services/orders');
 const { orderQuantityFor, roundUpTo } = require('../server/services/recommend');
 const { consolidateDemands } = require('../server/services/purchasePlan');
 const analytics = require('../server/services/analytics');
+const { movingAverageForecast } = require('../server/services/forecast');
 
 test('GTIN check digit validates real EAN-13', () => {
   assert.equal(gtin.analyse('4006714008789').valid, true);
@@ -372,4 +373,21 @@ test('KPI suite reports profitability, cash, stock and buying blocks', () => {
   assert.equal(k.summary.grossProfit, k.summary.revenue - k.summary.costPaid);
   assert.ok(k.cash.capitalLimit > 0);
   assert.equal(typeof k.quality.openExceptions, 'number');
+});
+
+test('forecast baseline refuses to extrapolate thin history', () => {
+  const enough = movingAverageForecast([80, 95, 110, 90, 120, 105]);
+  assert.equal(enough.sufficient, true);
+  assert.equal(enough.months, 6);
+  assert.equal(enough.avgPerMonth, 100);
+  assert.equal(enough.forecastQty30d, 100);
+  assert.equal(enough.confidence, 'medium');
+
+  const thin = movingAverageForecast([80, 95]);
+  assert.equal(thin.sufficient, false);
+  assert.equal(thin.forecastQty30d, 0);
+  assert.equal(thin.confidence, 'insufficient');
+  assert.match(thin.reason, /need >= 5/);
+
+  assert.equal(movingAverageForecast([]).sufficient, false);
 });

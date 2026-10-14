@@ -87,7 +87,7 @@ const state = { route: 'dashboard', settings: {}, suppliers: [], user: null };
 const ROUTE_MIN = {
   dashboard: 'viewer', offers: 'viewer', products: 'viewer', compare: 'viewer', lowest: 'viewer', pricing: 'viewer',
   inventory: 'viewer', customers: 'viewer', demands: 'viewer', quotes: 'viewer', suppliers: 'viewer',
-  exceptions: 'viewer', imports: 'buyer', captures: 'analyst', alerts: 'viewer', trends: 'viewer', orders: 'viewer', buying: 'viewer', performance: 'viewer', reports: 'viewer', settings: 'admin', users: 'admin', audit: 'admin',
+  exceptions: 'viewer', imports: 'buyer', captures: 'analyst', alerts: 'viewer', trends: 'viewer', orders: 'viewer', buying: 'viewer', forecast: 'viewer', performance: 'viewer', reports: 'viewer', settings: 'admin', users: 'admin', audit: 'admin',
 };
 
 function showLogin() { $('#login').classList.remove('hidden'); }
@@ -1209,6 +1209,50 @@ routes.reports = async () => {
     </div>`;
 };
 
+routes.forecast = async () => {
+  const d = await GET('/forecast');
+  const rows = d.byProduct || [];
+  const ok = rows.filter((r) => r.sufficient);
+  const no = rows.filter((r) => !r.sufficient);
+  const spark = (obs) => {
+    if (!obs || obs.length < 2) return '';
+    const q = obs.map((o) => o.quantity);
+    const max = Math.max(...q, 1);
+    const w = 160, h = 28, step = obs.length > 1 ? w / (obs.length - 1) : w;
+    const pts = q.map((v, i) => `${(i * step).toFixed(1)},${(h - (v / max) * (h - 4) - 2).toFixed(1)}`).join(' ');
+    return `<svg class="spark" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" preserveAspectRatio="none"><polyline points="${pts}" /></svg>`;
+  };
+  $('#view').innerHTML = `
+    <div class="grid cards">
+      <div class="card"><div class="k">Products with history</div><div class="v">${num(rows.length)}</div><div class="s">delivered orders</div></div>
+      <div class="card"><div class="k">Forecastable</div><div class="v">${num(ok.length)}</div><div class="s">≥ ${num(d.minObservations)} months of deliveries</div></div>
+      <div class="card"><div class="k">Insufficient history</div><div class="v">${num(no.length)}</div><div class="s">no forecast produced</div></div>
+      <div class="card"><div class="k">Open demands</div><div class="v">${num((d.demands || []).length)}</div><div class="s">for context</div></div>
+    </div>
+    <div class="panel" style="margin-top:16px"><h2>Demand baseline (30-day)</h2>
+      <div class="muted small" style="margin:6px 0 10px">A simple moving average of delivered quantity. Products with fewer than ${num(d.minObservations)} delivery months are listed but <strong>not</strong> forecast — we refuse to extrapolate noise.</div>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Product</th><th>Monthly history</th><th class="num">Months</th><th class="num">Avg/month</th><th class="num">Avg/week</th><th class="num">30-day</th><th>Confidence</th></tr></thead>
+        <tbody>
+          ${ok.map((r) => `<tr>
+            <td>${esc(r.productName)}</td>
+            <td>${spark(r.observations)}</td>
+            <td class="num">${num(r.months)}</td>
+            <td class="num">${num(r.avgPerMonth, 1)}</td>
+            <td class="num">${num(r.avgPerWeek, 2)}</td>
+            <td class="num">${num(r.forecastQty30d)}</td>
+            <td><span class="badge ok">${esc(r.confidence)}</span></td>
+          </tr>`).join('') || '<tr><td colspan="7" class="muted">No product has enough delivery history yet.</td></tr>'}
+        </tbody></table></div>
+    </div>
+    <div class="panel" style="margin-top:16px"><h2>Insufficient history</h2>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Product</th><th class="num">Months observed</th><th>Why no forecast</th></tr></thead>
+        <tbody>${no.map((r) => `<tr><td>${esc(r.productName)}</td><td class="num">${num(r.months)}</td><td class="small muted">${esc(r.reason || '')}</td></tr>`).join('') || '<tr><td colspan="3" class="muted">—</td></tr>'}
+        </tbody></table></div>
+    </div>`;
+};
+
 routes.performance = async () => {
   const k = await GET('/kpis');
   const s = k.summary || {};
@@ -1437,6 +1481,7 @@ const TITLES = {
   alerts: ['Alerts', 'Price movements, expiring offers and stock alerts'],
   trends: ['Price Trends', 'Observed supplier price history with date gaps shown'],
   buying: ['Buying', 'Match live demand to the cheapest executable supplier'],
+  forecast: ['Demand Forecast', 'Moving-average baseline, honest about thin history'],
   reports: ['Reports & Exports', 'Supplier performance and one-click Excel exports'],
   performance: ['Performance', 'Profitability, cash, capital and stock KPIs'],
   orders: ['Orders & Payments', 'Purchase/sales orders, payments and realised vs forecast margin'],
