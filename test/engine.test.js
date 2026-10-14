@@ -7,6 +7,7 @@ const { parsePackSize } = require('../src/lib/pack');
 const { parseNote } = require('../src/lib/notes');
 const { computeLanded, selectTier } = require('../server/services/landing');
 const incoterms = require('../src/lib/incoterms');
+const trends = require('../server/services/trends');
 
 test('GTIN check digit validates real EAN-13', () => {
   assert.equal(gtin.analyse('4006714008789').valid, true);
@@ -195,4 +196,45 @@ test('computeDeal: contribution, ROI, annualised and policy', () => {
   assert.equal(d.cashflow.peakCapital, 1000);
   assert.equal(d.cashflow.capitalDays, 30);
   assert.equal(d.cashflow.annualisedRoiPct, pricing.round4(100 * (365 / 30)));
+});
+
+test('trend: latest vs previous observation and direction', () => {
+  const rows = [
+    { upload_id: 1, observed_at: '2026-01-01', unit_cost_base: 10 },
+    { upload_id: 2, observed_at: '2026-02-01', unit_cost_base: 11 },
+  ];
+  const t = trends.computeTrend(rows);
+  assert.equal(t.latest.unitCostBase, 11);
+  assert.equal(t.previous.unitCostBase, 10);
+  assert.equal(t.change, 1);
+  assert.equal(t.changePct, 10);
+  assert.equal(t.direction, 'up');
+  assert.equal(t.observations, 2);
+});
+
+test('trend: duplicate barcodes within one list collapse to a single point', () => {
+  const rows = [
+    { id: 1, upload_id: 7, observed_at: '2026-01-01', unit_cost_base: 6.02 },
+    { id: 2, upload_id: 7, observed_at: '2026-01-01', unit_cost_base: 26.01 },
+    { id: 3, upload_id: 8, observed_at: '2026-02-01', unit_cost_base: 6.5 },
+  ];
+  const t = trends.computeTrend(rows);
+  assert.equal(t.observations, 2);
+  assert.equal(t.previous.unitCostBase, 26.01);
+  assert.equal(t.latest.unitCostBase, 6.5);
+  assert.equal(t.direction, 'down');
+});
+
+test('trend: single observation has no change', () => {
+  const t = trends.computeTrend([{ upload_id: 1, unit_cost_base: 10 }]);
+  assert.equal(t.change, null);
+  assert.equal(t.changePct, null);
+  assert.equal(t.direction, 'none');
+  assert.equal(t.observations, 1);
+});
+
+test('severity bands scale with the alert threshold', () => {
+  assert.equal(trends.severityForChange(3, 10), 'info');
+  assert.equal(trends.severityForChange(-12, 10), 'warning');
+  assert.equal(trends.severityForChange(30, 10), 'critical');
 });

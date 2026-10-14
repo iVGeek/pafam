@@ -87,7 +87,7 @@ const state = { route: 'dashboard', settings: {}, suppliers: [], user: null };
 const ROUTE_MIN = {
   dashboard: 'viewer', offers: 'viewer', products: 'viewer', compare: 'viewer', lowest: 'viewer', pricing: 'viewer',
   inventory: 'viewer', customers: 'viewer', demands: 'viewer', quotes: 'viewer', suppliers: 'viewer',
-  exceptions: 'viewer', imports: 'buyer', captures: 'analyst', settings: 'admin', users: 'admin', audit: 'admin',
+  exceptions: 'viewer', imports: 'buyer', captures: 'analyst', alerts: 'viewer', settings: 'admin', users: 'admin', audit: 'admin',
 };
 
 function showLogin() { $('#login').classList.remove('hidden'); }
@@ -1000,6 +1000,26 @@ async function promoteCapture(capId, cap) {
   });
 }
 
+routes.alerts = async () => {
+  const d = await GET('/alerts');
+  const unread = (d.rows||[]).filter(r=>r.read===0).length;
+  $('#view').innerHTML = `
+    <div class="panel">
+      <div class="row" style="justify-content:space-between">
+        <div><h2>Alerts</h2><div class="small muted">${unread} unread · ${d.counts.total||0} total</div></div>
+        <div class="row"><button id="alRefresh">Refresh</button><button id="alAll" class="ghost">Mark all read</button></div>
+      </div>
+      <div class="table-wrap" style="margin-top:12px"><table><thead><tr><th>Severity</th><th>Type</th><th>Title</th><th>Product</th><th>Supplier</th><th>When</th><th></th></tr></thead><tbody>
+        ${(d.rows||[]).map(a=>'<tr><td>'+sev(a.severity)+'</td><td class="mono small">'+esc(a.type)+'</td><td>'+esc(a.title)+'</td><td class="small">'+esc(a.display_name||'')+'</td><td class="mono">'+esc(a.supplier_code||'')+'</td><td class="small muted">'+dt(a.created_at)+'</td><td>'+(a.read?'<span class="badge muted">read</span>':'<button class="sm ghost" data-read="'+a.id+'">Mark read</button>')+'</td></tr>').join('')||'<tr><td colspan="7" class="muted">No alerts.</td></tr>'}
+      </tbody></table></div>
+    </div>`;
+  function sev(x){ return '<span class="badge '+(x==='critical'?'bad':x==='warning'?'warn':'info')+'">'+esc(x)+'</span>'; }
+  $('#alRefresh').addEventListener('click', async ()=>{ try{ await POST('/alerts/refresh'); toast('Alerts refreshed','ok'); render(); }catch(e){ toast(e.message,'err'); } });
+  $('#alAll').addEventListener('click', async ()=>{ try{ await POST('/alerts/read-all'); toast('All marked read','ok'); render(); }catch(e){ toast(e.message,'err'); } });
+  $$('#view [data-read]').forEach(b=>b.addEventListener('click', async ()=>{ try{ await POST('/alerts/'+b.dataset.read+'/read'); toast('Marked read','ok'); render(); }catch(e){ toast(e.message,'err'); } }));
+};
+
+
 routes.users = async () => {
   const users = await GET('/users');
   $('#view').innerHTML = `
@@ -1068,6 +1088,7 @@ const TITLES = {
   suppliers: ['Suppliers & Terms', 'Price type, trade discount and Incoterms'],
   settings: ['Settings & FX', 'Policy thresholds and currency rates'],
   captures: ['Capture Inbox', 'Notes from Plaud / reMarkable turned into demand signals'],
+  alerts: ['Alerts', 'Price movements, expiring offers and stock alerts'],
   users: ['Users & Roles', 'Accounts and role-based access'],
   audit: ['Audit Log', 'Who did what, when'],
 };

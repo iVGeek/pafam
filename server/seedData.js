@@ -123,12 +123,64 @@ function seedData(opts = {}) {
   ];
   for (const c of demoCaptures) captureStmt.run(c.source, c.title, c.text, JSON.stringify(parseNote(c.text)), c.by);
 
+  // Seed a small price-history trail so the trend/alert engine has at least
+  // two observations per (supplier x product) where we have overlap. This
+  // produces plausible price movements (±10%) to exercise the UI.
+  try {
+    const fxr = (c) => (c === 'USD' ? 1 : (c === 'GBP' ? 1.27 : 1.08));
+    const pricing = require('./services/pricing');
+    const alertsMod = require('./services/alerts');
+    const ph = db.prepare(
+      `INSERT INTO price_history(supplier_code, gtin_canonical, product_id, upload_id, offer_id,
+         observed_at, list_date, currency, price, price_basis, price_type, units_per_case, unit_cost_base)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`
+    );
+    const delta = [0.9, 0.94, 0.97, 0.99, 1.0, 1.02, 1.05, 1.1];
+    const pidsAll = db.prepare(
+      `SELECT DISTINCT product_id FROM offers WHERE product_id IS NOT NULL
+       GROUP BY product_id HAVING COUNT(DISTINCT supplier_code) > 0 LIMIT 12`
+    ).all().map((r) => r.product_id);
+    for (const pid of pidsAll) {
+      // Replace any import-time history for the demo products with a clean
+      // two-observation trail so the movements are meaningful to look at.
+      db.prepare('DELETE FROM price_history WHERE product_id = ?').run(pid);
+      for (const sup of ['ALCODIS', 'IGAN']) {
+        const o = db.prepare(
+          `SELECT o.*, MIN(o.id) AS min_id FROM offers o WHERE o.product_id = ? AND o.supplier_code = ? GROUP BY o.product_id, o.supplier_code`
+        ).get(pid, sup);
+        if (!o || o.price == null) continue;
+        const supRow = db.prepare('SELECT default_discount_pct FROM suppliers WHERE code = ?').get(sup);
+        const acq = pricing.unitAcquisitionPrice({
+          price: o.price,
+          price_type: o.price_type,
+          price_basis: o.price_basis,
+          units_per_case: o.units_per_case || 1,
+          default_discount_pct: (supRow && supRow.default_discount_pct) || 0,
+        });
+        const f = fxr(o.currency || 'EUR');
+        const baseUnit = acq.perBottle != null ? Math.round(acq.perBottle * f * 1e6) / 1e6 : null;
+        if (baseUnit == null) continue;
+        const listA = new Date(Date.now() - 60 * 864e5).toISOString().slice(0, 10);
+        const listB = new Date(Date.now() - 30 * 864e5).toISOString().slice(0, 10);
+        const d1 = delta[Math.floor(Math.random() * delta.length)];
+        const d2 = delta[Math.floor(Math.random() * delta.length)];
+        ph.run(o.supplier_code, o.gtin_canonical, o.product_id, null, o.min_id,
+          new Date(Date.now() - 61 * 864e5).toISOString(), listA, o.currency, o.price * d1, o.price_basis, o.price_type, o.units_per_case, Math.round(baseUnit * d1 * 1e4) / 1e4);
+        ph.run(o.supplier_code, o.gtin_canonical, o.product_id, null, o.min_id,
+          new Date(Date.now() - 29 * 864e5).toISOString(), listB, o.currency, o.price * d2, o.price_basis, o.price_type, o.units_per_case, Math.round(baseUnit * d2 * 1e4) / 1e4);
+      }
+    }
+    try { alertsMod.generateAlerts({ actor: 'seed' }); } catch (e) { console.warn('alert gen after seed failed:', e.message); }
+  } catch (e) { console.warn('price history seed skipped:', e.message); }
+
   return {
     products: db.prepare('SELECT COUNT(*) n FROM products').get().n,
     offers: db.prepare('SELECT COUNT(*) n FROM offers').get().n,
     exceptions: db.prepare('SELECT COUNT(*) n FROM exceptions').get().n,
     users: usersCreated,
     captures: demoCaptures.length,
+    alerts: db.prepare('SELECT COUNT(*) n FROM alerts').get().n,
+    priceHistory: db.prepare('SELECT COUNT(*) n FROM price_history').get().n,
   };
 }
 

@@ -244,9 +244,34 @@ CREATE TABLE IF NOT EXISTS alerts (
   title TEXT NOT NULL,
   detail TEXT,
   product_id INTEGER,
+  supplier_code TEXT,
+  dedupe_key TEXT,
   read INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
+
+-- One row per observed (supplier list x barcode x import). Captures the price
+-- we saw at a point in time so the trend/alert engine can detect movements
+-- across successive supplier price lists rather than only the latest snapshot.
+CREATE TABLE IF NOT EXISTS price_history (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  supplier_code TEXT NOT NULL,
+  gtin_canonical TEXT,
+  product_id INTEGER,
+  upload_id INTEGER REFERENCES uploads(id) ON DELETE CASCADE,
+  offer_id INTEGER,
+  observed_at TEXT NOT NULL DEFAULT (datetime('now')),
+  list_date TEXT,
+  currency TEXT,
+  price REAL,
+  price_basis TEXT,                 -- unit | case | multipack
+  price_type TEXT,                  -- cost | rrp
+  units_per_case REAL,
+  unit_cost_base REAL,              -- normalised acquisition cost per bottle, base currency
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_price_history_key ON price_history(supplier_code, gtin_canonical);
+CREATE INDEX IF NOT EXISTS idx_price_history_product ON price_history(product_id);
 
 CREATE TABLE IF NOT EXISTS settings (
   key TEXT PRIMARY KEY,
@@ -355,6 +380,13 @@ function migrate() {
     ['selling_unit_price', 'REAL'],
   ];
   for (const [c, ddl] of quoteCols) ensureColumn('quotes', c, ddl);
+
+  // alerts: supplier + dedupe key for the trend/alert engine. Indexes are
+  // created here (not in SCHEMA) so they land after the additive columns on
+  // databases created by an earlier version.
+  for (const [c, ddl] of [['supplier_code', 'TEXT'], ['dedupe_key', 'TEXT']]) ensureColumn('alerts', c, ddl);
+  db.exec('CREATE INDEX IF NOT EXISTS idx_alerts_dedupe ON alerts(dedupe_key)');
+  db.exec('CREATE INDEX IF NOT EXISTS idx_alerts_read ON alerts(read)');
 }
 
 function init() {
@@ -376,6 +408,9 @@ function init() {
     default_supplier_payment_days: '0',
     default_customer_payment_days: '30',
     default_transit_days: '0',
+    price_change_alert_pct: '10',
+    low_stock_threshold: '10',
+    alert_dedupe_days: '7',
     session_hours: '168',
     capture_secret: 'change-me-capture-secret',
   };

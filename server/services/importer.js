@@ -2,11 +2,14 @@
 
 const fs = require('fs');
 const crypto = require('crypto');
-const { db, audit } = require('../db');
+const { db, getSetting, audit } = require('../db');
 const { extract } = require('../../src/importers/genericImporter');
 const gtin = require('../../src/lib/gtin');
 const { parsePackSize } = require('../../src/lib/pack');
 const matcher = require('./matcher');
+const pricing = require('./pricing');
+const fx = require('./fx');
+const alerts = require('./alerts');
 const { supplierForProfile, ensureSupplier, getSupplier } = require('./suppliers');
 
 function sha256(filePath) {
@@ -57,6 +60,11 @@ function importFile(filePath, opts = {}) {
        permitted_destination, us_suitability, freight_inclusions, stock_owner_id, unique_lot_ref,
        expiry_date, notes, cap_type, refillable, product_id, status)
      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+  );
+  const insertHistory = db.prepare(
+    `INSERT INTO price_history(supplier_code, gtin_canonical, product_id, upload_id, offer_id,
+       observed_at, list_date, currency, price, price_basis, price_type, units_per_case, unit_cost_base)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`
   );
   const insertException = db.prepare(
     'INSERT INTO exceptions(upload_id, offer_id, type, detail) VALUES (?,?,?,?)'
@@ -132,6 +140,29 @@ function importFile(filePath, opts = {}) {
     const offerId = Number(info.lastInsertRowid);
     counters.imported++;
 
+    // Record a price-history point for trend analysis (even for exceptions,
+    // but prefer normalised acquisition cost where possible).
+    let unitCostBase = null;
+    if (price != null) {
+      const baseCur = getSetting('base_currency', 'USD');
+      const acqHist = pricing.unitAcquisitionPrice({
+        price,
+        price_type: priceType,
+        price_basis: priceBasis,
+        units_per_case: unitsPerCase || 1,
+        default_discount_pct: supplier.defaultDiscount || 0,
+      });
+      if (acqHist.perBottle != null) {
+        const fxr = fx.getRate(o.currency || supplier.currency, baseCur) || 1;
+        unitCostBase = pricing.round4(acqHist.perBottle * fxr);
+      }
+    }
+    insertHistory.run(
+      supplier.code, canonical, productId, uploadId, offerId,
+      new Date().toISOString(), listDate, o.currency || supplier.currency, price, priceBasis, priceType,
+      unitsPerCase, unitCostBase
+    );
+
     if (isBlank) {
       counters.blankBarcode++;
       insertException.run(uploadId, offerId, 'blank_barcode', `Row ${o.sourceRow}: no barcode (${o.description || ''})`);
@@ -154,6 +185,7 @@ function importFile(filePath, opts = {}) {
 
   audit(actor, 'import', 'upload', uploadId,
     `${supplier.code}: ${counters.imported} offers, ${counters.matched} matched, ${counters.blankBarcode} blank, ${counters.invalidBarcode} invalid`);
+  try { alerts.generateAlerts({ actor }); } catch (e) { console.warn('alert gen after import failed:', e.message); }
 
   return {
     duplicate: false,

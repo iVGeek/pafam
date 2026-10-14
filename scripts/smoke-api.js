@@ -91,6 +91,18 @@ const server = app.listen(PORT, async () => {
     const quotes = await admin.req('GET', '/quotes');
     console.log('quotes listing:', quotes.status, '| count:', (quotes.body || []).length, '| latest contribution:', (quotes.body || [])[0] && quotes.body[0].contribution_total);
 
+    // trends & alerts
+    const al = await admin.req('GET', '/alerts');
+    console.log('alerts listing:', al.status, '| counts:', JSON.stringify(al.body.counts), '| rows:', (al.body.rows || []).length);
+    const alRefresh = await admin.req('POST', '/alerts/refresh');
+    console.log('alerts refresh:', alRefresh.status, '| created:', JSON.stringify(alRefresh.body));
+    const tr = await admin.req('GET', '/trends?changed=1&limit=5');
+    console.log('trends:', tr.status, '| movers:', (tr.body.rows || []).length, '| top:', (tr.body.rows || [])[0] && `${(tr.body.rows[0].supplierCode)} ${tr.body.rows[0].changePct}%`);
+    if ((al.body.rows || [])[0]) {
+      const mr = await admin.req('POST', `/alerts/${al.body.rows[0].id}/read`);
+      console.log('alert mark read:', mr.status);
+    }
+
     // webhook with secret
     const hook = await anon.req('POST', '/captures/webhook', { source: 'plaud', text: 'Client wants 50 units of Tanqueray. secret: nope' });
     console.log('webhook wrong secret (expect 401):', hook.status);
