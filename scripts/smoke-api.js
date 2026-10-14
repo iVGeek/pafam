@@ -135,6 +135,17 @@ const server = app.listen(PORT, async () => {
     const qxBad = await admin.req('GET', '/export/quote/999999.xlsx');
     console.log('quote export missing (expect 404):', qxBad.status);
 
+    // buying recommendations (demand -> cheapest executable supplier)
+    const recs = await admin.req('GET', '/recommendations');
+    console.log('recommendations:', recs.status, '| rows:', (recs.body.rows || []).length, '| actionable:', recs.body.summary && recs.body.summary.actionable);
+    const recOne = (recs.body.rows || [])[0];
+    if (recOne) {
+      const recDetail = await admin.req('GET', `/recommendations/${recOne.productId}`);
+      console.log('recommendation detail:', recDetail.status, '| orderQty:', recDetail.body.orderQuantity, '| supplier:', recDetail.body.supplier && recDetail.body.supplier.code, '| sellSource:', recDetail.body.sellSource, '| candidates:', (recDetail.body.candidates || []).length);
+    }
+    const recBad = await admin.req('GET', '/recommendations/999999');
+    console.log('recommendation missing (expect 404):', recBad.status);
+
     // webhook with secret
     const hook = await anon.req('POST', '/captures/webhook', { source: 'plaud', text: 'Client wants 50 units of Tanqueray. secret: nope' });
     console.log('webhook wrong secret (expect 401):', hook.status);

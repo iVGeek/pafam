@@ -81,7 +81,7 @@ function seedData(opts = {}) {
      VALUES (?,?,?,?,?,?,?,?,?,?)`
   );
   pids.slice(0, 5).forEach((pid, i) => {
-    addDemand.run(custIds[i % custIds.length], pid, 'open', 100 + i * 50, null, 'USD',
+    addDemand.run(custIds[i % custIds.length], pid, 'open', 120 + i * 60, i < 2 ? 12.0 : null, 'USD',
       new Date(Date.now() + 30 * 864e5).toISOString().slice(0, 10), 'manual', i < 2 ? 1 : 0, 'Demo demand');
   });
 

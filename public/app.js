@@ -87,7 +87,7 @@ const state = { route: 'dashboard', settings: {}, suppliers: [], user: null };
 const ROUTE_MIN = {
   dashboard: 'viewer', offers: 'viewer', products: 'viewer', compare: 'viewer', lowest: 'viewer', pricing: 'viewer',
   inventory: 'viewer', customers: 'viewer', demands: 'viewer', quotes: 'viewer', suppliers: 'viewer',
-  exceptions: 'viewer', imports: 'buyer', captures: 'analyst', alerts: 'viewer', trends: 'viewer', orders: 'viewer', reports: 'viewer', settings: 'admin', users: 'admin', audit: 'admin',
+  exceptions: 'viewer', imports: 'buyer', captures: 'analyst', alerts: 'viewer', trends: 'viewer', orders: 'viewer', buying: 'viewer', reports: 'viewer', settings: 'admin', users: 'admin', audit: 'admin',
 };
 
 function showLogin() { $('#login').classList.remove('hidden'); }
@@ -1209,6 +1209,117 @@ routes.reports = async () => {
     </div>`;
 };
 
+routes.buying = async () => {
+  const only = state._recActionable ? '?actionable=1' : '';
+  const d = await GET('/recommendations' + only);
+  state._recs = d.rows || [];
+  const s = d.summary || {};
+  const recStatus = (r) => {
+    if (!r.supplier) return ['bad', 'No supplier'];
+    if (!r.executable) return ['warn', 'Not executable'];
+    if (r.meetsPolicy === false) return ['bad', 'Below margin policy'];
+    if (r.withinCapitalLimit === false) return ['warn', 'Over capital limit'];
+    if (r.missing && r.missing.length) return ['warn', 'Missing inputs'];
+    if (!r.approved) return ['info', 'Needs approval'];
+    return ['ok', 'Ready'];
+  };
+  $('#view').innerHTML = `
+    <div class="grid cards">
+      <div class="card"><div class="k">Open demands</div><div class="v">${num(s.count)}</div><div class="s">products with live demand</div></div>
+      <div class="card"><div class="k">Actionable now</div><div class="v">${num(s.actionable)}</div><div class="s">executable &amp; within policy</div></div>
+      <div class="card"><div class="k">Total contribution</div><div class="v">${money(s.totalContribution)}</div><div class="s">if all recommended</div></div>
+      <div class="card"><div class="k">Capital required</div><div class="v">${money(s.totalCapital)}</div><div class="s">peak cash at these volumes</div></div>
+    </div>
+    <div class="panel" style="margin-top:16px">
+      <div class="row" style="justify-content:space-between;align-items:center">
+        <h2 style="margin:0">Buying recommendations</h2>
+        <label class="small"><input type="checkbox" id="recOnly" ${state._recActionable ? 'checked' : ''}/> actionable only</label>
+      </div>
+      <div class="muted small" style="margin:6px 0 10px">Match live customer demand to the cheapest executable supplier, rounded to the supplier's MOQ/order multiple, priced against margin policy and your capital limit.</div>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Product</th><th class="num">Order qty</th><th>Supplier</th><th class="num">Landed/unit</th><th class="num">Sell</th><th class="num">Margin</th><th class="num">Contribution</th><th class="num">Capital</th><th>Collect</th><th>Status</th><th></th></tr></thead>
+        <tbody>${state._recs.map((r) => {
+          const [k, label] = recStatus(r);
+          return `<tr data-rec="${r.productId}">
+            <td>${esc(r.product.displayName)}<div class="muted small mono">${esc(r.product.canonicalGtin || '')}</div></td>
+            <td class="num">${num(r.orderQuantity)}<div class="muted small">demand ${num(r.demandQuantity)}</div></td>
+            <td>${r.supplier ? esc(r.supplier.code) : '<span class="muted">—</span>'}</td>
+            <td class="num">${money(r.landedUnitCost)}</td>
+            <td class="num">${money(r.suggestedSell)}<div class="muted small">${esc(r.sellSource || '')}</div></td>
+            <td class="num">${pct(r.marginPct)}</td>
+            <td class="num">${money(r.contribution)}</td>
+            <td class="num">${money(r.cashRequirement)}</td>
+            <td class="small">${r.expectedCollection ? esc(r.expectedCollection) : '—'}</td>
+            <td><span class="badge ${k}">${esc(label)}</span></td>
+            <td class="nowrap">
+              <button class="sm ghost" data-recdetail="${r.productId}">Why</button>
+              ${can('buyer') && r.supplier && r.suggestedSell ? `<button class="sm" data-recquote="${r.productId}">Quote</button>` : ''}
+            </td>
+          </tr>`;
+        }).join('') || '<tr><td colspan="11" class="muted">No open demand to recommend against.</td></tr>'}
+        </tbody></table></div>
+    </div>`;
+  if ($('#recOnly')) $('#recOnly').addEventListener('change', (e) => { state._recActionable = e.target.checked; render(); });
+  $$('#view [data-recdetail]').forEach((b) => b.addEventListener('click', () => showRecDetail(Number(b.dataset.recdetail))));
+  $$('#view [data-recquote]').forEach((b) => b.addEventListener('click', () => quoteFromRec(Number(b.dataset.recquote))));
+};
+
+function showRecDetail(productId) {
+  const r = (state._recs || []).find((x) => x.productId === productId);
+  if (!r) return;
+  modal(`Recommendation — ${r.product.displayName}`, `
+    <div class="grid cards" style="grid-template-columns:repeat(2,1fr)">
+      <div class="card"><div class="k">Order quantity</div><div class="v">${num(r.orderQuantity)}</div><div class="s">demand ${num(r.demandQuantity)}${r.neededBy ? ', needed by ' + esc(r.neededBy) : ''}</div></div>
+      <div class="card"><div class="k">Suggested sell</div><div class="v">${money(r.suggestedSell)}</div><div class="s">${esc(r.sellSource || '')}${r.policyFloor != null ? ' · policy floor ' + money(r.policyFloor) : ''}</div></div>
+      <div class="card"><div class="k">Contribution</div><div class="v">${money(r.contribution)}</div><div class="s">margin ${pct(r.marginPct)} · markup ${money(r.markup)}</div></div>
+      <div class="card"><div class="k">Capital</div><div class="v">${money(r.cashRequirement)}</div><div class="s">limit ${money(r.capitalLimit)} · ${r.withinCapitalLimit ? 'within' : 'over'}</div></div>
+    </div>
+    <h2 style="margin-top:16px">Customers</h2>
+    <div class="table-wrap"><table><thead><tr><th>Customer</th><th>Region</th><th class="num">Qty</th><th class="num">Target</th><th>Needed by</th><th>Status</th></tr></thead>
+      <tbody>${r.customers.map((c) => `<tr><td>${esc(c.customerName)}</td><td>${esc(c.region || '')}</td><td class="num">${num(c.quantity)}</td><td class="num">${c.targetPrice != null ? money(c.targetPrice) : '—'}</td><td>${esc(c.neededBy || '—')}</td><td>${esc(c.status)}${c.approved ? ' · approved' : ''}</td></tr>`).join('')}</tbody></table></div>
+    <h2 style="margin-top:16px">Supplier candidates</h2>
+    <div class="table-wrap"><table><thead><tr><th>Supplier</th><th class="num">Landed/unit</th><th>Executable</th><th>Notes</th></tr></thead>
+      <tbody>${r.candidates.map((c) => `<tr><td class="mono">${esc(c.supplier)}</td><td class="num">${money(c.landedUnitCost)}</td><td>${c.executable ? '<span class="badge ok">yes</span>' : '<span class="badge warn">no</span>'}</td><td class="small muted">${esc((c.reasons || []).join('; ') || (c.complete ? 'complete' : 'incomplete inputs'))}</td></tr>`).join('') || '<tr><td colspan="4" class="muted">No priced supplier.</td></tr>'}</tbody></table></div>
+    ${r.warnings && r.warnings.length ? `<h2 style="margin-top:16px">Warnings</h2><ul class="small muted">${r.warnings.map((w) => `<li>${esc(w)}</li>`).join('')}</ul>` : ''}
+    ${r.missing && r.missing.length ? `<h2 style="margin-top:16px">Missing assumptions</h2><div class="small">${r.missing.map((m) => `<span class="badge warn">${esc(m)}</span>`).join(' ')}</div>` : ''}
+  `);
+}
+
+function quoteFromRec(productId) {
+  const r = (state._recs || []).find((x) => x.productId === productId);
+  if (!r) return;
+  const cust = r.customers[0] || {};
+  modal('Create quote from recommendation', `
+    <div class="muted small" style="margin-bottom:10px">${esc(r.product.displayName)} — ${esc(r.supplier.code)} @ ${money(r.landedUnitCost)} landed</div>
+    <div class="grid" style="grid-template-columns:1fr 1fr;gap:10px">
+      <div class="field"><label>Customer</label><input id="recCust" value="${esc(cust.customerName || '')}" disabled /></div>
+      <div class="field"><label>Quantity</label><input id="recQty" type="number" value="${r.orderQuantity}" /></div>
+      <div class="field"><label>Unit price</label><input id="recPrice" type="number" step="0.01" value="${r.suggestedSell}" /></div>
+      <div class="field"><label>Validity</label><input id="recValid" type="date" /></div>
+    </div>
+    <div class="row" style="justify-content:flex-end;margin-top:12px"><button id="recGo">Create quote</button></div>
+  `, (bg) => {
+    bg.querySelector('#recGo').addEventListener('click', async () => {
+      try {
+        const res = await POST('/quotes', {
+          customerId: cust.customerId,
+          productId: r.productId,
+          demandId: cust.demandId,
+          quantity: Number(bg.querySelector('#recQty').value),
+          unitPrice: Number(bg.querySelector('#recPrice').value),
+          landedUnitCost: r.landedUnitCost,
+          currency: r.baseCurrency,
+          validityDate: bg.querySelector('#recValid').value || null,
+          terms: 'From demand recommendation',
+        });
+        toast('Quote created (margin ' + res.marginPct + '%)');
+        bg.remove();
+        render();
+      } catch (e) { toast(e.message, 'bad'); }
+    });
+  });
+}
+
 routes.users = async () => {
   const users = await GET('/users');
   $('#view').innerHTML = `
@@ -1279,6 +1390,7 @@ const TITLES = {
   captures: ['Capture Inbox', 'Notes from Plaud / reMarkable turned into demand signals'],
   alerts: ['Alerts', 'Price movements, expiring offers and stock alerts'],
   trends: ['Price Trends', 'Observed supplier price history with date gaps shown'],
+  buying: ['Buying', 'Match live demand to the cheapest executable supplier'],
   reports: ['Reports & Exports', 'Supplier performance and one-click Excel exports'],
   orders: ['Orders & Payments', 'Purchase/sales orders, payments and realised vs forecast margin'],
   users: ['Users & Roles', 'Accounts and role-based access'],

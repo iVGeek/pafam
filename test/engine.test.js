@@ -9,6 +9,7 @@ const { computeLanded, selectTier } = require('../server/services/landing');
 const incoterms = require('../src/lib/incoterms');
 const trends = require('../server/services/trends');
 const orders = require('../server/services/orders');
+const { orderQuantityFor, roundUpTo } = require('../server/services/recommend');
 
 test('GTIN check digit validates real EAN-13', () => {
   assert.equal(gtin.analyse('4006714008789').valid, true);
@@ -335,4 +336,17 @@ test('windowChange: measures over the window and reports gaps as no data', () =>
   ];
   assert.equal(trends.windowChange(recent, 30), null);
   assert.equal(trends.windowChange([points[0]], 30), null);
+});
+
+test('orderQuantityFor rounds demand up to MOQ then a whole order multiple', () => {
+  assert.equal(roundUpTo(100, 12), 108);
+  assert.equal(roundUpTo(120, 12), 120);
+  assert.equal(roundUpTo(1, 6), 6);
+  // Below MOQ: lift to MOQ, then the next whole multiple of it.
+  assert.equal(orderQuantityFor({ moq: 24, order_multiple: 12 }, 10), 24);
+  assert.equal(orderQuantityFor({ moq: 24, order_multiple: 12 }, 30), 36);
+  assert.equal(orderQuantityFor({ moq: 12, order_multiple: 6 }, 300), 300);
+  // No multiples configured: just satisfy the demand.
+  assert.equal(orderQuantityFor({ moq: null, order_multiple: null }, 7), 7);
+  assert.equal(orderQuantityFor(null, 5), 5);
 });

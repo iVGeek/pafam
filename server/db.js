@@ -451,6 +451,7 @@ function init() {
     price_change_alert_pct: '10',
     low_stock_threshold: '10',
     alert_dedupe_days: '7',
+    capital_limit: '250000',
     session_hours: '168',
     capture_secret: 'change-me-capture-secret',
   };
