@@ -21,3 +21,5 @@ console.log(`  login: ${process.env.PTP_ADMIN_USER || 'admin'}/${process.env.PTP
 console.log('  products:', counts.products);
 console.log('  offers:  ', counts.offers);
 console.log('  exceptions:', counts.exceptions);
+if (counts.alerts != null) console.log('  alerts:', counts.alerts, '| price history:', counts.priceHistory);
+if (counts.orders != null) console.log('  orders:', counts.orders);

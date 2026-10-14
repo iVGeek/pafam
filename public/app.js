@@ -87,7 +87,7 @@ const state = { route: 'dashboard', settings: {}, suppliers: [], user: null };
 const ROUTE_MIN = {
   dashboard: 'viewer', offers: 'viewer', products: 'viewer', compare: 'viewer', lowest: 'viewer', pricing: 'viewer',
   inventory: 'viewer', customers: 'viewer', demands: 'viewer', quotes: 'viewer', suppliers: 'viewer',
-  exceptions: 'viewer', imports: 'buyer', captures: 'analyst', alerts: 'viewer', settings: 'admin', users: 'admin', audit: 'admin',
+  exceptions: 'viewer', imports: 'buyer', captures: 'analyst', alerts: 'viewer', orders: 'viewer', settings: 'admin', users: 'admin', audit: 'admin',
 };
 
 function showLogin() { $('#login').classList.remove('hidden'); }
@@ -146,6 +146,8 @@ routes.dashboard = async () => {
     ['Open exceptions', num(o.openExceptions), (o.exceptionsByType || []).map((e) => `${e.n} ${e.type.replace('_', ' ')}`).join(' · ')],
     ['Customers', num(o.customers), `${o.openDemands} open demands`],
     ['Inventory units', num(o.inventoryUnits), 'on hand'],
+    ['Orders', num(o.orders), `${o.ordersOpen} open`],
+    ['Realised margin', money(o.realisedMargin), 'from settled orders'],
     ['Base currency', o.baseCurrency, 'normalised pricing'],
   ];
   const oppRows = (d.opportunities || []).map((x) => `
@@ -1019,6 +1021,98 @@ routes.alerts = async () => {
   $$('#view [data-read]').forEach(b=>b.addEventListener('click', async ()=>{ try{ await POST('/alerts/'+b.dataset.read+'/read'); toast('Marked read','ok'); render(); }catch(e){ toast(e.message,'err'); } }));
 };
 
+routes.orders = async () => {
+  const rows = await GET('/orders');
+  const customers = await loadCustomers();
+  const canEdit = can('buyer');
+  const totalRealised = rows.filter(o => o.realised.settled).reduce((s, o) => s + o.realised.realisedMargin, 0);
+  const open = rows.filter(o => !o.realised.settled).length;
+  $('#view').innerHTML = `
+    <div class="panel">
+      <div class="row" style="justify-content:space-between">
+        <div><h2>Orders &amp; payments</h2><div class="small muted">${rows.length} orders · ${open} open · realised margin ${money(totalRealised)}</div></div>
+      </div>
+      <div class="table-wrap" style="margin-top:12px"><table><thead><tr>
+        <th>Ref</th><th>Customer</th><th>Product</th><th>Supplier</th><th>Status</th><th class="num">Qty</th>
+        <th class="num">Forecast margin</th><th class="num">Realised</th><th class="num">Paid out/in</th><th class="num">Outstanding</th><th></th>
+      </tr></thead><tbody>
+        ${rows.map((o) => {
+          const r = o.realised;
+          const marginCell = r.forecastMarginPct != null ? `<span class="badge ${r.forecastMarginPct >= 15 ? 'good' : 'bad'}">${money(r.forecastMargin)} / ${pct(r.forecastMarginPct)}</span>` : '—';
+          const realCell = r.settled ? `<span class="badge good">${money(r.realisedMargin)}${r.marginVariance != null ? ` (${r.marginVariance >= 0 ? '+' : ''}${money(r.marginVariance)})` : ''}</span>` : '<span class="badge muted">open</span>';
+          const outstanding = (!r.costSettled || !r.revenueSettled) ? `${money(r.costOutstanding)} / ${money(r.revenueOutstanding)}` : '<span class="badge good">settled</span>';
+          return `<tr>
+            <td class="mono">${esc(o.ref || '')}</td>
+            <td>${esc(o.customer_name || '')}</td>
+            <td class="small">${esc((o.display_name || '').slice(0, 26))}</td>
+            <td class="mono small">${esc(o.supplier_code || '')}</td>
+            <td><select data-status="${o.id}" ${canEdit ? '' : 'disabled'} style="width:110px">${['draft','placed','received','shipped','delivered','closed','cancelled'].map((s) => `<option ${o.status === s ? 'selected' : ''}>${s}</option>`).join('')}</select></td>
+            <td class="num">${num(o.quantity)}</td>
+            <td class="num">${marginCell}</td>
+            <td class="num">${realCell}</td>
+            <td class="num small">${money(r.paidOut)} / ${money(r.paidIn)}</td>
+            <td class="num small">${outstanding}</td>
+            <td class="nowrap">${canEdit ? `<button class="sm" data-pay="${o.id}">Record payment</button>` : ''}</td>
+          </tr>`;
+        }).join('') || '<tr><td colspan="11" class="muted">No orders yet.</td></tr>'}
+      </tbody></table></div>
+    </div>
+    ${canEdit ? `<div class="split" style="margin-top:14px">
+      <div class="panel"><h2>New order</h2>
+        <div class="field" style="margin-bottom:8px"><label>Customer</label><select id="orCust">${customers.map((c) => `<option value="${c.id}">${esc(c.name)}</option>`).join('')}</select></div>
+        <div class="field" style="margin-bottom:8px"><label>Product</label>
+          <div data-pp><input data-pp-input placeholder="search product…" /><input type="hidden" data-pp-id /><div data-pp-results style="margin-top:6px;max-height:150px;overflow:auto"></div></div></div>
+        <div class="grid" style="grid-template-columns:1fr 1fr;gap:10px">
+          <div class="field"><label>Quantity</label><input id="orQty" type="number" value="100" /></div>
+          <div class="field"><label>Currency</label><input id="orCur" value="USD" /></div>
+          <div class="field"><label>Unit cost (forecast)</label><input id="orCost" type="number" step="0.01" /></div>
+          <div class="field"><label>Unit price (forecast)</label><input id="orPrice" type="number" step="0.01" /></div>
+        </div>
+        <button id="orAdd" style="margin-top:12px">Create order</button>
+        <div class="muted small" style="margin-top:8px">Create from a saved deal on the Deals page to prefill cost/price.</div>
+      </div>
+      <div class="panel"><h2>How realised margin works</h2>
+        <div class="small muted">Each order carries a forecast cost and price. As payments are booked — outbound to the supplier, inbound from the customer — the platform recomputes the <b>realised</b> margin from cash actually moved, and compares it to the forecast once both sides are settled.</div>
+      </div>
+    </div>` : ''}`;
+  if (canEdit) mountProductPicker($('#view'));
+  if (canEdit) $('#orAdd').addEventListener('click', async () => {
+    const productId = $('[data-pp-id]', $('#view')).value;
+    if (!productId) return toast('Pick a product', 'err');
+    try {
+      await POST('/orders', {
+        customerId: Number($('#orCust').value), productId, quantity: Number($('#orQty').value),
+        currency: $('#orCur').value, unitCost: Number($('#orCost').value) || null, unitPrice: Number($('#orPrice').value) || null,
+      });
+      toast('Order created', 'ok'); render();
+    } catch (e) { toast(e.message, 'err'); }
+  });
+  $$('#view [data-status]').forEach((sel) => sel.addEventListener('change', async () => {
+    try { await POST('/orders/' + sel.dataset.status + '/status', { status: sel.value }); toast('Status updated', 'ok'); }
+    catch (e) { toast(e.message, 'err'); }
+  }));
+  $$('#view [data-pay]').forEach((b) => b.addEventListener('click', () => {
+    modal('Record payment', `
+      <div class="field" style="margin-bottom:8px"><label>Direction</label><select id="payDir"><option value="inbound">Inbound — customer paid us</option><option value="outbound">Outbound — we paid supplier</option></select></div>
+      <div class="grid" style="grid-template-columns:1fr 1fr;gap:10px">
+        <div class="field"><label>Amount</label><input id="payAmt" type="number" step="0.01" /></div>
+        <div class="field"><label>Date</label><input id="payDate" type="date" value="${new Date().toISOString().slice(0, 10)}" /></div>
+      </div>
+      <div class="field" style="margin-bottom:8px"><label>Method</label><input id="payMethod" placeholder="Transfer" /></div>
+      <div class="field" style="margin-bottom:8px"><label>Reference</label><input id="payRef" /></div>
+      <button id="payGo" style="margin-top:6px;width:100%">Record payment</button>`, (bg) => {
+      bg.querySelector('#payGo').addEventListener('click', async () => {
+        try {
+          await POST('/orders/' + b.dataset.pay + '/payments', {
+            direction: bg.querySelector('#payDir').value, amount: Number(bg.querySelector('#payAmt').value),
+            paidDate: bg.querySelector('#payDate').value, method: bg.querySelector('#payMethod').value, reference: bg.querySelector('#payRef').value,
+          });
+          bg.remove(); toast('Payment recorded', 'ok'); render();
+        } catch (e) { toast(e.message, 'err'); }
+      });
+    });
+  }));
+};
 
 routes.users = async () => {
   const users = await GET('/users');
@@ -1089,6 +1183,7 @@ const TITLES = {
   settings: ['Settings & FX', 'Policy thresholds and currency rates'],
   captures: ['Capture Inbox', 'Notes from Plaud / reMarkable turned into demand signals'],
   alerts: ['Alerts', 'Price movements, expiring offers and stock alerts'],
+  orders: ['Orders & Payments', 'Purchase/sales orders, payments and realised vs forecast margin'],
   users: ['Users & Roles', 'Accounts and role-based access'],
   audit: ['Audit Log', 'Who did what, when'],
 };

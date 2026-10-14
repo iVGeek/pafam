@@ -3,6 +3,7 @@
 const { db, getSetting } = require('../db');
 const pricing = require('./pricing');
 const { normalizeOffer } = require('./comparison');
+const orders = require('./orders');
 
 function overview() {
   const base = getSetting('base_currency', 'USD');
@@ -24,12 +25,20 @@ function overview() {
   const openDemands = db.prepare("SELECT COUNT(*) n FROM demands WHERE status = 'open'").get().n;
   const inventoryUnits = db.prepare('SELECT COALESCE(SUM(on_hand),0) n FROM inventory_lots').get().n;
 
+  const allOrders = orders.listOrders(1000);
+  const settled = allOrders.filter((o) => o.realised.settled);
+  const realisedMargin = pricing.round2(settled.reduce((s, o) => s + o.realised.realisedMargin, 0));
+  const ordersOpen = allOrders.filter((o) => !o.realised.settled).length;
+
   return {
     baseCurrency: base,
     offers, suppliers, products, uploads,
     openExceptions, exceptionsByType,
     overlapProducts,
     customers, openDemands, inventoryUnits,
+    orders: allOrders.length,
+    ordersOpen,
+    realisedMargin,
   };
 }
 

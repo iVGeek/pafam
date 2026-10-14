@@ -278,6 +278,46 @@ CREATE TABLE IF NOT EXISTS settings (
   value TEXT
 );
 
+-- Purchase / sales orders created from a deal (or manually) and the payments
+-- booked against them. Realised margin is derived from the actual payments,
+-- so forecast vs actual can be compared.
+CREATE TABLE IF NOT EXISTS orders (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  ref TEXT UNIQUE,
+  quote_id INTEGER REFERENCES quotes(id) ON DELETE SET NULL,
+  demand_id INTEGER REFERENCES demands(id) ON DELETE SET NULL,
+  customer_id INTEGER REFERENCES customers(id),
+  supplier_code TEXT,
+  product_id INTEGER REFERENCES products(id),
+  offer_id INTEGER,
+  quantity REAL NOT NULL DEFAULT 0,
+  currency TEXT DEFAULT 'USD',
+  unit_cost REAL,                    -- forecast landed cost per unit
+  unit_price REAL,                   -- forecast selling price per unit
+  status TEXT NOT NULL DEFAULT 'draft',  -- draft | placed | received | shipped | delivered | closed | cancelled
+  order_date TEXT,
+  supplier_due TEXT,
+  customer_due TEXT,
+  notes TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_orders_customer ON orders(customer_id);
+CREATE INDEX IF NOT EXISTS idx_orders_product ON orders(product_id);
+
+CREATE TABLE IF NOT EXISTS payments (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  order_id INTEGER NOT NULL REFERENCES orders(id) ON DELETE CASCADE,
+  direction TEXT NOT NULL,           -- inbound (customer) | outbound (supplier)
+  amount REAL NOT NULL DEFAULT 0,
+  currency TEXT DEFAULT 'USD',
+  paid_date TEXT,
+  method TEXT,
+  reference TEXT,
+  notes TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_payments_order ON payments(order_id);
+
 CREATE TABLE IF NOT EXISTS audit_log (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   actor TEXT,

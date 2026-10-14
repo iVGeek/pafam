@@ -8,6 +8,7 @@ const { parseNote } = require('../src/lib/notes');
 const { computeLanded, selectTier } = require('../server/services/landing');
 const incoterms = require('../src/lib/incoterms');
 const trends = require('../server/services/trends');
+const orders = require('../server/services/orders');
 
 test('GTIN check digit validates real EAN-13', () => {
   assert.equal(gtin.analyse('4006714008789').valid, true);
@@ -237,4 +238,53 @@ test('severity bands scale with the alert threshold', () => {
   assert.equal(trends.severityForChange(3, 10), 'info');
   assert.equal(trends.severityForChange(-12, 10), 'warning');
   assert.equal(trends.severityForChange(30, 10), 'critical');
+});
+
+test('realise: fully paid order matches forecast margin', () => {
+  const order = { quantity: 200, unit_cost: 8.5, unit_price: 12.5 };
+  const payments = [
+    { direction: 'outbound', amount: 1700 },
+    { direction: 'inbound', amount: 2500 },
+  ];
+  const r = orders.realise(order, payments);
+  assert.equal(r.forecastMargin, 800);
+  assert.equal(r.realisedMargin, 800);
+  assert.equal(r.settled, true);
+  assert.equal(r.marginVariance, 0);
+});
+
+test('realise: partial payments leave outstanding balances', () => {
+  const order = { quantity: 100, unit_cost: 10, unit_price: 15 };
+  const payments = [
+    { direction: 'outbound', amount: 1000 },
+    { direction: 'inbound', amount: 600 },
+  ];
+  const r = orders.realise(order, payments);
+  assert.equal(r.forecastMargin, 500);
+  assert.equal(r.settled, false);
+  assert.equal(r.revenueOutstanding, 900);
+  assert.equal(r.costOutstanding, 0);
+  assert.equal(r.marginVariance, null);
+});
+
+test('realise: no payments yields zero realised and full outstanding', () => {
+  const r = orders.realise({ quantity: 50, unit_cost: 6, unit_price: 9 }, []);
+  assert.equal(r.realisedMargin, 0);
+  assert.equal(r.paidIn, 0);
+  assert.equal(r.paidOut, 0);
+  assert.equal(r.costOutstanding, 300);
+  assert.equal(r.revenueOutstanding, 450);
+  assert.equal(r.settled, false);
+});
+
+test('realise: overpayment shows positive margin variance once settled', () => {
+  const order = { quantity: 10, unit_cost: 5, unit_price: 10 };
+  const payments = [
+    { direction: 'outbound', amount: 55 },
+    { direction: 'inbound', amount: 130 },
+  ];
+  const r = orders.realise(order, payments);
+  assert.equal(r.settled, true);
+  assert.equal(r.realisedMargin, 75);
+  assert.equal(r.marginVariance, 25);
 });

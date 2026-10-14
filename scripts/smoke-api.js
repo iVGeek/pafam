@@ -103,6 +103,20 @@ const server = app.listen(PORT, async () => {
       console.log('alert mark read:', mr.status);
     }
 
+    // orders & realised margin
+    const ordList = await admin.req('GET', '/orders');
+    const ordRealised = (ordList.body || []).filter((o) => o.realised && o.realised.settled)
+      .reduce((s, o) => s + o.realised.realisedMargin, 0);
+    console.log('orders listing:', ordList.status, '| count:', (ordList.body || []).length, '| realised margin:', ordRealised);
+    const ordNew = await admin.req('POST', '/orders', { customerId: 1, productId: pid, quantity: 20, unitCost: 7, unitPrice: 11, currency: 'USD' });
+    console.log('orders create (expect 200):', ordNew.status, '| id:', ordNew.body.id);
+    if (ordNew.body.id) {
+      const pay = await admin.req('POST', `/orders/${ordNew.body.id}/payments`, { direction: 'outbound', amount: 140, method: 'Transfer' });
+      console.log('payment record (expect 200):', pay.status, '| id:', pay.body.id);
+      const o1 = await admin.req('GET', `/orders/${ordNew.body.id}`);
+      console.log('order detail:', o1.status, '| paidOut:', o1.body.realised && o1.body.realised.paidOut, '| outstanding:', o1.body.realised && o1.body.realised.revenueOutstanding);
+    }
+
     // webhook with secret
     const hook = await anon.req('POST', '/captures/webhook', { source: 'plaud', text: 'Client wants 50 units of Tanqueray. secret: nope' });
     console.log('webhook wrong secret (expect 401):', hook.status);
