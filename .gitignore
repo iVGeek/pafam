@@ -1,0 +1,7 @@
+node_modules/
+data/ptp.db
+data/ptp.db-wal
+data/ptp.db-shm
+data/uploads/
+output/
+*.log

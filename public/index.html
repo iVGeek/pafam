@@ -1,0 +1,67 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Perfume Trading Platform</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="brand">Perfume<span>Trading</span></div>
+      <nav class="nav" id="nav">
+        <a data-route="dashboard">Dashboard</a>
+        <a data-route="imports">Import Lists</a>
+        <div class="group">Catalogue</div>
+        <a data-route="offers">Supplier Offers</a>
+        <a data-route="products">Products &amp; Matching</a>
+        <a data-route="exceptions">Exceptions</a>
+        <div class="group">Trading</div>
+        <a data-route="compare">Price Comparison</a>
+        <a data-route="pricing">Deal Calculator</a>
+        <a data-route="inventory">Inventory</a>
+        <a data-route="customers">Customers</a>
+        <a data-route="demands">Demand Book</a>
+        <a data-route="quotes">Quotes</a>
+        <div class="group">Intelligence</div>
+        <a data-route="captures">Capture Inbox</a>
+        <div class="group">Admin</div>
+        <a data-route="suppliers">Suppliers &amp; Terms</a>
+        <a data-route="settings">Settings &amp; FX</a>
+        <a data-route="users">Users &amp; Roles</a>
+        <a data-route="audit">Audit Log</a>
+      </nav>
+    </aside>
+    <main class="main">
+      <div class="topbar">
+        <div>
+          <h1 id="pageTitle">Dashboard</h1>
+          <div class="sub" id="pageSub"></div>
+        </div>
+        <div class="row">
+          <span class="badge muted" id="baseCur">USD</span>
+          <button class="ghost sm" id="refreshBtn">Refresh</button>
+          <span class="spacer"></span>
+          <span class="badge info" id="userChip" title=""></span>
+          <button class="ghost sm" id="pwBtn">Password</button>
+          <button class="ghost sm" id="logoutBtn">Sign out</button>
+        </div>
+      </div>
+      <div id="view"></div>
+    </main>
+  </div>
+  <div id="login" class="modal-bg hidden">
+    <div class="modal" style="width:min(380px,92vw)">
+      <div class="brand" style="padding:0 0 14px">Perfume<span>Trading</span></div>
+      <div class="field" style="margin-bottom:10px"><label>Username</label><input id="loginUser" autocomplete="username" /></div>
+      <div class="field" style="margin-bottom:14px"><label>Password</label><input id="loginPass" type="password" autocomplete="current-password" /></div>
+      <button id="loginGo" style="width:100%">Sign in</button>
+      <div id="loginErr" class="small" style="color:var(--danger);margin-top:10px"></div>
+      <div class="small muted" style="margin-top:14px">Demo: admin/admin123 · buyer/buyer123 · analyst/analyst123 · viewer/viewer123</div>
+    </div>
+  </div>
+  <div id="toast"></div>
+  <script src="/app.js"></script>
+</body>
+</html>

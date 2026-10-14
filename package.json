@@ -1,0 +1,19 @@
+{
+  "name": "perfume-trading-platform",
+  "version": "0.2.0",
+  "private": true,
+  "description": "Standalone perfume wholesale trading platform",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node --no-warnings server/index.js",
+    "dev": "node --no-warnings server/index.js",
+    "seed": "node --no-warnings server/seed.js",
+    "import": "node src/index.js",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "multer": "^2.0.1",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
+  }
+}
