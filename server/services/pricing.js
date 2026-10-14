@@ -242,7 +242,46 @@ function computeDeal(input) {
     metrics,
     cashflow: { ...cf, annualisedRoiPct },
     contribution: { perUnit: metrics.grossProfitUnit, total: metrics.grossProfitTotal },
+    scenarios: scenarios(input),
   };
+}
+
+// Conservative / base / upside cases plus stress cases (price drop,
+// customer default). Each case only shifts a few inputs so the manager can see
+// how sensitive the deal's contribution is (§8.8, §4.5). Never presented as a
+// forecast.
+function scenarios(input) {
+  const qty = safe(input.quantity, 1) || 1;
+  const landed = safe(input.landedUnitCost);
+  const sell = safe(input.sellingUnitPrice);
+  const daysToCash = safe(input.daysToCash, 30) || 30;
+  const base = { ...input, quantity: qty };
+  const dropPct = safe(input.stressPriceDropPct, 10);
+  const defaultPct = safe(input.stressCustomerDefaultPct, 100);
+
+  const mk = (kind, label, description, overrides) => {
+    const m = dealMetrics({ ...base, ...overrides });
+    return {
+      kind, label, description,
+      marginPct: m.marginPct,
+      contributionTotal: m.grossProfitTotal,
+      revenueTotal: m.revenueTotal,
+      passesPolicy: m.passesPolicy,
+      survives: m.grossProfitTotal > 0,
+    };
+  };
+
+  return [
+    mk('base', 'Base', 'As quoted', {}),
+    mk('conservative', 'Conservative', 'Selling price −4%, landed cost +5%, +30 days to cash',
+      { sellingUnitPrice: sell * 0.96, landedUnitCost: landed * 1.05, daysToCash: daysToCash + 30 }),
+    mk('upside', 'Upside', 'Selling price +3%, landed cost −2%, −15 days to cash',
+      { sellingUnitPrice: sell * 1.03, landedUnitCost: landed * 0.98, daysToCash: Math.max(1, daysToCash - 15) }),
+    mk('stress_price_drop', `Stress: price −${dropPct}%`, 'Customer only pays the current market price',
+      { sellingUnitPrice: sell * (1 - dropPct / 100) }),
+    mk('stress_default', 'Stress: customer default', 'No revenue recovered — full loss of landed capital',
+      { sellingUnitPrice: sell * (1 - defaultPct / 100) }),
+  ];
 }
 
 module.exports = {
@@ -257,4 +296,5 @@ module.exports = {
   daysBetween,
   cashflow,
   computeDeal,
+  scenarios,
 };

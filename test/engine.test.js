@@ -288,3 +288,51 @@ test('realise: overpayment shows positive margin variance once settled', () => {
   assert.equal(r.realisedMargin, 75);
   assert.equal(r.marginVariance, 25);
 });
+
+test('scenarios: base, conservative, upside and stress cases', () => {
+  const s = pricing.scenarios({
+    quantity: 1000, landedUnitCost: 33, sellingUnitPrice: 40,
+    minMarginPct: 15, minMarkup: 0.75, daysToCash: 90,
+  });
+  const kinds = s.map((x) => x.kind);
+  assert.deepEqual(kinds, ['base', 'conservative', 'upside', 'stress_price_drop', 'stress_default']);
+
+  const base = s.find((x) => x.kind === 'base');
+  assert.equal(base.contributionTotal, 7000);
+
+  const cons = s.find((x) => x.kind === 'conservative');
+  const up = s.find((x) => x.kind === 'upside');
+  assert.ok(cons.contributionTotal < base.contributionTotal);
+  assert.ok(up.contributionTotal > base.contributionTotal);
+
+  const def = s.find((x) => x.kind === 'stress_default');
+  assert.equal(def.contributionTotal, -33000);
+  assert.equal(def.survives, false);
+});
+
+test('scenarios: a thin deal can fail policy in the conservative case', () => {
+  const s = pricing.scenarios({ quantity: 1000, landedUnitCost: 33, sellingUnitPrice: 40, minMarginPct: 15, minMarkup: 0.75 });
+  const base = s.find((x) => x.kind === 'base');
+  const cons = s.find((x) => x.kind === 'conservative');
+  assert.equal(base.passesPolicy, true);
+  assert.equal(cons.passesPolicy, false);
+});
+
+test('windowChange: measures over the window and reports gaps as no data', () => {
+  const points = [
+    { observedAt: '2026-01-01T00:00:00', unitCostBase: 10 },
+    { observedAt: '2026-03-01T00:00:00', unitCostBase: 12 },
+    { observedAt: '2026-04-01T00:00:00', unitCostBase: 15 },
+  ];
+  const d30 = trends.windowChange(points, 30);
+  assert.ok(d30);
+  assert.equal(d30.fromValue, 12);
+  assert.equal(d30.toValue, 15);
+  assert.equal(d30.changePct, 25);
+  const recent = [
+    { observedAt: '2026-03-25T00:00:00', unitCostBase: 14 },
+    { observedAt: '2026-04-01T00:00:00', unitCostBase: 15 },
+  ];
+  assert.equal(trends.windowChange(recent, 30), null);
+  assert.equal(trends.windowChange([points[0]], 30), null);
+});

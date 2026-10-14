@@ -87,7 +87,7 @@ const state = { route: 'dashboard', settings: {}, suppliers: [], user: null };
 const ROUTE_MIN = {
   dashboard: 'viewer', offers: 'viewer', products: 'viewer', compare: 'viewer', lowest: 'viewer', pricing: 'viewer',
   inventory: 'viewer', customers: 'viewer', demands: 'viewer', quotes: 'viewer', suppliers: 'viewer',
-  exceptions: 'viewer', imports: 'buyer', captures: 'analyst', alerts: 'viewer', orders: 'viewer', reports: 'viewer', settings: 'admin', users: 'admin', audit: 'admin',
+  exceptions: 'viewer', imports: 'buyer', captures: 'analyst', alerts: 'viewer', trends: 'viewer', orders: 'viewer', reports: 'viewer', settings: 'admin', users: 'admin', audit: 'admin',
 };
 
 function showLogin() { $('#login').classList.remove('hidden'); }
@@ -668,7 +668,11 @@ function renderDealResult(el, r) {
         <tbody>${cf.schedule.map((e) => `<tr><td class="small">${esc(e.date)}</td><td class="small">${esc(e.label)}</td><td class="num ${e.amount < 0 ? 'muted' : ''}">${money(e.amount, r.baseCurrency)}</td><td class="num">${money(e.balance, r.baseCurrency)}</td></tr>`).join('')}</tbody></table>
       </div>
       ${landedLines.length ? `<div><h2 style="font-size:13px">Landed cost (${esc(r.landed.incoterm || '—')})</h2><table>${landedLines.map((l) => `<tr><td class="muted">${l[0]}</td><td class="num">${l[1]}</td></tr>`).join('')}</table>${r.landed.complete ? '' : `<div class="badge warn" style="margin-top:8px">assumed: ${esc(r.landed.missing.join(', '))}</div>`}</div>` : ''}
-    </div>`;
+    </div>
+    ${(r.deal.scenarios || []).length ? `<h2 style="font-size:13px;margin-top:14px">Scenarios <span class="muted small">— conservative / base / upside and stress cases (not a forecast)</span></h2>
+    <div class="table-wrap"><table><thead><tr><th>Case</th><th>Assumption</th><th class="num">Contribution</th><th class="num">Margin</th><th>Policy</th></tr></thead>
+    <tbody>${r.deal.scenarios.map((s) => `<tr><td><span class="badge ${s.kind === 'base' ? 'info' : s.kind.startsWith('stress') ? (s.survives ? 'warn' : 'bad') : s.survives ? 'good' : 'bad'}">${esc(s.label)}</span></td><td class="small muted">${esc(s.description)}</td><td class="num ${s.contributionTotal < 0 ? 'muted' : ''}">${money(s.contributionTotal, r.baseCurrency)}</td><td class="num">${pct(s.marginPct)}</td><td>${s.passesPolicy ? '<span class="badge good">pass</span>' : '<span class="badge bad">fail</span>'}</td></tr>`).join('')}
+    </tbody></table></div>` : ''}`;
 }
 
 routes.inventory = async () => {
@@ -780,8 +784,8 @@ routes.quotes = async () => {
   $('#view').innerHTML = `
     <div class="split">
       <div class="panel"><h2>Deals &amp; quotes</h2>
-        <div class="table-wrap"><table><thead><tr><th>Customer</th><th>Product</th><th>Supplier</th><th class="num">Qty</th><th class="num">Unit price</th><th class="num">Margin</th><th class="num">Contribution</th><th class="num">ROI</th><th class="num">Capital</th><th>Cus due</th><th>Status</th></tr></thead>
-        <tbody>${rows.map((q) => `<tr><td>${esc(q.customer_name)}</td><td>${esc((q.display_name || '').slice(0, 30))}</td><td>${q.supplier_code ? `<span class="badge info">${esc(q.supplier_code)}</span>` : '—'}</td><td class="num">${num(q.quantity)}</td><td class="num">${money(q.unit_price, q.currency)}</td><td class="num">${q.margin_pct != null ? `<span class="badge ${q.margin_pct >= 15 ? 'good' : 'bad'}">${pct(q.margin_pct)}</span>` : '—'}</td><td class="num">${q.contribution_total != null ? money(q.contribution_total, q.currency) : '—'}</td><td class="num">${q.roi_pct != null ? pct(q.roi_pct) : '—'}</td><td class="num">${q.capital_required != null ? money(q.capital_required, q.currency) : '—'}</td><td class="small">${esc(q.customer_due_date || '')}</td><td><span class="badge info">${esc(q.status)}</span></td></tr>`).join('') || '<tr><td colspan="11" class="muted">No deals yet.</td></tr>'}
+        <div class="table-wrap"><table><thead><tr><th>Customer</th><th>Product</th><th>Supplier</th><th class="num">Qty</th><th class="num">Unit price</th><th class="num">Margin</th><th class="num">Contribution</th><th class="num">ROI</th><th class="num">Capital</th><th>Cus due</th><th>Status</th><th></th></tr></thead>
+        <tbody>${rows.map((q) => `<tr><td>${esc(q.customer_name)}</td><td>${esc((q.display_name || '').slice(0, 30))}</td><td>${q.supplier_code ? `<span class="badge info">${esc(q.supplier_code)}</span>` : '—'}</td><td class="num">${num(q.quantity)}</td><td class="num">${money(q.unit_price, q.currency)}</td><td class="num">${q.margin_pct != null ? `<span class="badge ${q.margin_pct >= 15 ? 'good' : 'bad'}">${pct(q.margin_pct)}</span>` : '—'}</td><td class="num">${q.contribution_total != null ? money(q.contribution_total, q.currency) : '—'}</td><td class="num">${q.roi_pct != null ? pct(q.roi_pct) : '—'}</td><td class="num">${q.capital_required != null ? money(q.capital_required, q.currency) : '—'}</td><td class="small">${esc(q.customer_due_date || '')}</td><td><span class="badge info">${esc(q.status)}</span></td><td><a class="btn sm" href="/api/export/quote/${q.id}.xlsx" download title="Customer quote (no costs)">Quote</a></td></tr>`).join('') || '<tr><td colspan="12" class="muted">No deals yet.</td></tr>'}
         </tbody></table></div>
       </div>
       <div class="panel"><h2>Create quote</h2>
@@ -1114,6 +1118,61 @@ routes.orders = async () => {
   }));
 };
 
+routes.trends = async () => {
+  $('#view').innerHTML = `
+    <div class="panel">
+      <div class="row" style="justify-content:space-between">
+        <div><h2>Price trends</h2><div class="small muted">Observed supplier price history. Date gaps are shown, never invented.</div></div>
+        <div class="row"><button id="trRefresh" class="ghost">Refresh alerts</button></div>
+      </div>
+      <div class="field" style="margin:12px 0"><label>Product</label>
+        <div data-pp><input data-pp-input placeholder="search product…" /><input type="hidden" data-pp-id /><div data-pp-results style="margin-top:6px;max-height:180px;overflow:auto"></div></div>
+      </div>
+      <div id="trOut" class="muted small">Pick a product to see every supplier that has quoted it, with the 7/30/90/180-day price movement where history supports it.</div>
+    </div>`;
+  function windowCell(w) {
+    if (!w) return '<span class="badge muted">no data</span>';
+    const cls = w.changePct > 0.01 ? 'bad' : (w.changePct < -0.01 ? 'good' : 'info');
+    return `<span class="badge ${cls}">${w.changePct > 0 ? '+' : ''}${pct(w.changePct)}</span>`;
+  }
+  function spark(points) {
+    if (points.length < 2) return '<span class="muted small">single observation</span>';
+    const vals = points.map((p) => Number(p.unitCostBase));
+    const min = Math.min(...vals), max = Math.max(...vals);
+    const span = max - min || 1;
+    return `<span class="spark">` + points.map((p, i) => {
+      const prev = i > 0 ? Number(points[i - 1].unitCostBase) : Number(p.unitCostBase);
+      const cls = Number(p.unitCostBase) > prev ? 'up' : (Number(p.unitCostBase) < prev ? 'down' : '');
+      return `<i class="${cls}" title="${esc(p.observedAt.slice(0, 10))}: ${money(p.unitCostBase)}" style="height:${8 + Math.round((Number(p.unitCostBase) - min) / span * 20)}px"></i>`;
+    }).join('') + `</span>`;
+  }
+  function renderTrends(d) {
+    const series = d.series || [];
+    if (!series.length) { $('#trOut').innerHTML = '<div class="badge muted">No price history for this product yet.</div>'; return; }
+    $('#trOut').innerHTML = series.map((s) => {
+      const obs = (s.points || []).map((p, i) => {
+        const gap = i > 0 ? Math.round((Date.parse(p.observedAt) - Date.parse(s.points[i - 1].observedAt)) / 86400000) : null;
+        return `<tr><td class="small">${esc(p.observedAt.slice(0, 10))}</td><td class="small muted">${esc(p.listDate || '')}</td><td class="num">${money(p.unitCostBase)}</td><td class="small muted">${p.fromImport ? 'import' : 'seeded'}</td><td class="small muted">${gap != null ? `+${gap}d` : '—'}</td></tr>`;
+      }).join('');
+      return `<div class="panel" style="margin-top:12px">
+        <div class="row" style="justify-content:space-between;align-items:center">
+          <div><span class="badge info mono">${esc(s.supplierCode)}</span> <span class="small muted">${s.observations} observation(s)</span></div>
+          ${spark(s.points || [])}
+        </div>
+        <div class="table-wrap" style="margin-top:8px"><table><thead><tr><th>7-day</th><th>30-day</th><th>90-day</th><th>180-day</th></tr></thead>
+          <tbody><tr><td>${windowCell(s.windows.d7)}</td><td>${windowCell(s.windows.d30)}</td><td>${windowCell(s.windows.d90)}</td><td>${windowCell(s.windows.d180)}</td></tr></tbody></table></div>
+        <div class="table-wrap" style="margin-top:8px"><table><thead><tr><th>Observed</th><th>List date</th><th class="num">Base/bottle</th><th>Source</th><th>Gap</th></tr></thead>
+          <tbody>${obs}</tbody></table></div>
+      </div>`;
+    }).join('');
+  }
+  mountProductPicker($('#view'), async (pid) => {
+    try { const d = await GET('/trends?productId=' + pid); renderTrends(d); }
+    catch (e) { toast(e.message, 'err'); }
+  });
+  $('#trRefresh').addEventListener('click', async () => { try { await POST('/alerts/refresh'); toast('Alerts refreshed', 'ok'); } catch (e) { toast(e.message, 'err'); } });
+};
+
 routes.reports = async () => {
   const d = await GET('/reports');
   const o = d.overview || {};
@@ -1219,6 +1278,7 @@ const TITLES = {
   settings: ['Settings & FX', 'Policy thresholds and currency rates'],
   captures: ['Capture Inbox', 'Notes from Plaud / reMarkable turned into demand signals'],
   alerts: ['Alerts', 'Price movements, expiring offers and stock alerts'],
+  trends: ['Price Trends', 'Observed supplier price history with date gaps shown'],
   reports: ['Reports & Exports', 'Supplier performance and one-click Excel exports'],
   orders: ['Orders & Payments', 'Purchase/sales orders, payments and realised vs forecast margin'],
   users: ['Users & Roles', 'Accounts and role-based access'],

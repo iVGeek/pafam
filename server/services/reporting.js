@@ -2,6 +2,7 @@
 
 const XLSX = require('xlsx');
 const { db } = require('../db');
+const pricing = require('./pricing');
 const analytics = require('./analytics');
 const orders = require('./orders');
 const alerts = require('./alerts');
@@ -170,4 +171,45 @@ function build(kind) {
   return workbook([sheet]);
 }
 
-module.exports = { build, BUILDERS };
+// Customer-facing quotation: sell-side only. Deliberately omits supplier
+// names, buying costs, margins and any internal reference (§4.7 / §16).
+function quoteWorkbook(quoteId) {
+  const q = db.prepare(
+    `SELECT q.*, c.name AS customer_name, c.region, c.payment_terms AS customer_payment_terms,
+            p.display_name, p.canonical_gtin, p.brand, p.fragrance, p.size_ml
+       FROM quotes q
+       LEFT JOIN customers c ON c.id = q.customer_id
+       LEFT JOIN products p ON p.id = q.product_id
+      WHERE q.id = ?`
+  ).get(Number(quoteId));
+  if (!q) return null;
+  const unitPrice = q.selling_unit_price != null ? q.selling_unit_price : q.unit_price;
+  const total = pricing.round2((Number(unitPrice) || 0) * (Number(q.quantity) || 0));
+  const rows = [
+    ['Customer quotation', ''],
+    ['Quote reference', 'Q-' + String(q.id).padStart(4, '0')],
+    ['Date', new Date().toISOString().slice(0, 10)],
+    ['Customer', q.customer_name || ''],
+    ['Region', q.region || ''],
+    ['', ''],
+    ['Product', q.display_name || ''],
+    ['Barcode', q.canonical_gtin || ''],
+    ['Brand', q.brand || ''],
+    ['Size (ml)', q.size_ml || ''],
+    ['', ''],
+    ['Quantity', q.quantity],
+    ['Unit price', pricing.round4(unitPrice)],
+    ['Currency', q.currency || 'USD'],
+    ['Total', total],
+    ['Validity', q.validity_date || ''],
+    ['Payment terms', q.terms || q.customer_payment_terms || ''],
+    ['Delivery', q.customer_due_date ? 'By ' + q.customer_due_date : ''],
+  ];
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  ws['!cols'] = [{ wch: 22 }, { wch: 34 }];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Quote');
+  return XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+}
+
+module.exports = { build, quoteWorkbook, BUILDERS };

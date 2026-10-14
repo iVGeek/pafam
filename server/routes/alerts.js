@@ -27,8 +27,10 @@ router.post('/alerts/:id/read', (req, res) => res.json(alerts.markRead(req.param
 // ---- Price trends ----
 router.get('/trends', (req, res) => {
   if (req.query.productId) {
-    const rows = trends.productTrends(Number(req.query.productId));
-    return res.json({ productId: Number(req.query.productId), rows });
+    const id = Number(req.query.productId);
+    const rows = trends.productTrends(id);
+    const series = trends.productSeries(id);
+    return res.json({ productId: id, rows, series });
   }
   const rows = trends.allTrends({ onlyChanged: req.query.changed === '1' });
   res.json({ rows: rows.slice(0, Math.min(Number(req.query.limit) || 100, 1000)) });

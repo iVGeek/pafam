@@ -67,9 +67,23 @@ Notes:
 - **Compare** offers per product with explicit comparability flags, and flag
   implausible spreads (likely price-basis mismatches) for review instead of
   reporting fantasy savings.
-- **Price deals**: landed cost build-up, margin/markup, ROI & annualised ROI,
-  enforced against a configurable margin/markup policy.
+- **Price deals**: landed cost build-up (Incoterm-aware), margin/markup, ROI &
+  annualised ROI, enforced against a configurable margin/markup policy.
+- **Source cheapest**: lowest *executable* landed cost per product & quantity,
+  with MOQ/stock/expiry/eligibility checks and missing-input flags.
+- **Model the money**: dated cash-flow schedule, peak capital and capital days,
+  contribution, plus conservative/base/upside scenarios and price-drop and
+  customer-default stress cases (never presented as forecasts).
 - **Trade**: inventory lots, customers, a demand book and quotes.
+- **Track prices**: an immutable `price_history` records every observed price;
+  **alerts** flag price movements, expiries and low stock, and the **price
+  trends** view shows 7/30/90/180-day movement with real date gaps (no invented
+  points).
+- **Close the loop**: **orders** with payments booked in/out, comparing
+  *forecast* to *realised* margin from cash actually moved.
+- **Report & export**: one-click `.xlsx` for opportunities, lowest landed cost,
+  deals, orders and alerts, plus a **cost-masked customer quotation** that never
+  reveals supplier names or buying costs.
 - **Capture notes** (Plaud / reMarkable / manual / webhook) and turn them into
   demand signals via a heuristic parser (`src/lib/notes.js`) — quantity, price,
   barcode, customer and product hints for a human to confirm.
@@ -97,12 +111,19 @@ server/
   index.js              Express app + static UI + SPA fallback
   seed.js               reset + import + demo data (thin wrapper)
   seedData.js           reusable seed routine (used by seed + auto-seed on boot)
-  routes/               meta, imports, offers, products, trading, auth, captures
+  routes/               meta, imports, offers, products, trading, auth, captures, sourcing, alerts, orders, export
   services/
-    importer.js         import pipeline (GTIN, packs, snapshots, exceptions)
+    importer.js         import pipeline (GTIN, packs, snapshots, exceptions, price_history)
     matcher.js          GTIN/alias -> product master
     comparison.js       per-bottle normalisation + ranking + flags
-    pricing.js          pure pricing/landed-cost engine
+    pricing.js          pure pricing/landed-cost/cashflow/scenario engine
+    landing.js          Incoterm-aware landed-cost components
+    sourcing.js         lowest executable landed cost
+    deal.js             buy-side offer + sell-side customer -> full deal
+    orders.js           orders, payments and realised vs forecast margin
+    trends.js           price trends and windowed movement
+    alerts.js           alert generation, dedupe and read state
+    reporting.js        SheetJS workbooks (incl. cost-masked quote)
     analytics.js        dashboard, opportunities, wins
     suppliers.js        per-supplier commercial defaults
     fx.js               currency conversion

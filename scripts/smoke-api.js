@@ -86,6 +86,7 @@ const server = app.listen(PORT, async () => {
       '| capital:', deal.body.deal && deal.body.deal.cashflow.peakCapital,
       '| capitalDays:', deal.body.deal && deal.body.deal.cashflow.capitalDays,
       '| terms(sup/cus):', deal.body.terms && `${deal.body.terms.supplierPayDays}/${deal.body.terms.customerPayDays}`);
+    console.log('deal scenarios:', (deal.body.deal.scenarios || []).map((s) => s.kind).join(', '));
     const save = await admin.req('POST', '/deals', { offerId: offerRow.id, customerId: 1, quantity: 24, sellingUnitPrice: 60 });
     console.log('deals save (expect 200):', save.status, '| id:', save.body.id);
     const quotes = await admin.req('GET', '/quotes');
@@ -124,6 +125,15 @@ const server = app.listen(PORT, async () => {
     console.log('export orders.xlsx:', xl.status, '| chars:', xl.len, '| type:', xl.ctype);
     const xlBad = await admin.req('GET', '/export/nope.xlsx');
     console.log('export unknown (expect 404):', xlBad.status);
+
+    // trends series + customer quote export (masked)
+    const trSeries = await admin.req('GET', `/trends?productId=${pid}`);
+    console.log('trends series:', trSeries.status, '| suppliers:', (trSeries.body.series || []).length,
+      '| windows:', (trSeries.body.series || [])[0] && JSON.stringify(Object.keys((trSeries.body.series[0].windows) || {})));
+    const qx = await admin.req('GET', `/export/quote/${save.body.id}.xlsx`);
+    console.log('quote export (expect 200):', qx.status, '| chars:', qx.len);
+    const qxBad = await admin.req('GET', '/export/quote/999999.xlsx');
+    console.log('quote export missing (expect 404):', qxBad.status);
 
     // webhook with secret
     const hook = await anon.req('POST', '/captures/webhook', { source: 'plaud', text: 'Client wants 50 units of Tanqueray. secret: nope' });

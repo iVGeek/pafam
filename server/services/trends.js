@@ -121,4 +121,58 @@ function productTrends(productId) {
   return rows.map((r) => ({ supplierCode: r.supplier_code, gtin: r.gtin_canonical, ...trendFor(r.supplier_code, r.gtin_canonical) }));
 }
 
-module.exports = { computeTrend, severityForChange, trendFor, allTrends, priceMovers, productTrends, round4 };
+// Full observation list for one (supplier x barcode) series, oldest first.
+function seriesFor(supplierCode, gtin) {
+  return db.prepare(HISTORY_SELECT).all(supplierCode, gtin)
+    .filter((r) => r.unit_cost_base != null && Number.isFinite(Number(r.unit_cost_base)))
+    .map((r) => ({
+      observedAt: r.observed_at,
+      listDate: r.list_date,
+      currency: r.currency,
+      price: r.price,
+      unitCostBase: r.unit_cost_base,
+      fromImport: r.upload_id != null,
+    }));
+}
+
+// Change over a rolling window (days). Uses the most recent observation at
+// least `days` older than the latest one. Returns null when history does not go
+// back that far — a gap is shown as "no data", never invented (§12).
+function windowChange(points, days) {
+  if (!points || points.length < 2) return null;
+  const last = points[points.length - 1];
+  const lastT = Date.parse(last.observedAt);
+  const target = lastT - days * 86400000;
+  let prior = null;
+  for (const p of points) {
+    if (Date.parse(p.observedAt) <= target) prior = p;
+  }
+  if (!prior) return null;
+  const a = Number(prior.unitCostBase);
+  const b = Number(last.unitCostBase);
+  return { fromObservedAt: prior.observedAt, fromValue: a, toValue: b, change: round4(b - a), changePct: a > 0 ? round4(((b - a) / a) * 100) : null };
+}
+
+// Per-supplier series with the standard 7/30/90/180-day windows (§12/§13).
+function productSeries(productId) {
+  const keys = db.prepare(
+    `SELECT DISTINCT supplier_code, gtin_canonical FROM price_history WHERE product_id = ?`
+  ).all(Number(productId));
+  return keys.map((k) => {
+    const points = seriesFor(k.supplier_code, k.gtin_canonical);
+    return {
+      supplierCode: k.supplier_code,
+      gtin: k.gtin_canonical,
+      points,
+      observations: points.length,
+      windows: {
+        d7: windowChange(points, 7),
+        d30: windowChange(points, 30),
+        d90: windowChange(points, 90),
+        d180: windowChange(points, 180),
+      },
+    };
+  });
+}
+
+module.exports = { computeTrend, severityForChange, trendFor, allTrends, priceMovers, productTrends, productSeries, windowChange, round4 };
