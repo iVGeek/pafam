@@ -105,6 +105,27 @@ function extract(filePath, supplier) {
     const refill = get('refillable');
     offer.refillable = refill ? /irrellenable/i.test(refill) : null;
 
+    // Price/quantity tiers, MOQ and order multiples (brief section 5/7).
+    offer.moq = parseNumber(get('moq'));
+    offer.orderMultiple = parseNumber(get('orderMultiple'));
+    offer.tierMin = parseNumber(get('tierMin'));
+    offer.tierMax = parseNumber(get('tierMax'));
+
+    // Dates / logistics / eligibility (captured when the column exists, else blank).
+    offer.validUntil = get('validUntil') || null;
+    offer.readyDate = get('readyDate') || null;
+    offer.leadTimeDays = parseNumber(get('leadTimeDays'));
+    offer.countryOfOrigin = get('countryOfOrigin') || null;
+    offer.stockCountry = get('stockCountry') || profile.stockCountry || null;
+    offer.stockWarehouse = get('stockWarehouse') || null;
+    offer.lastStockConfirmation = get('lastStockConfirmation') || null;
+    offer.stockConfidence = get('stockConfidence') || null;
+    offer.permittedDestination = get('permittedDestination') || null;
+    offer.usSuitabilityStatus = get('usSuitability') || null;
+    offer.freightInclusions = get('freightInclusions') || null;
+    offer.stockOwnerId = get('stockOwnerId') || null;
+    offer.uniqueLotRef = get('uniqueLotRef') || null;
+
     // barcode analysis
     const g = gtin.analyse(offer.gtinSource);
     offer._gtin = g;

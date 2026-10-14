@@ -85,7 +85,7 @@ function badgeList(flags) {
 const state = { route: 'dashboard', settings: {}, suppliers: [], user: null };
 
 const ROUTE_MIN = {
-  dashboard: 'viewer', offers: 'viewer', products: 'viewer', compare: 'viewer', pricing: 'viewer',
+  dashboard: 'viewer', offers: 'viewer', products: 'viewer', compare: 'viewer', lowest: 'viewer', pricing: 'viewer',
   inventory: 'viewer', customers: 'viewer', demands: 'viewer', quotes: 'viewer', suppliers: 'viewer',
   exceptions: 'viewer', imports: 'buyer', captures: 'analyst', settings: 'admin', users: 'admin', audit: 'admin',
 };
@@ -435,6 +435,136 @@ async function openCompare(productId) {
   } catch (e) { toast(e.message, 'err'); }
 }
 
+/* ================= lowest executable landed cost (Q1) ================= */
+const LANDING_FLAGS = {
+  'tier-applied': ['info', 'quantity tier applied'],
+  'below-moq': ['bad', 'below MOQ'],
+  'not-order-multiple': ['bad', 'not an order multiple'],
+  'insufficient-stock': ['bad', 'insufficient stock'],
+  'expired': ['bad', 'offer expired'],
+  'not-eligible': ['bad', 'not permitted to destination'],
+  'retail-price': ['bad', 'retail (not cost)'],
+  'incomplete-cost': ['warn', 'missing cost inputs'],
+  'availability-unit-unknown': ['warn', 'stock unit unknown'],
+  'incoterm-unknown': ['warn', 'Incoterm unknown'],
+  'no-price': ['bad', 'no price'],
+};
+function landingFlags(flags) {
+  return (flags || []).map((f) => { const [k, l] = LANDING_FLAGS[f] || ['muted', f]; return `<span class="badge ${k}">${esc(l)}</span>`; }).join(' ');
+}
+const COMP_LABELS = { freight: 'Freight', insurance: 'Insurance', duty: 'Duty', brokerage: 'Brokerage', handling: 'Handling', otherTaxes: 'Other taxes' };
+const SOURCE_LABELS = { included: 'incl.', supplier: 'supplier', setting: 'default', missing: 'assumed 0' };
+function sourceBadge(source) {
+  const k = source === 'included' ? 'good' : source === 'missing' ? 'warn' : 'info';
+  return `<span class="badge ${k}">${esc(SOURCE_LABELS[source] || source)}</span>`;
+}
+
+function renderLowestResult(el, r) {
+  const cur = r.baseCurrency;
+  if (!r.winner) {
+    el.innerHTML = `<div class="badge bad">No executable offer</div>
+      <div class="small muted" style="margin-top:8px">Every offer for this product is excluded at ${num(r.quantity)} units (MOQ, stock, expiry, eligibility or retail price). See the excluded list below.</div>
+      ${renderExcluded(r)}`;
+    return;
+  }
+  const w = r.winner;
+  const comps = Object.entries(w.components).map(([k, c]) => `
+    <div class="row" style="justify-content:space-between;padding:4px 0;border-bottom:1px solid var(--border)">
+      <span class="small">${esc(COMP_LABELS[k] || k)} ${sourceBadge(c.source)}</span>
+      <span class="num small">${money(c.value, cur)}</span>
+    </div>`).join('');
+  el.innerHTML = `
+    <div class="panel" style="background:var(--panel-2);border-color:var(--good)">
+      <div class="row" style="justify-content:space-between;align-items:flex-start">
+        <div>
+          <div style="font-weight:700;font-size:15px">${esc(r.product.display_name || '(no name)')}</div>
+          <div class="muted small mono">${esc(r.product.canonical_gtin || '')} · ${esc(r.product.category || '')} · ${r.product.size_ml ? r.product.size_ml + 'ml' : ''}</div>
+        </div>
+        <span class="badge good">Lowest landed cost</span>
+      </div>
+      <div class="kpi-inline" style="margin-top:12px">
+        <div class="item"><div class="k">Best supplier</div><div class="v best">${esc(w.supplierName || w.supplier)}</div></div>
+        <div class="item"><div class="k">Landed / bottle</div><div class="v best">${money(w.landedUnitCost, cur)}</div></div>
+        <div class="item"><div class="k">Total (${num(r.quantity)} u)</div><div class="v">${money(w.totalCost, cur)}</div></div>
+        <div class="item"><div class="k">Purchase / bottle</div><div class="v">${money(w.purchaseUSD, cur)}</div></div>
+        <div class="item"><div class="k">Incoterm</div><div class="v">${esc(w.incoterm || '—')}</div></div>
+        <div class="item"><div class="k">Savings vs next</div><div class="v">${money(r.savingsVsNext, cur)}</div></div>
+      </div>
+      <div class="row" style="margin-top:10px;flex-wrap:wrap;gap:6px">${landingFlags(w.flags)}${w.complete ? '<span class="badge good">cost complete</span>' : `<span class="badge warn">assumed: ${esc(w.missing.join(', '))}</span>`}</div>
+      <div style="margin-top:12px;max-width:420px"><div class="muted small" style="margin-bottom:4px">Cost build-up per bottle (${esc(cur)})</div>${comps}</div>
+      ${r.warnings.length ? `<div class="small muted" style="margin-top:10px">${r.warnings.map((x) => '• ' + esc(x)).join('<br>')}</div>` : ''}
+    </div>
+    <div class="table-wrap" style="margin-top:14px"><table>
+      <thead><tr><th class="num">#</th><th>Supplier</th><th>Incoterm</th><th class="num">Purchase / bottle</th><th class="num">Landed / bottle</th><th class="num">Total</th><th>Cost</th><th>Flags</th></tr></thead>
+      <tbody>${r.ranked.map((o, i) => `
+        <tr style="${i === 0 ? 'background:rgba(79,206,155,.08)' : ''}">
+          <td class="num">${i + 1}</td>
+          <td><span class="badge ${i === 0 ? 'good' : 'info'}">${esc(o.supplier)}</span></td>
+          <td class="small">${esc(o.incoterm || '—')}</td>
+          <td class="num">${money(o.purchaseUSD, cur)}</td>
+          <td class="num pill-price ${i === 0 ? 'best' : ''}">${money(o.landedUnitCost, cur)}</td>
+          <td class="num">${money(o.totalCost, cur)}</td>
+          <td class="small">${o.complete ? '<span class="badge good">complete</span>' : `<span class="badge warn">${esc(o.missing.join(', '))}</span>`}</td>
+          <td>${landingFlags(o.flags)}</td>
+        </tr>`).join('')}
+      </tbody>
+    </table></div>
+    ${renderExcluded(r)}`;
+}
+
+function renderExcluded(r) {
+  if (!r.excluded.length) return '';
+  return `
+    <div class="panel" style="margin-top:14px">
+      <h2>Excluded from ranking <span class="muted small">— not executable for this order</span></h2>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Supplier</th><th>Description</th><th class="num">Landed / bottle</th><th>Reason</th></tr></thead>
+        <tbody>${r.excluded.map((o) => `
+          <tr class="muted"><td><span class="badge muted">${esc(o.supplier)}</span></td>
+          <td class="small">${esc((o.description || '').slice(0, 46))}</td>
+          <td class="num">${money(o.landedUnitCost, r.baseCurrency)}</td>
+          <td>${landingFlags(o.flags)}</td></tr>`).join('')}
+        </tbody>
+      </table></div>
+    </div>`;
+}
+
+routes.lowest = async () => {
+  const base = state.settings.base_currency || 'USD';
+  const dest = state.settings.dest_market || 'US';
+  $('#view').innerHTML = `
+    <div class="panel">
+      <h2>Lowest executable landed cost <span class="muted small">— exact SKU + quantity, delivered to your destination</span></h2>
+      <div class="row" style="align-items:flex-start;gap:14px;flex-wrap:wrap">
+        <div style="position:relative;min-width:320px;flex:1" data-pp>
+          <label class="small muted">Product</label>
+          <input data-pp-input placeholder="Search product by name or barcode" style="width:100%" />
+          <input type="hidden" data-pp-id />
+          <div data-pp-results style="margin-top:6px"></div>
+        </div>
+        <div><label class="small muted">Quantity</label><input id="lqQty" type="number" min="1" value="12" style="width:100px" /></div>
+        <div><label class="small muted">Destination</label><input id="lqDest" value="${esc(dest)}" style="width:80px" /></div>
+        <div><label class="small muted">Base currency</label><input id="lqBase" value="${esc(base)}" style="width:80px" /></div>
+        <button id="lqGo" style="margin-top:16px">Find lowest</button>
+      </div>
+    </div>
+    <div id="lqOut" style="margin-top:16px"></div>`;
+  const run = async (pid) => {
+    const out = $('#lqOut');
+    out.innerHTML = '<div class="muted">Working…</div>';
+    try {
+      const r = await GET(`/sourcing/lowest?productId=${pid}&quantity=${encodeURIComponent($('#lqQty').value)}&destination=${encodeURIComponent($('#lqDest').value)}&base=${encodeURIComponent($('#lqBase').value)}`);
+      renderLowestResult(out, r);
+    } catch (e) { out.innerHTML = `<div class="panel"><span class="badge bad">Error</span> ${esc(e.message)}</div>`; }
+  };
+  mountProductPicker($('#view'), (id) => run(id));
+  $('#lqGo').addEventListener('click', () => {
+    const pid = $('[data-pp-id]', $('#view')).value;
+    if (!pid) return toast('Pick a product first', 'err');
+    run(Number(pid));
+  });
+};
+
 routes.pricing = async () => {
   $('#view').innerHTML = `
     <div class="split">
@@ -647,20 +777,27 @@ routes.quotes = async () => {
 routes.suppliers = async () => {
   const rows = await GET('/suppliers');
   $('#view').innerHTML = `<div class="panel"><h2>Suppliers &amp; commercial terms</h2>
-    <div class="table-wrap"><table><thead><tr><th>Code</th><th>Name</th><th>Currency</th><th>Price type</th><th class="num">Trade discount %</th><th>Incoterm</th><th>Country</th><th></th></tr></thead>
+    <div class="table-wrap"><table><thead><tr><th>Code</th><th>Name</th><th>Currency</th><th>Price type</th><th class="num">Trade disc %</th><th>Incoterm</th><th>Stock ctry</th><th>Origin</th><th class="num">Duty %</th><th class="num">Freight/u</th><th class="num">Ins %</th><th class="num">Brok/u</th><th class="num">Hand/u</th><th class="num">Other tax %</th><th></th></tr></thead>
     <tbody>${rows.map((s) => `
       <tr data-code="${esc(s.code)}">
         <td class="mono">${esc(s.code)}</td>
-        <td><input data-f="name" value="${esc(s.name)}" style="width:130px" /></td>
-        <td><input data-f="currency" value="${esc(s.currency)}" style="width:70px" /></td>
+        <td><input data-f="name" value="${esc(s.name)}" style="width:120px" /></td>
+        <td><input data-f="currency" value="${esc(s.currency)}" style="width:60px" /></td>
         <td><select data-f="price_type"><option value="cost" ${s.price_type === 'cost' ? 'selected' : ''}>cost</option><option value="rrp" ${s.price_type === 'rrp' ? 'selected' : ''}>rrp</option></select></td>
-        <td class="num"><input data-f="default_discount_pct" type="number" value="${s.default_discount_pct || 0}" style="width:80px" /></td>
-        <td><input data-f="incoterm" value="${esc(s.incoterm || '')}" style="width:90px" /></td>
-        <td><input data-f="stock_country" value="${esc(s.stock_country || '')}" style="width:60px" /></td>
+        <td class="num"><input data-f="default_discount_pct" type="number" value="${s.default_discount_pct || 0}" style="width:70px" /></td>
+        <td><input data-f="incoterm" value="${esc(s.incoterm || '')}" style="width:80px" /></td>
+        <td><input data-f="stock_country" value="${esc(s.stock_country || '')}" style="width:56px" /></td>
+        <td><input data-f="originCountry" value="${esc(s.origin_country || '')}" style="width:56px" /></td>
+        <td class="num"><input data-f="dutyPct" type="number" step="0.01" value="${s.duty_pct ?? ''}" style="width:64px" /></td>
+        <td class="num"><input data-f="freightPerUnit" type="number" step="0.01" value="${s.freight_per_unit ?? ''}" style="width:64px" /></td>
+        <td class="num"><input data-f="insurancePct" type="number" step="0.01" value="${s.insurance_pct ?? ''}" style="width:56px" /></td>
+        <td class="num"><input data-f="brokeragePerUnit" type="number" step="0.01" value="${s.brokerage_per_unit ?? ''}" style="width:56px" /></td>
+        <td class="num"><input data-f="handlingPerUnit" type="number" step="0.01" value="${s.handling_per_unit ?? ''}" style="width:56px" /></td>
+        <td class="num"><input data-f="otherTaxPct" type="number" step="0.01" value="${s.other_tax_pct ?? ''}" style="width:64px" /></td>
         <td><button class="sm" data-save="${esc(s.code)}">Save</button></td>
       </tr>`).join('')}
     </tbody></table></div>
-    <div class="muted small" style="margin-top:10px">Price type "rrp" means the supplier quotes retail; the trade discount converts it to our acquisition cost.</div>
+    <div class="muted small" style="margin-top:10px">Price type "rrp" means the supplier quotes retail; the trade discount converts it to our acquisition cost. Duty %, insurance % and other tax % are applied on the purchase cost; freight, brokerage and handling are per bottle. These feed the landed-cost engine (blank = unknown, shown as assumed).</div>
   </div>`;
   $$('#view [data-save]').forEach((b) => b.addEventListener('click', async () => {
     const tr = b.closest('tr');
@@ -888,6 +1025,7 @@ const TITLES = {
   products: ['Products & Matching', 'Product master resolved by barcode'],
   exceptions: ['Exceptions', 'Rows needing human review'],
   compare: ['Price Comparison', 'Normalise and rank offers for a barcode'],
+  lowest: ['Lowest Landed Cost', 'Cheapest executable supplier for an exact SKU and quantity'],
   pricing: ['Deal Calculator', 'Landed cost, margin, markup and ROI'],
   inventory: ['Inventory', 'Lots, reservations and in-transit stock'],
   customers: ['Customers', 'Buyers and commercial terms'],

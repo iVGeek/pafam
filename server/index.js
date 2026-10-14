@@ -32,6 +32,7 @@ app.use('/api', require('./routes/meta'));
 app.use('/api', require('./routes/imports'));
 app.use('/api', require('./routes/offers'));
 app.use('/api', require('./routes/products'));
+app.use('/api', require('./routes/sourcing'));
 app.use('/api', require('./routes/trading'));
 
 // SPA fallback

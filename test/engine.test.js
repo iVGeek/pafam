@@ -5,6 +5,8 @@ const pricing = require('../server/services/pricing');
 const gtin = require('../src/lib/gtin');
 const { parsePackSize } = require('../src/lib/pack');
 const { parseNote } = require('../src/lib/notes');
+const { computeLanded, selectTier } = require('../server/services/landing');
+const incoterms = require('../src/lib/incoterms');
 
 test('GTIN check digit validates real EAN-13', () => {
   assert.equal(gtin.analyse('4006714008789').valid, true);
@@ -76,4 +78,72 @@ test('note parser handles Spanish and empty input', () => {
   assert.equal(p.suggestedCurrency, 'USD');
   assert.equal(p.language, 'es');
   assert.deepEqual(parseNote('').intents, []);
+});
+
+test('incoterms: who pays freight/insurance/duty', () => {
+  assert.deepEqual(incoterms.rules('EXW'), { freight: 'buyer', insurance: 'buyer', duty: 'buyer', label: 'Ex Works', code: 'EXW', known: true });
+  assert.equal(incoterms.rules('CIF').freight, 'seller');
+  assert.equal(incoterms.rules('CIF').insurance, 'seller');
+  assert.equal(incoterms.rules('CIF').duty, 'buyer');
+  assert.equal(incoterms.rules('ddp').duty, 'seller');
+  assert.equal(incoterms.rules('').known, false);
+});
+
+test('selectTier picks the quantity break', () => {
+  const tiers = [{ min: 1, max: 9, price: 10 }, { min: 10, price: 9 }];
+  assert.equal(selectTier(tiers, 5, 99, 'unit').price, 10);
+  assert.equal(selectTier(tiers, 10, 99, 'unit').price, 9);
+  assert.equal(selectTier(tiers, 100, 99, 'unit').applied, true);
+  assert.equal(selectTier(null, 5, 99, 'unit').price, 99);
+});
+
+test('landed cost: EXW buyer pays every component', () => {
+  const offer = { id: 1, supplier_code: 'S', price: 10, price_basis: 'unit', price_type: 'cost', currency: 'EUR', incoterm: 'EXW' };
+  const supplier = { freight_per_unit: 0.5, insurance_pct: 2, duty_pct: 5, brokerage_per_unit: 0.1, handling_per_unit: 0.05, other_tax_pct: 0 };
+  const r = computeLanded(offer, supplier, { quantity: 1, destination: 'US', baseCurrency: 'USD', fxRate: 1.1, settings: {} });
+  assert.equal(r.purchaseUSD, 11);
+  assert.equal(r.components.freight.value, 0.5);
+  assert.equal(r.components.insurance.value, 0.22);
+  assert.equal(r.components.duty.value, 0.55);
+  assert.equal(r.landedUnitCost, 12.42);
+  assert.equal(r.complete, true);
+  assert.equal(r.executable, true);
+});
+
+test('landed cost: CIF/DDP already include seller-paid legs', () => {
+  const offer = { id: 2, supplier_code: 'S', price: 10, price_basis: 'unit', price_type: 'cost', currency: 'EUR', incoterm: 'CIF' };
+  const supplier = { freight_per_unit: 0.5, insurance_pct: 2, duty_pct: 5, brokerage_per_unit: 0.1, handling_per_unit: 0.05 };
+  const cif = computeLanded(offer, supplier, { quantity: 1, baseCurrency: 'USD', fxRate: 1.1, settings: {} });
+  assert.equal(cif.components.freight.source, 'included');
+  assert.equal(cif.components.insurance.source, 'included');
+  assert.equal(cif.components.duty.value, 0.55);
+  assert.equal(cif.landedUnitCost, 11.7);
+
+  const ddp = computeLanded({ ...offer, incoterm: 'DDP' }, supplier, { quantity: 1, baseCurrency: 'USD', fxRate: 1.1, settings: {} });
+  assert.equal(ddp.components.duty.source, 'included');
+  assert.equal(ddp.landedUnitCost, 11.15);
+});
+
+test('landed cost: missing inputs are flagged, never a false zero', () => {
+  const offer = { id: 3, supplier_code: 'S', price: 10, price_basis: 'unit', price_type: 'cost', currency: 'EUR', incoterm: 'EXW' };
+  const r = computeLanded(offer, {}, { quantity: 1, baseCurrency: 'USD', fxRate: 1, settings: {} });
+  assert.equal(r.complete, false);
+  assert.ok(r.missing.includes('freight'));
+  assert.ok(r.flags.includes('incomplete-cost'));
+  assert.equal(r.executable, true);
+});
+
+test('landed cost: case basis + RRP discount normalise per bottle', () => {
+  const offer = { id: 4, supplier_code: 'S', price: 24, price_basis: 'case', units_per_case: 24, price_type: 'rrp', currency: 'EUR', incoterm: 'DDP' };
+  const r = computeLanded(offer, { default_discount_pct: 40 }, { quantity: 1, baseCurrency: 'USD', fxRate: 1, settings: {} });
+  assert.equal(r.acquisitionPerBottle, 0.6);
+  assert.equal(r.purchaseUSD, 0.6);
+});
+
+test('landed cost: MOQ excludes a too-small order', () => {
+  const offer = { id: 5, supplier_code: 'S', price: 10, price_basis: 'unit', price_type: 'cost', currency: 'USD', incoterm: 'DDP', moq: 12 };
+  const r = computeLanded(offer, {}, { quantity: 5, baseCurrency: 'USD', fxRate: 1, settings: {} });
+  assert.equal(r.moqOk, false);
+  assert.equal(r.executable, false);
+  assert.ok(r.flags.includes('below-moq'));
 });

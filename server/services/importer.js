@@ -50,9 +50,13 @@ function importFile(filePath, opts = {}) {
        upload_id, supplier_code, source_row, list_date,
        gtin_source, gtin_canonical, gtin_valid, gtin_type, case_gtin_source, case_gtin_canonical,
        internal_sku, category, description, size_ml, abv, currency, price, price_basis, price_type,
-       units_per_case, rrp, available_quantity, quantity_unit, incoterm, incoterm_place,
+       units_per_case, rrp, available_quantity, quantity_unit,
+       moq, order_multiple, tier_min, tier_max, tiers_json,
+       incoterm, incoterm_place, valid_until, ready_date, lead_time_days,
+       country_of_origin, stock_country, stock_warehouse, last_confirmed_at, stock_confidence,
+       permitted_destination, us_suitability, freight_inclusions, stock_owner_id, unique_lot_ref,
        expiry_date, notes, cap_type, refillable, product_id, status)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
   );
   const insertException = db.prepare(
     'INSERT INTO exceptions(upload_id, offer_id, type, detail) VALUES (?,?,?,?)'
@@ -117,7 +121,11 @@ function importFile(filePath, opts = {}) {
       uploadId, supplier.code, o.sourceRow, listDate,
       o.gtinSource, canonical, g.valid ? 1 : 0, g.type, o.caseGtinSource || null, caseG.valid ? caseG.canonical14 : null,
       o.internalSku, o.category, o.description, o.sizeMl, o.abv, o.currency, price, priceBasis, priceType,
-      unitsPerCase, rrp, o.availableQuantity, o.quantityUnit, o.incoterm, o.incotermPlace,
+      unitsPerCase, rrp, o.availableQuantity, o.quantityUnit,
+      o.moq, o.orderMultiple, o.tierMin, o.tierMax, o.tiersJson || null,
+      o.incoterm, o.incotermPlace, o.validUntil, o.readyDate, o.leadTimeDays,
+      o.countryOfOrigin, o.stockCountry, o.stockWarehouse, o.lastStockConfirmation, o.stockConfidence,
+      o.permittedDestination, o.usSuitabilityStatus, o.freightInclusions, o.stockOwnerId, o.uniqueLotRef,
       o.expiryDate, o.notes, o.capType, o.refillable == null ? null : (o.refillable ? 1 : 0),
       productId, status
     );

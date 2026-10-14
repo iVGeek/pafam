@@ -27,6 +27,16 @@ function seedData(opts = {}) {
   fx.setRate('EUR', 'USD', 1.08, { source: 'demo', rateDate: today });
   fx.setRate('GBP', 'USD', 1.27, { source: 'demo', rateDate: today });
 
+  // Demo landed-cost build-up inputs per supplier (editable under Suppliers).
+  // Values are illustrative assumptions so the "lowest landed cost" view has
+  // complete costs out of the box.
+  const supUpdate = db.prepare(
+    `UPDATE suppliers SET origin_country = ?, duty_pct = ?, freight_per_unit = ?, insurance_pct = ?,
+       brokerage_per_unit = ?, handling_per_unit = ?, other_tax_pct = ? WHERE code = ?`
+  );
+  supUpdate.run('ES', 5.4, 0.65, 0.4, 0.12, 0.08, 0, 'ALCODIS');
+  supUpdate.run('ES', 5.4, 0.72, 0.4, 0.1, 0.06, 0, 'IGAN');
+
   const addCustomer = db.prepare(
     'INSERT INTO customers(code, name, region, currency, payment_terms, credit_limit) VALUES (?,?,?,?,?,?)'
   );
@@ -41,6 +51,30 @@ function seedData(opts = {}) {
     `SELECT product_id FROM offers WHERE product_id IS NOT NULL
      GROUP BY product_id HAVING COUNT(DISTINCT supplier_code) > 1 LIMIT 8`
   ).all().map((r) => r.product_id);
+
+  // Demo MOQ / order multiple / quantity tiers / eligibility on the
+  // multi-supplier products, so the "lowest executable landed cost" page has
+  // real quantity-break examples.
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const updAlcodis = db.prepare(
+    `UPDATE offers SET moq = 12, order_multiple = 6, last_confirmed_at = ?, stock_confidence = 'confirmed',
+       permitted_destination = 'US,CA,MX', us_suitability = 'ok', tiers_json = ?
+     WHERE product_id = ? AND supplier_code = 'ALCODIS'`
+  );
+  const updIgan = db.prepare(
+    `UPDATE offers SET moq = 24, order_multiple = 12, last_confirmed_at = ?,
+       permitted_destination = 'US,CA,MX', us_suitability = 'ok'
+     WHERE product_id = ? AND supplier_code = 'IGAN'`
+  );
+  const rt = (n) => Math.round(n * 100) / 100;
+  for (const pid of pids) {
+    const alc = db.prepare(`SELECT price FROM offers WHERE product_id = ? AND supplier_code = 'ALCODIS' LIMIT 1`).get(pid);
+    const tiers = alc && alc.price
+      ? JSON.stringify([{ min: 1, max: 11, price: alc.price }, { min: 12, max: 59, price: rt(alc.price * 0.95) }, { min: 60, price: rt(alc.price * 0.9) }])
+      : null;
+    updAlcodis.run(todayStr, tiers, pid);
+    updIgan.run(todayStr, pid);
+  }
 
   const addDemand = db.prepare(
     `INSERT INTO demands(customer_id, product_id, status, quantity, target_price, currency, needed_by, source, approved, notes)

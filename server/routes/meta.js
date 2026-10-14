@@ -28,9 +28,12 @@ router.post('/suppliers/:code', auth.requireRole('admin'), (req, res) => {
   const b = req.body || {};
   const current = db.prepare('SELECT * FROM suppliers WHERE code = ?').get(code);
   if (!current) return res.status(404).json({ error: 'supplier not found' });
+  const numOr = (v, fallback) => (v === undefined ? fallback : (v === null || v === '' ? null : Number(v)));
   db.prepare(
     `UPDATE suppliers SET name = ?, currency = ?, incoterm = ?, incoterm_place = ?,
-       price_type = ?, default_discount_pct = ?, stock_country = ?, payment_terms = ?, active = ?
+       price_type = ?, default_discount_pct = ?, stock_country = ?, payment_terms = ?, active = ?,
+       origin_country = ?, duty_pct = ?, freight_per_unit = ?, insurance_pct = ?,
+       brokerage_per_unit = ?, handling_per_unit = ?, other_tax_pct = ?
      WHERE code = ?`
   ).run(
     b.name != null ? b.name : current.name,
@@ -42,6 +45,13 @@ router.post('/suppliers/:code', auth.requireRole('admin'), (req, res) => {
     b.stockCountry !== undefined ? b.stockCountry : current.stock_country,
     b.paymentTerms !== undefined ? b.paymentTerms : current.payment_terms,
     b.active != null ? (b.active ? 1 : 0) : current.active,
+    b.originCountry !== undefined ? b.originCountry : current.origin_country,
+    numOr(b.dutyPct, current.duty_pct),
+    numOr(b.freightPerUnit, current.freight_per_unit),
+    numOr(b.insurancePct, current.insurance_pct),
+    numOr(b.brokeragePerUnit, current.brokerage_per_unit),
+    numOr(b.handlingPerUnit, current.handling_per_unit),
+    numOr(b.otherTaxPct, current.other_tax_pct),
     code
   );
   audit('user', 'update-supplier', 'supplier', code, JSON.stringify(b));

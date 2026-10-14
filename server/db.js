@@ -25,7 +25,15 @@ CREATE TABLE IF NOT EXISTS suppliers (
   price_type TEXT NOT NULL DEFAULT 'cost',      -- cost | rrp
   default_discount_pct REAL DEFAULT 0,           -- when price_type = rrp
   stock_country TEXT,
+  origin_country TEXT,
   payment_terms TEXT,
+  -- landed-cost build-up inputs (brief section 7/8)
+  duty_pct REAL,
+  freight_per_unit REAL,
+  insurance_pct REAL,
+  brokerage_per_unit REAL,
+  handling_per_unit REAL,
+  other_tax_pct REAL,
   active INTEGER NOT NULL DEFAULT 1,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -98,8 +106,26 @@ CREATE TABLE IF NOT EXISTS offers (
   rrp REAL,
   available_quantity REAL,
   quantity_unit TEXT,
+  moq REAL,                          -- minimum order quantity
+  order_multiple REAL,               -- order must be a multiple of this
+  tier_min REAL,
+  tier_max REAL,
+  tiers_json TEXT,                   -- quantity price breaks [{min,max,price,basis}]
   incoterm TEXT,
   incoterm_place TEXT,
+  valid_until TEXT,
+  ready_date TEXT,
+  lead_time_days REAL,
+  country_of_origin TEXT,
+  stock_country TEXT,
+  stock_warehouse TEXT,
+  last_confirmed_at TEXT,
+  stock_confidence TEXT,
+  permitted_destination TEXT,
+  us_suitability TEXT,
+  freight_inclusions TEXT,
+  stock_owner_id TEXT,
+  unique_lot_ref TEXT,
   expiry_date TEXT,
   notes TEXT,
   cap_type TEXT,
@@ -259,16 +285,65 @@ CREATE TABLE IF NOT EXISTS captures (
 CREATE INDEX IF NOT EXISTS idx_captures_status ON captures(status);
 `;
 
+// Lightweight additive migrations for databases created by an earlier version.
+function ensureColumn(table, col, ddl) {
+  const cols = db.prepare(`PRAGMA table_info(${table})`).all();
+  if (!cols.some((c) => c.name === col)) db.exec(`ALTER TABLE ${table} ADD COLUMN ${col} ${ddl}`);
+}
+
+function migrate() {
+  // offers: quantity tiers / MOQ / validity / eligibility (brief sections 5, 7).
+  const offerCols = [
+    ['moq', 'REAL'],
+    ['order_multiple', 'REAL'],
+    ['tier_min', 'REAL'],
+    ['tier_max', 'REAL'],
+    ['tiers_json', 'TEXT'],
+    ['valid_until', 'TEXT'],
+    ['ready_date', 'TEXT'],
+    ['lead_time_days', 'REAL'],
+    ['country_of_origin', 'TEXT'],
+    ['stock_country', 'TEXT'],
+    ['stock_warehouse', 'TEXT'],
+    ['last_confirmed_at', 'TEXT'],
+    ['stock_confidence', 'TEXT'],
+    ['permitted_destination', 'TEXT'],
+    ['us_suitability', 'TEXT'],
+    ['freight_inclusions', 'TEXT'],
+    ['stock_owner_id', 'TEXT'],
+    ['unique_lot_ref', 'TEXT'],
+  ];
+  for (const [c, ddl] of offerCols) ensureColumn('offers', c, ddl);
+
+  // suppliers: landed-cost build-up inputs (brief section 7/8).
+  const supplierCols = [
+    ['duty_pct', 'REAL'],
+    ['freight_per_unit', 'REAL'],
+    ['insurance_pct', 'REAL'],
+    ['brokerage_per_unit', 'REAL'],
+    ['handling_per_unit', 'REAL'],
+    ['other_tax_pct', 'REAL'],
+    ['origin_country', 'TEXT'],
+  ];
+  for (const [c, ddl] of supplierCols) ensureColumn('suppliers', c, ddl);
+}
+
 function init() {
   db.exec(SCHEMA);
+  migrate();
   const defaults = {
     base_currency: 'USD',
     home_currency: 'USD',
     selling_currency: 'USD',
+    dest_market: 'US',
     min_margin_pct: '15',
     min_markup: '0.75',
     default_duty_pct: '0',
     default_brokerage: '0',
+    default_freight_per_unit: '0',
+    default_insurance_pct: '0',
+    default_handling_per_unit: '0',
+    default_other_tax_pct: '0',
     session_hours: '168',
     capture_secret: 'change-me-capture-secret',
   };

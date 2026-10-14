@@ -67,6 +67,16 @@ const server = app.listen(PORT, async () => {
     const promote = await admin.req('POST', `/captures/${aCap.body.id}/promote`, { customerId: 1, productId: 1, quantity: 300 });
     console.log('admin promote (expect 200):', promote.status, '| demandId:', promote.body.demandId);
 
+    // sourcing: lowest executable landed cost
+    const multi = await admin.req('GET', '/products?multi=1&limit=1');
+    const pid = multi.body.rows && multi.body.rows[0] && multi.body.rows[0].id;
+    const low = await admin.req('GET', `/sourcing/lowest?productId=${pid}&quantity=12&destination=US`);
+    console.log('sourcing/lowest:', low.status, '| offers:', low.body.counts && low.body.counts.offers,
+      '| executable:', low.body.counts && low.body.counts.executable,
+      '| winner:', low.body.winner && `${low.body.winner.supplier} @ ${low.body.winner.landedUnitCost} ${low.body.baseCurrency} (complete=${low.body.winner.complete})`);
+    const lowBad = await admin.req('GET', '/sourcing/lowest');
+    console.log('sourcing/lowest no args (expect 400):', lowBad.status);
+
     // webhook with secret
     const hook = await anon.req('POST', '/captures/webhook', { source: 'plaud', text: 'Client wants 50 units of Tanqueray. secret: nope' });
     console.log('webhook wrong secret (expect 401):', hook.status);
