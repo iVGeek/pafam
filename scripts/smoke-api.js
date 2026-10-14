@@ -15,7 +15,7 @@ function client(base) {
       if (sc) cookie = sc.split(';')[0];
       const t = await r.text();
       let b; try { b = JSON.parse(t); } catch { b = t; }
-      return { status: r.status, body: b };
+      return { status: r.status, body: b, ctype: r.headers.get('content-type') || '', len: t.length };
     },
   };
 }
@@ -116,6 +116,14 @@ const server = app.listen(PORT, async () => {
       const o1 = await admin.req('GET', `/orders/${ordNew.body.id}`);
       console.log('order detail:', o1.status, '| paidOut:', o1.body.realised && o1.body.realised.paidOut, '| outstanding:', o1.body.realised && o1.body.realised.revenueOutstanding);
     }
+
+    // reports & excel exports
+    const rep = await admin.req('GET', '/reports');
+    console.log('reports:', rep.status, '| suppliers:', (rep.body.suppliers || []).length, '| wins:', Object.keys(rep.body.wins || {}).length);
+    const xl = await admin.req('GET', '/export/orders.xlsx');
+    console.log('export orders.xlsx:', xl.status, '| chars:', xl.len, '| type:', xl.ctype);
+    const xlBad = await admin.req('GET', '/export/nope.xlsx');
+    console.log('export unknown (expect 404):', xlBad.status);
 
     // webhook with secret
     const hook = await anon.req('POST', '/captures/webhook', { source: 'plaud', text: 'Client wants 50 units of Tanqueray. secret: nope' });

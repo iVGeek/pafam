@@ -87,7 +87,7 @@ const state = { route: 'dashboard', settings: {}, suppliers: [], user: null };
 const ROUTE_MIN = {
   dashboard: 'viewer', offers: 'viewer', products: 'viewer', compare: 'viewer', lowest: 'viewer', pricing: 'viewer',
   inventory: 'viewer', customers: 'viewer', demands: 'viewer', quotes: 'viewer', suppliers: 'viewer',
-  exceptions: 'viewer', imports: 'buyer', captures: 'analyst', alerts: 'viewer', orders: 'viewer', settings: 'admin', users: 'admin', audit: 'admin',
+  exceptions: 'viewer', imports: 'buyer', captures: 'analyst', alerts: 'viewer', orders: 'viewer', reports: 'viewer', settings: 'admin', users: 'admin', audit: 'admin',
 };
 
 function showLogin() { $('#login').classList.remove('hidden'); }
@@ -1114,6 +1114,42 @@ routes.orders = async () => {
   }));
 };
 
+routes.reports = async () => {
+  const d = await GET('/reports');
+  const o = d.overview || {};
+  const wins = Object.entries(d.wins || {});
+  const maxWin = Math.max(1, ...wins.map((w) => w[1]));
+  const exports = [
+    ['opportunities', 'Cross-supplier opportunities', 'Cheapest vs dearest for the same barcode'],
+    ['lowest', 'Lowest landed cost', 'Cheapest executable supplier per product'],
+    ['deals', 'Deals & quotes', 'Saved deals with margin, ROI and capital'],
+    ['orders', 'Orders & realised margin', 'Forecast vs actual cash margin'],
+    ['alerts', 'Alerts', 'Price movements, expiry and stock alerts'],
+  ];
+  $('#view').innerHTML = `
+    <div class="grid cards">
+      <div class="card"><div class="k">Realised margin</div><div class="v">${money(o.realisedMargin)}</div><div class="s">from settled orders</div></div>
+      <div class="card"><div class="k">Open orders</div><div class="v">${num(o.ordersOpen)}</div><div class="s">${num(o.orders)} total</div></div>
+      <div class="card"><div class="k">Overlap products</div><div class="v">${num(o.overlapProducts)}</div><div class="s">sourced from 2+ suppliers</div></div>
+      <div class="card"><div class="k">Open exceptions</div><div class="v">${num(o.openExceptions)}</div><div class="s">need review</div></div>
+    </div>
+    <div class="split" style="margin-top:16px">
+      <div class="panel"><h2>Excel exports</h2>
+        <div class="table-wrap"><table><thead><tr><th>Report</th><th>Contents</th><th></th></tr></thead><tbody>
+          ${exports.map(([k, t, s]) => `<tr><td>${esc(t)}</td><td class="muted small">${esc(s)}</td><td><a class="btn sm" href="/api/export/${k}.xlsx" download>Download .xlsx</a></td></tr>`).join('')}
+        </tbody></table></div>
+      </div>
+      <div class="panel"><h2>Cheapest-supplier wins</h2>
+        ${wins.map(([k, v]) => `<div class="row" style="align-items:center;gap:10px;margin-bottom:6px"><div style="width:90px" class="small mono">${esc(k)}</div><div class="progress" style="flex:1"><i style="width:${(v / maxWin) * 100}%"></i></div><div class="small num" style="width:44px">${v}</div></div>`).join('') || '<div class="muted">No overlap yet.</div>'}
+      </div>
+    </div>
+    <div class="panel" style="margin-top:16px"><h2>Supplier performance</h2>
+      <div class="table-wrap"><table><thead><tr><th>Code</th><th>Name</th><th>Currency</th><th>Price type</th><th class="num">Offers</th><th class="num">Unmatched</th><th class="num">Invalid barcodes</th></tr></thead>
+      <tbody>${(d.suppliers || []).map((s) => `<tr><td class="mono">${esc(s.code)}</td><td>${esc(s.name)}</td><td>${esc(s.currency)}</td><td>${esc(s.price_type)}</td><td class="num">${num(s.offers)}</td><td class="num">${num(s.unmatched)}</td><td class="num">${num(s.invalid_barcodes)}</td></tr>`).join('')}
+      </tbody></table></div>
+    </div>`;
+};
+
 routes.users = async () => {
   const users = await GET('/users');
   $('#view').innerHTML = `
@@ -1183,6 +1219,7 @@ const TITLES = {
   settings: ['Settings & FX', 'Policy thresholds and currency rates'],
   captures: ['Capture Inbox', 'Notes from Plaud / reMarkable turned into demand signals'],
   alerts: ['Alerts', 'Price movements, expiring offers and stock alerts'],
+  reports: ['Reports & Exports', 'Supplier performance and one-click Excel exports'],
   orders: ['Orders & Payments', 'Purchase/sales orders, payments and realised vs forecast margin'],
   users: ['Users & Roles', 'Accounts and role-based access'],
   audit: ['Audit Log', 'Who did what, when'],
