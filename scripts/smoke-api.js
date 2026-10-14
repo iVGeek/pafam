@@ -77,6 +77,20 @@ const server = app.listen(PORT, async () => {
     const lowBad = await admin.req('GET', '/sourcing/lowest');
     console.log('sourcing/lowest no args (expect 400):', lowBad.status);
 
+    // deals: profitability + cash flow
+    const offers = await admin.req('GET', '/offers?limit=1');
+    const offerRow = (offers.body.rows || offers.body)[0];
+    const deal = await admin.req('POST', '/deals/compute', { offerId: offerRow.id, customerId: 1, quantity: 24, sellingUnitPrice: 60 });
+    console.log('deals/compute:', deal.status, '| margin:', deal.body.deal && deal.body.deal.metrics.marginPct,
+      '| contribution:', deal.body.deal && deal.body.deal.contribution.total,
+      '| capital:', deal.body.deal && deal.body.deal.cashflow.peakCapital,
+      '| capitalDays:', deal.body.deal && deal.body.deal.cashflow.capitalDays,
+      '| terms(sup/cus):', deal.body.terms && `${deal.body.terms.supplierPayDays}/${deal.body.terms.customerPayDays}`);
+    const save = await admin.req('POST', '/deals', { offerId: offerRow.id, customerId: 1, quantity: 24, sellingUnitPrice: 60 });
+    console.log('deals save (expect 200):', save.status, '| id:', save.body.id);
+    const quotes = await admin.req('GET', '/quotes');
+    console.log('quotes listing:', quotes.status, '| count:', (quotes.body || []).length, '| latest contribution:', (quotes.body || [])[0] && quotes.body[0].contribution_total);
+
     // webhook with secret
     const hook = await anon.req('POST', '/captures/webhook', { source: 'plaud', text: 'Client wants 50 units of Tanqueray. secret: nope' });
     console.log('webhook wrong secret (expect 401):', hook.status);

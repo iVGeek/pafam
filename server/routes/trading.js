@@ -4,6 +4,7 @@ const express = require('express');
 const router = express.Router();
 const { db, getSetting, audit } = require('../db');
 const pricing = require('../services/pricing');
+const deal = require('../services/deal');
 const auth = require('../services/auth');
 
 // ---- Pricing calculator (stateless) ----
@@ -66,6 +67,45 @@ router.post('/pricing/from-offer', (req, res) => {
     minMarkup: Number(getSetting('min_markup', '0.75')),
   });
   res.json({ offer, acquisition: acq, landed, metrics });
+});
+
+// ---- Deals: profitability + dated cash flow / capital ----
+// Stateless compute (viewer+); pass an offerId (buy side) and/or a customerId.
+router.post('/deals/compute', (req, res) => {
+  const result = deal.buildDeal(req.body || {});
+  if (!result.found) return res.status(result.error === 'offer not found' ? 404 : 400).json({ error: result.error });
+  res.json(result);
+});
+
+// Persist a computed deal as a quote (buyer+).
+router.post('/deals', auth.requireRole('buyer'), (req, res) => {
+  const b = req.body || {};
+  const result = deal.buildDeal(b);
+  if (!result.found) return res.status(result.error === 'offer not found' ? 404 : 400).json({ error: result.error });
+
+  const productId = b.productId != null ? Number(b.productId) : (result.offer ? result.offer.productId : null);
+  if (!productId) return res.status(400).json({ error: 'productId required' });
+  if (!b.customerId) return res.status(400).json({ error: 'customerId required' });
+
+  const m = result.deal.metrics;
+  const cf = result.deal.cashflow;
+  const info = db.prepare(
+    `INSERT INTO quotes(demand_id, customer_id, product_id, quantity, unit_price, currency,
+       landed_unit_cost, margin_pct, offer_id, supplier_code, net_unit_revenue, contribution_total,
+       roi_pct, annualised_roi_pct, capital_required, capital_days, order_date, supplier_due_date,
+       customer_due_date, selling_unit_price, validity_date, terms, status)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+  ).run(
+    b.demandId ? Number(b.demandId) : null, Number(b.customerId), productId, result.quantity,
+    result.selling.sellingUnitPrice, result.baseCurrency, m.landedUnitCost, m.marginPct,
+    result.offer ? result.offer.id : null, result.supplier ? result.supplier.code : null,
+    m.netUnitRevenue, result.deal.contribution.total, m.roiPct, cf.annualisedRoiPct,
+    cf.peakCapital, cf.capitalDays, cf.orderDate, cf.supplierDue, cf.customerDue,
+    result.selling.sellingUnitPrice, b.validityDate || null, b.terms || null, b.status || 'draft'
+  );
+  if (b.demandId) db.prepare("UPDATE demands SET status = 'quoted' WHERE id = ?").run(Number(b.demandId));
+  audit('user', 'deal-create', 'quote', Number(info.lastInsertRowid), `margin ${m.marginPct} roi ${m.roiPct}`);
+  res.json({ ok: true, id: Number(info.lastInsertRowid), deal: result });
 });
 
 // ---- Inventory ----

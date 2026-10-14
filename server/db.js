@@ -207,6 +207,18 @@ CREATE TABLE IF NOT EXISTS quotes (
   currency TEXT DEFAULT 'USD',
   landed_unit_cost REAL,
   margin_pct REAL,
+  offer_id INTEGER,
+  supplier_code TEXT,
+  net_unit_revenue REAL,
+  contribution_total REAL,
+  roi_pct REAL,
+  annualised_roi_pct REAL,
+  capital_required REAL,
+  capital_days REAL,
+  order_date TEXT,
+  supplier_due_date TEXT,
+  customer_due_date TEXT,
+  selling_unit_price REAL,
   validity_date TEXT,
   terms TEXT,
   status TEXT NOT NULL DEFAULT 'draft',   -- draft | sent | accepted | rejected | expired
@@ -326,6 +338,23 @@ function migrate() {
     ['origin_country', 'TEXT'],
   ];
   for (const [c, ddl] of supplierCols) ensureColumn('suppliers', c, ddl);
+
+  // quotes: promote a quote into a full saved deal (contribution + cash flow).
+  const quoteCols = [
+    ['offer_id', 'INTEGER'],
+    ['supplier_code', 'TEXT'],
+    ['net_unit_revenue', 'REAL'],
+    ['contribution_total', 'REAL'],
+    ['roi_pct', 'REAL'],
+    ['annualised_roi_pct', 'REAL'],
+    ['capital_required', 'REAL'],
+    ['capital_days', 'REAL'],
+    ['order_date', 'TEXT'],
+    ['supplier_due_date', 'TEXT'],
+    ['customer_due_date', 'TEXT'],
+    ['selling_unit_price', 'REAL'],
+  ];
+  for (const [c, ddl] of quoteCols) ensureColumn('quotes', c, ddl);
 }
 
 function init() {
@@ -344,6 +373,9 @@ function init() {
     default_insurance_pct: '0',
     default_handling_per_unit: '0',
     default_other_tax_pct: '0',
+    default_supplier_payment_days: '0',
+    default_customer_payment_days: '30',
+    default_transit_days: '0',
     session_hours: '168',
     capture_secret: 'change-me-capture-secret',
   };

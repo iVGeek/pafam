@@ -566,73 +566,107 @@ routes.lowest = async () => {
 };
 
 routes.pricing = async () => {
+  const customers = await GET('/customers').catch(() => []);
+  const today = new Date().toISOString().slice(0, 10);
   $('#view').innerHTML = `
     <div class="split">
       <div class="panel">
-        <h2>Deal calculator</h2>
+        <h2>Deal calculator <span class="muted small">— contribution, capital &amp; cash flow</span></h2>
+        <div class="field" style="margin-bottom:10px"><label>Buy from product</label>
+          <div data-pp><input data-pp-input placeholder="search product…" /><input type="hidden" data-pp-id /><div data-pp-results style="margin-top:6px;max-height:170px;overflow:auto"></div></div>
+        </div>
+        <div class="field" style="margin-bottom:10px"><label>Supplier offer</label><select id="dcOffer"><option value="">— manual landed cost —</option></select></div>
         <div class="grid" style="grid-template-columns:1fr 1fr;gap:12px">
-          <div class="field"><label>Landed unit cost (per bottle)</label><input id="pcLanded" type="number" step="0.01" value="49" /></div>
-          <div class="field"><label>Selling unit price</label><input id="pcSell" type="number" step="0.01" value="70" /></div>
-          <div class="field"><label>Quantity</label><input id="pcQty" type="number" value="100" /></div>
-          <div class="field"><label>Discount %</label><input id="pcDisc" type="number" step="0.1" value="0" /></div>
-          <div class="field"><label>Rebate %</label><input id="pcRebate" type="number" step="0.1" value="0" /></div>
-          <div class="field"><label>Customer deduction %</label><input id="pcDed" type="number" step="0.1" value="0" /></div>
-          <div class="field"><label>Payment-terms cost %</label><input id="pcTerms" type="number" step="0.1" value="0" /></div>
-          <div class="field"><label>Days to cash</label><input id="pcDays" type="number" value="30" /></div>
+          <div class="field"><label>Landed unit cost (manual)</label><input id="dcLanded" type="number" step="0.01" value="49" /></div>
+          <div class="field"><label>Selling unit price</label><input id="dcSell" type="number" step="0.01" value="70" /></div>
+          <div class="field"><label>Quantity</label><input id="dcQty" type="number" value="100" /></div>
+          <div class="field"><label>Discount %</label><input id="dcDisc" type="number" step="0.1" value="0" /></div>
+          <div class="field"><label>Customer</label><select id="dcCustomer"><option value="">— none —</option>${customers.map((c) => `<option value="${c.id}">${esc(c.name)}${c.payment_terms ? ' (' + esc(c.payment_terms) + ')' : ''}</option>`).join('')}</select></div>
+          <div class="field"><label>Order date</label><input id="dcDate" type="date" value="${today}" /></div>
+          <div class="field"><label>Supplier pay days</label><input id="dcSupDays" type="number" placeholder="from terms" /></div>
+          <div class="field"><label>Customer pay days</label><input id="dcCusDays" type="number" placeholder="from customer" /></div>
         </div>
-        <div class="row" style="margin-top:14px"><button id="pcGo">Calculate</button>
-          <label class="row small">Selling price is RRP <input type="checkbox" id="pcIsRrp" style="width:auto" /> <input id="pcRrp" type="number" step="0.01" placeholder="RRP" class="hidden" style="width:110px" /></label>
-        </div>
+        <div class="row" style="margin-top:14px"><button id="dcGo">Calculate</button><button id="dcSave" class="ghost">Save deal</button></div>
       </div>
-      <div class="panel" id="pcOut"><div class="muted small">Enter values and calculate.</div></div>
+      <div class="panel" id="dcOut"><div class="muted small">Pick an offer (or enter a landed cost), then Calculate.</div></div>
     </div>`;
-  $('#pcIsRrp').addEventListener('change', (e) => $('#pcRrp').classList.toggle('hidden', !e.target.checked));
-  $('#pcGo').addEventListener('click', async () => {
-    const b = {
-      purchaseUnitPrice: Number($('#pcLanded').value),
-      sellingUnitPrice: Number($('#pcSell').value),
-      quantity: Number($('#pcQty').value),
-      discountPct: Number($('#pcDisc').value),
-      rebatePct: Number($('#pcRebate').value),
-      customerDeductionPct: Number($('#pcDed').value),
-      paymentTermsCostPct: Number($('#pcTerms').value),
-      daysToCash: Number($('#pcDays').value),
-      rrp: $('#pcIsRrp').checked ? Number($('#pcRrp').value) : undefined,
-    };
+
+  const numOrU = (v) => (v === '' || v == null ? undefined : Number(v));
+  mountProductPicker($('#view'), async (pid) => {
     try {
-      const r = await POST('/pricing/calculate', b);
-      renderPricingResult($('#pcOut'), r);
+      const r = await GET(`/products/${pid}/compare`);
+      const offers = (r.offers || []).filter((o) => !o.isRetail && o.perBottleBase != null);
+      $('#dcOffer').innerHTML = `<option value="">— manual landed cost —</option>` + offers.map((o) =>
+        `<option value="${o.offerId}" data-rrp="${o.rrp || ''}" data-landed="${o.perBottleBase}">${esc(o.supplier)} · ${money(o.perBottleBase)} / bottle${o.incoterm ? ' · ' + esc(o.incoterm) : ''}</option>`
+      ).join('');
+      if (offers[0]) { $('#dcOffer').value = String(offers[0].offerId); if (offers[0].rrp) $('#dcSell').value = offers[0].rrp; }
     } catch (e) { toast(e.message, 'err'); }
   });
-  $('#pcGo').click();
+  $('#dcOffer').addEventListener('change', (e) => {
+    const opt = e.target.selectedOptions[0];
+    if (opt && opt.dataset.landed) $('#dcLanded').value = opt.dataset.landed;
+    if (opt && opt.dataset.rrp) $('#dcSell').value = opt.dataset.rrp;
+  });
+  const collect = () => ({
+    offerId: $('#dcOffer').value ? Number($('#dcOffer').value) : undefined,
+    landedUnitCost: $('#dcOffer').value ? undefined : numOrU($('#dcLanded').value),
+    productId: $('[data-pp-id]', $('#view')).value ? Number($('[data-pp-id]', $('#view')).value) : undefined,
+    customerId: $('#dcCustomer').value ? Number($('#dcCustomer').value) : undefined,
+    quantity: Number($('#dcQty').value),
+    sellingUnitPrice: Number($('#dcSell').value),
+    discountPct: Number($('#dcDisc').value),
+    supplierPayDays: numOrU($('#dcSupDays').value),
+    customerPayDays: numOrU($('#dcCusDays').value),
+    orderDate: $('#dcDate').value || undefined,
+  });
+  $('#dcGo').addEventListener('click', async () => {
+    try { const r = await POST('/deals/compute', collect()); renderDealResult($('#dcOut'), r); }
+    catch (e) { toast(e.message, 'err'); }
+  });
+  $('#dcSave').addEventListener('click', async () => {
+    if (!can('buyer')) return toast('Buyer role required to save', 'err');
+    const body = collect();
+    if (!body.customerId) return toast('Pick a customer first', 'err');
+    if (!body.productId && !body.offerId) return toast('Pick an offer or product', 'err');
+    try { const r = await POST('/deals', body); toast('Deal saved (quote #' + r.id + ')', 'ok'); }
+    catch (e) { toast(e.message, 'err'); }
+  });
 };
 
-function renderPricingResult(el, r) {
-  const m = r.metrics;
+function renderDealResult(el, r) {
+  if (!r.found) { el.innerHTML = `<div class="badge bad">${esc(r.error || 'not found')}</div>`; return; }
+  const m = r.deal.metrics;
+  const cf = r.deal.cashflow;
   const ok = m.passesPolicy;
-  const lines = [
-    ['Landed unit cost', money(r.landed.total)],
-    ['Duty', money(r.landed.duty)],
-    ['Freight', money(r.landed.freight)],
-    ['Insurance', money(r.landed.insurance)],
-    ['Brokerage', money(r.landed.brokerage)],
-    ['Handling', money(r.landed.handling)],
-    ['Net unit revenue', money(m.netUnitRevenue)],
-  ];
+  const landedLines = r.landed ? [
+    ['Purchase / bottle', money(r.landed.purchaseUSD, r.baseCurrency)],
+    ['Freight', money(r.landed.components.freight.value, r.baseCurrency)],
+    ['Insurance', money(r.landed.components.insurance.value, r.baseCurrency)],
+    ['Duty', money(r.landed.components.duty.value, r.baseCurrency)],
+    ['Brokerage', money(r.landed.components.brokerage.value, r.baseCurrency)],
+    ['Handling', money(r.landed.components.handling.value, r.baseCurrency)],
+    ['Landed / bottle', `<b>${money(r.landed.landedUnitCost, r.baseCurrency)}</b>`],
+  ] : [];
   el.innerHTML = `
-    <h2>Result <span class="badge ${ok ? 'good' : 'bad'}">${ok ? 'meets policy' : 'below policy'}</span></h2>
+    <h2>Deal result <span class="badge ${ok ? 'good' : 'bad'}">${ok ? 'meets policy' : 'below policy'}</span></h2>
     <div class="kpi-inline" style="margin-bottom:14px">
       <div class="item"><div class="k">Margin %</div><div class="v ${m.marginPct >= 15 ? 'best' : ''}">${pct(m.marginPct)}</div></div>
-      <div class="item"><div class="k">Markup</div><div class="v">${money(m.markup)}</div></div>
+      <div class="item"><div class="k">Markup / unit</div><div class="v">${money(m.markup, r.baseCurrency)}</div></div>
+      <div class="item"><div class="k">Contribution</div><div class="v best">${money(r.deal.contribution.total, r.baseCurrency)}</div></div>
       <div class="item"><div class="k">ROI %</div><div class="v">${pct(m.roiPct)}</div></div>
-      <div class="item"><div class="k">Annualised ROI</div><div class="v">${pct(m.annualisedRoiPct)}</div></div>
+      <div class="item"><div class="k">Annualised ROI</div><div class="v">${cf.annualisedRoiPct != null ? pct(cf.annualisedRoiPct) : '—'}</div></div>
+      <div class="item"><div class="k">Capital required</div><div class="v">${money(cf.peakCapital, r.baseCurrency)}</div></div>
+      <div class="item"><div class="k">Capital days</div><div class="v">${num(cf.capitalDays)}</div></div>
     </div>
-    <table>
-      ${lines.map((l) => `<tr><td class="muted">${esc(l[0])}</td><td class="num">${l[1]}</td></tr>`).join('')}
-      <tr><td class="muted">Gross profit / unit</td><td class="num pill-price">${money(m.grossProfitUnit)}</td></tr>
-      <tr><td class="muted">Gross profit (${m.quantity} u)</td><td class="num pill-price">${money(m.grossProfitTotal)}</td></tr>
-    </table>
-    <div class="small muted" style="margin-top:10px">Policy: min margin 15%, min markup 0.75. ${r.discountOffRrpPct != null ? 'Discount off RRP: ' + pct(r.discountOffRrpPct) + '.' : ''}</div>`;
+    <div class="muted small">Sell ${money(r.selling.sellingUnitPrice, r.baseCurrency)} · qty ${num(r.quantity)} · net revenue ${money(m.netUnitRevenue, r.baseCurrency)}/u · revenue ${money(m.revenueTotal, r.baseCurrency)} · cost ${money(m.costTotal, r.baseCurrency)}${r.selling.discountOffRrpPct != null ? ' · discount off RRP ' + pct(r.selling.discountOffRrpPct) : ''}${cf.negativeWorkingCapital ? ' · <span class="badge good">negative working capital</span>' : ''}</div>
+    <div class="split" style="margin-top:14px">
+      <div>
+        <h2 style="font-size:13px">Dated cash flow</h2>
+        <table><thead><tr><th>Date</th><th>Event</th><th class="num">Amount</th><th class="num">Balance</th></tr></thead>
+        <tbody>${cf.schedule.map((e) => `<tr><td class="small">${esc(e.date)}</td><td class="small">${esc(e.label)}</td><td class="num ${e.amount < 0 ? 'muted' : ''}">${money(e.amount, r.baseCurrency)}</td><td class="num">${money(e.balance, r.baseCurrency)}</td></tr>`).join('')}</tbody></table>
+      </div>
+      ${landedLines.length ? `<div><h2 style="font-size:13px">Landed cost (${esc(r.landed.incoterm || '—')})</h2><table>${landedLines.map((l) => `<tr><td class="muted">${l[0]}</td><td class="num">${l[1]}</td></tr>`).join('')}</table>${r.landed.complete ? '' : `<div class="badge warn" style="margin-top:8px">assumed: ${esc(r.landed.missing.join(', '))}</div>`}</div>` : ''}
+    </div>`;
 }
 
 routes.inventory = async () => {
@@ -743,9 +777,9 @@ routes.quotes = async () => {
   const customers = await loadCustomers();
   $('#view').innerHTML = `
     <div class="split">
-      <div class="panel"><h2>Quotes</h2>
-        <div class="table-wrap"><table><thead><tr><th>Customer</th><th>Product</th><th class="num">Qty</th><th class="num">Unit price</th><th class="num">Margin</th><th>Status</th></tr></thead>
-        <tbody>${rows.map((q) => `<tr><td>${esc(q.customer_name)}</td><td>${esc((q.display_name || '').slice(0, 36))}</td><td class="num">${num(q.quantity)}</td><td class="num">${money(q.unit_price, q.currency)}</td><td class="num">${q.margin_pct != null ? `<span class="badge ${q.margin_pct >= 15 ? 'good' : 'bad'}">${pct(q.margin_pct)}</span>` : '—'}</td><td><span class="badge info">${esc(q.status)}</span></td></tr>`).join('') || '<tr><td colspan="6" class="muted">No quotes.</td></tr>'}
+      <div class="panel"><h2>Deals &amp; quotes</h2>
+        <div class="table-wrap"><table><thead><tr><th>Customer</th><th>Product</th><th>Supplier</th><th class="num">Qty</th><th class="num">Unit price</th><th class="num">Margin</th><th class="num">Contribution</th><th class="num">ROI</th><th class="num">Capital</th><th>Cus due</th><th>Status</th></tr></thead>
+        <tbody>${rows.map((q) => `<tr><td>${esc(q.customer_name)}</td><td>${esc((q.display_name || '').slice(0, 30))}</td><td>${q.supplier_code ? `<span class="badge info">${esc(q.supplier_code)}</span>` : '—'}</td><td class="num">${num(q.quantity)}</td><td class="num">${money(q.unit_price, q.currency)}</td><td class="num">${q.margin_pct != null ? `<span class="badge ${q.margin_pct >= 15 ? 'good' : 'bad'}">${pct(q.margin_pct)}</span>` : '—'}</td><td class="num">${q.contribution_total != null ? money(q.contribution_total, q.currency) : '—'}</td><td class="num">${q.roi_pct != null ? pct(q.roi_pct) : '—'}</td><td class="num">${q.capital_required != null ? money(q.capital_required, q.currency) : '—'}</td><td class="small">${esc(q.customer_due_date || '')}</td><td><span class="badge info">${esc(q.status)}</span></td></tr>`).join('') || '<tr><td colspan="11" class="muted">No deals yet.</td></tr>'}
         </tbody></table></div>
       </div>
       <div class="panel"><h2>Create quote</h2>
@@ -1030,7 +1064,7 @@ const TITLES = {
   inventory: ['Inventory', 'Lots, reservations and in-transit stock'],
   customers: ['Customers', 'Buyers and commercial terms'],
   demands: ['Demand Book', 'Customer requests to match against supply'],
-  quotes: ['Quotes', 'Priced offers to customers with margin control'],
+  quotes: ['Deals & Quotes', 'Saved deals with contribution, ROI and cash flow'],
   suppliers: ['Suppliers & Terms', 'Price type, trade discount and Incoterms'],
   settings: ['Settings & FX', 'Policy thresholds and currency rates'],
   captures: ['Capture Inbox', 'Notes from Plaud / reMarkable turned into demand signals'],

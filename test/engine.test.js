@@ -147,3 +147,52 @@ test('landed cost: MOQ excludes a too-small order', () => {
   assert.equal(r.executable, false);
   assert.ok(r.flags.includes('below-moq'));
 });
+
+test('parse payment terms to days', () => {
+  assert.equal(pricing.parseTermsDays('Net 30'), 30);
+  assert.equal(pricing.parseTermsDays('Net 45'), 45);
+  assert.equal(pricing.parseTermsDays('2/10 Net 30'), 30);
+  assert.equal(pricing.parseTermsDays('14 days'), 14);
+  assert.equal(pricing.parseTermsDays('Prepay'), 0);
+  assert.equal(pricing.parseTermsDays('COD'), 0);
+  assert.equal(pricing.parseTermsDays('Letter of Credit'), 0);
+  assert.equal(pricing.parseTermsDays(null, 30), 30);
+});
+
+test('cashflow: peak capital, capital days and schedule', () => {
+  const cf = pricing.cashflow({
+    totalCost: 1000, totalRevenue: 1400,
+    supplierPayDays: 0, customerPayDays: 30, leadTimeDays: 0, transitDays: 0, orderDate: '2026-01-01',
+  });
+  assert.equal(cf.supplierDue, '2026-01-01');
+  assert.equal(cf.customerDue, '2026-01-31');
+  assert.equal(cf.capitalDays, 30);
+  assert.equal(cf.peakCapital, 1000);
+  assert.equal(cf.negativeWorkingCapital, false);
+  assert.equal(cf.schedule[cf.schedule.length - 1].balance, 400);
+});
+
+test('cashflow: negative working capital when supplier terms exceed customer terms', () => {
+  const cf = pricing.cashflow({
+    totalCost: 1000, totalRevenue: 1400,
+    supplierPayDays: 60, customerPayDays: 30, orderDate: '2026-01-01',
+  });
+  assert.equal(cf.capitalDays, -30);
+  assert.equal(cf.negativeWorkingCapital, true);
+  assert.equal(cf.peakCapital, 0);
+});
+
+test('computeDeal: contribution, ROI, annualised and policy', () => {
+  const d = pricing.computeDeal({
+    quantity: 100, landedUnitCost: 10, sellingUnitPrice: 20,
+    supplierPayDays: 0, customerPayDays: 30, orderDate: '2026-01-01',
+    minMarginPct: 15, minMarkup: 0.75,
+  });
+  assert.equal(d.metrics.marginPct, 50);
+  assert.equal(d.metrics.roiPct, 100);
+  assert.equal(d.contribution.total, 1000);
+  assert.equal(d.metrics.passesPolicy, true);
+  assert.equal(d.cashflow.peakCapital, 1000);
+  assert.equal(d.cashflow.capitalDays, 30);
+  assert.equal(d.cashflow.annualisedRoiPct, pricing.round4(100 * (365 / 30)));
+});

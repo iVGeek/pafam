@@ -32,10 +32,10 @@ function seedData(opts = {}) {
   // complete costs out of the box.
   const supUpdate = db.prepare(
     `UPDATE suppliers SET origin_country = ?, duty_pct = ?, freight_per_unit = ?, insurance_pct = ?,
-       brokerage_per_unit = ?, handling_per_unit = ?, other_tax_pct = ? WHERE code = ?`
+       brokerage_per_unit = ?, handling_per_unit = ?, other_tax_pct = ?, payment_terms = ? WHERE code = ?`
   );
-  supUpdate.run('ES', 5.4, 0.65, 0.4, 0.12, 0.08, 0, 'ALCODIS');
-  supUpdate.run('ES', 5.4, 0.72, 0.4, 0.1, 0.06, 0, 'IGAN');
+  supUpdate.run('ES', 5.4, 0.65, 0.4, 0.12, 0.08, 0, 'Net 30', 'ALCODIS');
+  supUpdate.run('ES', 5.4, 0.72, 0.4, 0.1, 0.06, 0, 'Prepay', 'IGAN');
 
   const addCustomer = db.prepare(
     'INSERT INTO customers(code, name, region, currency, payment_terms, credit_limit) VALUES (?,?,?,?,?,?)'

@@ -127,6 +127,124 @@ function convert(amount, rate) {
   return safe(amount) * safe(rate, 1);
 }
 
+/* ======================= payment terms & dated cash flow ======================= */
+
+// Read the number of days from free-text commercial terms, e.g.
+// "Net 30" -> 30, "30 days" -> 30, "2/10 Net 45" -> 45, "Prepay"/"COD" -> 0.
+function parseTermsDays(terms, fallback = 0) {
+  if (terms === null || terms === undefined || terms === '') return fallback;
+  const s = String(terms).toLowerCase();
+  let m = s.match(/net\s*(\d+)/);
+  if (m) return Number(m[1]);
+  m = s.match(/(\d+)\s*(?:days?|d\b)/);
+  if (m) return Number(m[1]);
+  if (/(prepay|pre-?payment|pro\s*forma|in advance|cash with order|cwo|cod|cash on delivery|immediate|advance|l\/c|letter of credit)/.test(s)) return 0;
+  return fallback;
+}
+
+function addDays(dateStr, days) {
+  const base = dateStr ? new Date(dateStr + 'T00:00:00Z') : new Date();
+  const d = new Date(base.getTime() + Math.round(safe(days, 0)) * 86400000);
+  return d.toISOString().slice(0, 10);
+}
+
+function daysBetween(a, b) {
+  const da = new Date(a + 'T00:00:00Z').getTime();
+  const db = new Date(b + 'T00:00:00Z').getTime();
+  return Math.round((db - da) / 86400000);
+}
+
+// Dated cash-flow schedule for a single buy-sell cycle. Shows when cash leaves
+// (supplier paid) and returns (customer pays), the peak funding requirement
+// (capital) and how many days that capital is employed.
+function cashflow(input) {
+  const totalCost = safe(input.totalCost);
+  const totalRevenue = safe(input.totalRevenue);
+  const supplierPayDays = safe(input.supplierPayDays, 0);
+  const customerPayDays = safe(input.customerPayDays, 30);
+  const leadTimeDays = safe(input.leadTimeDays, 0);
+  const transitDays = safe(input.transitDays, 0);
+  const orderDate = input.orderDate || new Date().toISOString().slice(0, 10);
+
+  const goodsDays = leadTimeDays + transitDays;
+  const supplierDue = addDays(orderDate, supplierPayDays);
+  const goodsDate = addDays(orderDate, goodsDays);
+  const customerDue = addDays(goodsDate, customerPayDays);
+
+  const events = [
+    { label: 'Order placed', date: orderDate, day: 0, amount: 0 },
+    { label: 'Pay supplier', date: supplierDue, day: supplierPayDays, amount: -totalCost },
+    { label: 'Goods received', date: goodsDate, day: goodsDays, amount: 0 },
+    { label: 'Customer pays', date: customerDue, day: goodsDays + customerPayDays, amount: totalRevenue },
+  ].sort((a, b) => a.day - b.day);
+
+  let balance = 0;
+  let peakDeficit = 0;
+  const schedule = events.map((e) => {
+    balance += e.amount;
+    if (balance < peakDeficit) peakDeficit = balance;
+    return { ...e, amount: round2(e.amount), balance: round2(balance) };
+  });
+
+  const capitalDays = daysBetween(supplierDue, customerDue);
+  const peakCapital = round2(-peakDeficit);
+
+  return {
+    orderDate,
+    supplierDue,
+    goodsDate,
+    customerDue,
+    supplierPayDays,
+    customerPayDays,
+    leadTimeDays,
+    transitDays,
+    capitalDays,
+    peakCapital,
+    negativeWorkingCapital: capitalDays < 0,
+    capitalTurnover: capitalDays > 0 ? round4(365 / capitalDays) : null,
+    schedule,
+  };
+}
+
+// Full deal: contribution/profit plus the dated cash flow and capital employed.
+// Combines dealMetrics (profitability + policy) with cashflow (timing/capital).
+function computeDeal(input) {
+  const qty = safe(input.quantity, 1) || 1;
+  const metrics = dealMetrics({
+    quantity: qty,
+    landedUnitCost: input.landedUnitCost,
+    sellingUnitPrice: input.sellingUnitPrice,
+    discountPct: input.discountPct,
+    rebatePct: input.rebatePct,
+    returnsAllowancePct: input.returnsAllowancePct,
+    customerDeductionPct: input.customerDeductionPct,
+    paymentTermsCostPct: input.paymentTermsCostPct,
+    daysToCash: input.daysToCash,
+    minMarginPct: input.minMarginPct,
+    minMarkup: input.minMarkup,
+  });
+
+  const cf = cashflow({
+    totalCost: metrics.costTotal,
+    totalRevenue: metrics.revenueTotal,
+    supplierPayDays: input.supplierPayDays,
+    customerPayDays: input.customerPayDays,
+    leadTimeDays: input.leadTimeDays,
+    transitDays: input.transitDays,
+    orderDate: input.orderDate,
+  });
+
+  const annualisedRoiPct = cf.capitalDays > 0
+    ? round4(metrics.roiPct * (365 / cf.capitalDays))
+    : null;
+
+  return {
+    metrics,
+    cashflow: { ...cf, annualisedRoiPct },
+    contribution: { perUnit: metrics.grossProfitUnit, total: metrics.grossProfitTotal },
+  };
+}
+
 module.exports = {
   round2, round4,
   unitAcquisitionPrice,
@@ -134,4 +252,9 @@ module.exports = {
   dealMetrics,
   discountOffRrpPct,
   convert,
+  parseTermsDays,
+  addDays,
+  daysBetween,
+  cashflow,
+  computeDeal,
 };
