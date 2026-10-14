@@ -68,7 +68,10 @@ Notes:
   implausible spreads (likely price-basis mismatches) for review instead of
   reporting fantasy savings.
 - **Price deals**: landed cost build-up (Incoterm-aware), margin/markup, ROI &
-  annualised ROI, enforced against a configurable margin/markup policy.
+  annualised ROI, enforced against a configurable margin/markup policy. Deal
+  contribution subtracts deal costs (outbound delivery, commission, fees,
+  storage, financing, expected credit loss) and reports return on deployed
+  capital — the §9 worked example reconciles to the cent (see tests).
 - **Source cheapest**: lowest *executable* landed cost per product & quantity,
   with MOQ/stock/expiry/eligibility checks and missing-input flags.
 - **Model the money**: dated cash-flow schedule, peak capital and capital days,

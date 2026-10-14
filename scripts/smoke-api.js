@@ -87,6 +87,19 @@ const server = app.listen(PORT, async () => {
       '| capitalDays:', deal.body.deal && deal.body.deal.cashflow.capitalDays,
       '| terms(sup/cus):', deal.body.terms && `${deal.body.terms.supplierPayDays}/${deal.body.terms.customerPayDays}`);
     console.log('deal scenarios:', (deal.body.deal.scenarios || []).map((s) => s.kind).join(', '));
+
+    // §9 worked example reconciliation over HTTP (deal costs included)
+    const s9 = await admin.req('POST', '/deals/compute', {
+      quantity: 1000, landedUnitCost: 33, sellingUnitPrice: 40, outboundPerUnit: 2,
+      supplierPayDays: 0, customerPayDays: 90, orderDate: '2026-01-01',
+    });
+    const s9d = s9.body.deal || {};
+    console.log('§9 reconcile:', s9.status,
+      '| grossProfit:', s9d.metrics && s9d.metrics.grossProfitTotal,
+      '| contribution:', s9d.contribution && s9d.contribution.total,
+      '| deployedCapital:', s9d.return && s9d.return.deployedCapital,
+      '| simpleReturn:', s9d.return && s9d.return.simpleReturnPct,
+      '| annualised(90d):', s9d.return && s9d.return.annualisedReturnPct);
     const save = await admin.req('POST', '/deals', { offerId: offerRow.id, customerId: 1, quantity: 24, sellingUnitPrice: 60 });
     console.log('deals save (expect 200):', save.status, '| id:', save.body.id);
     const quotes = await admin.req('GET', '/quotes');

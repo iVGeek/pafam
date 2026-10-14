@@ -85,12 +85,39 @@ function dealMetrics(input) {
   const revenueTotal = netUnitRevenue * qty;
   const costTotal = landed * qty;
 
+  // Deal costs (§7): costs of getting the deal done, separate from landed cost.
+  // Outbound delivery, commission, transaction fees, storage and financing are
+  // either per-unit amounts or percentages of net revenue. Expected credit loss
+  // is a percentage of net revenue. All optional and default to zero so a
+  // buy/sell with no deal costs is unchanged.
+  const outboundPerUnit = safe(input.outboundPerUnit);
+  const storagePerUnit = safe(input.storagePerUnit);
+  const financingPerUnit = safe(input.financingPerUnit);
+  const commissionPct = safe(input.commissionPct);
+  const transactionFeePct = safe(input.transactionFeePct);
+  const expectedCreditLossPct = safe(input.expectedCreditLossPct);
+
+  const dealCostUnit =
+    outboundPerUnit + storagePerUnit + financingPerUnit +
+    (netUnitRevenue * (commissionPct + transactionFeePct + expectedCreditLossPct)) / 100;
+  const dealCostsTotal = dealCostUnit * qty;
+
+  const contributionUnit = grossProfitUnit - dealCostUnit;
+  const contributionTotal = contributionUnit * qty;
+  const contributionMarginPct = revenueTotal > 0 ? (contributionTotal / revenueTotal) * 100 : 0;
+
+  // Deployed capital = what we actually have tied up: cost of goods plus the
+  // deal costs funded before the customer pays (§7, §9).
+  const deployedCapital = costTotal + dealCostsTotal;
+  const simpleReturnPct = round2(deployedCapital > 0 ? (contributionTotal / deployedCapital) * 100 : 0);
+
   const marginPct = netUnitRevenue > 0 ? (grossProfitUnit / netUnitRevenue) * 100 : 0;
   const markup = netUnitRevenue - landed;
   const markupPctOfCost = landed > 0 ? (grossProfitUnit / landed) * 100 : 0;
   const roiPct = landed > 0 ? (grossProfitUnit / landed) * 100 : 0;
   const daysToCash = safe(input.daysToCash, 30) || 30;
   const annualisedRoiPct = roiPct * (365 / daysToCash);
+  const annualisedReturnPct = round2(simpleReturnPct * (365 / daysToCash));
 
   const pass =
     marginPct >= safe(input.minMarginPct, 0) - 1e-9 &&
@@ -112,6 +139,15 @@ function dealMetrics(input) {
     roiPct: round4(roiPct),
     annualisedRoiPct: round4(annualisedRoiPct),
     daysToCash,
+    // Deal contribution (§7): gross profit less the costs of executing the deal.
+    dealCostUnit: round4(dealCostUnit),
+    dealCostsTotal: round2(dealCostsTotal),
+    contributionUnit: round4(contributionUnit),
+    contributionTotal: round2(contributionTotal),
+    contributionMarginPct: round4(contributionMarginPct),
+    deployedCapital: round2(deployedCapital),
+    simpleReturnPct,
+    annualisedReturnPct,
     passesPolicy: pass,
   };
 }
@@ -219,6 +255,12 @@ function computeDeal(input) {
     returnsAllowancePct: input.returnsAllowancePct,
     customerDeductionPct: input.customerDeductionPct,
     paymentTermsCostPct: input.paymentTermsCostPct,
+    outboundPerUnit: input.outboundPerUnit,
+    storagePerUnit: input.storagePerUnit,
+    financingPerUnit: input.financingPerUnit,
+    commissionPct: input.commissionPct,
+    transactionFeePct: input.transactionFeePct,
+    expectedCreditLossPct: input.expectedCreditLossPct,
     daysToCash: input.daysToCash,
     minMarginPct: input.minMarginPct,
     minMarkup: input.minMarkup,
@@ -241,7 +283,21 @@ function computeDeal(input) {
   return {
     metrics,
     cashflow: { ...cf, annualisedRoiPct },
-    contribution: { perUnit: metrics.grossProfitUnit, total: metrics.grossProfitTotal },
+    contribution: {
+      perUnit: metrics.contributionUnit,
+      total: metrics.contributionTotal,
+      marginPct: metrics.contributionMarginPct,
+      dealCostsTotal: metrics.dealCostsTotal,
+    },
+    // Return on the capital actually deployed across the cash cycle (§7, §9).
+    return: {
+      deployedCapital: metrics.deployedCapital,
+      simpleReturnPct: metrics.simpleReturnPct,
+      annualisedReturnPct: cf.capitalDays > 0
+        ? round2(metrics.simpleReturnPct * (365 / cf.capitalDays))
+        : null,
+      capitalDays: cf.capitalDays,
+    },
     scenarios: scenarios(input),
   };
 }
@@ -264,10 +320,11 @@ function scenarios(input) {
     return {
       kind, label, description,
       marginPct: m.marginPct,
-      contributionTotal: m.grossProfitTotal,
+      contributionTotal: m.contributionTotal,
+      contributionMarginPct: m.contributionMarginPct,
       revenueTotal: m.revenueTotal,
       passesPolicy: m.passesPolicy,
-      survives: m.grossProfitTotal > 0,
+      survives: m.contributionTotal > 0,
     };
   };
 

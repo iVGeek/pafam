@@ -375,6 +375,43 @@ test('KPI suite reports profitability, cash, stock and buying blocks', () => {
   assert.equal(typeof k.quality.openExceptions, 'number');
 });
 
+test('reconciles the brief section 9 worked example', () => {
+  // §9: buy 1,000 @ $30 (landed $33), sell @ $40, deal costs $2,000,
+  // 90-day capital cycle. Every figure below is the acceptance target.
+  const d = pricing.computeDeal({
+    quantity: 1000, landedUnitCost: 33, sellingUnitPrice: 40,
+    outboundPerUnit: 2,
+    supplierPayDays: 0, customerPayDays: 90, orderDate: '2026-01-01',
+    minMarginPct: 15, minMarkup: 0.75,
+  });
+  assert.equal(d.metrics.landedUnitCost, 33);
+  assert.equal(d.metrics.grossProfitTotal, 7000);
+  assert.equal(d.metrics.marginPct, 17.5);
+  assert.equal(d.metrics.dealCostsTotal, 2000);
+  assert.equal(d.contribution.total, 5000);
+  assert.equal(d.metrics.contributionMarginPct, 12.5);
+  assert.equal(d.return.deployedCapital, 35000);
+  assert.equal(d.return.simpleReturnPct, 14.29);
+  assert.equal(d.return.capitalDays, 90);
+  assert.equal(d.return.annualisedReturnPct, 57.95);
+});
+
+test('deal contribution subtracts deal costs from gross profit', () => {
+  const noCosts = pricing.dealMetrics({ quantity: 100, landedUnitCost: 10, sellingUnitPrice: 20 });
+  assert.equal(noCosts.contributionTotal, 1000);
+  assert.equal(noCosts.dealCostsTotal, 0);
+
+  const withCosts = pricing.dealMetrics({
+    quantity: 100, landedUnitCost: 10, sellingUnitPrice: 20,
+    outboundPerUnit: 1.5, commissionPct: 5,
+  });
+  assert.equal(withCosts.grossProfitTotal, 1000);
+  assert.equal(withCosts.dealCostsTotal, 250); // 1.5/unit + 5% of 20/unit = 2.5/unit
+  assert.equal(withCosts.contributionTotal, 750);
+  assert.equal(withCosts.contributionMarginPct, 37.5);
+  assert.equal(withCosts.deployedCapital, 1250);
+});
+
 test('forecast baseline refuses to extrapolate thin history', () => {
   const enough = movingAverageForecast([80, 95, 110, 90, 120, 105]);
   assert.equal(enough.sufficient, true);

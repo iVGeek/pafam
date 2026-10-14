@@ -583,6 +583,9 @@ routes.pricing = async () => {
           <div class="field"><label>Selling unit price</label><input id="dcSell" type="number" step="0.01" value="70" /></div>
           <div class="field"><label>Quantity</label><input id="dcQty" type="number" value="100" /></div>
           <div class="field"><label>Discount %</label><input id="dcDisc" type="number" step="0.1" value="0" /></div>
+          <div class="field"><label>Outbound cost / unit</label><input id="dcOutbound" type="number" step="0.01" value="0" title="Delivery, handling and other per-unit deal costs" /></div>
+          <div class="field"><label>Commission %</label><input id="dcCommission" type="number" step="0.1" value="0" title="Of net revenue" /></div>
+          <div class="field"><label>Expected credit loss %</label><input id="dcCreditLoss" type="number" step="0.1" value="0" title="Of net revenue" /></div>
           <div class="field"><label>Customer</label><select id="dcCustomer"><option value="">— none —</option>${customers.map((c) => `<option value="${c.id}">${esc(c.name)}${c.payment_terms ? ' (' + esc(c.payment_terms) + ')' : ''}</option>`).join('')}</select></div>
           <div class="field"><label>Order date</label><input id="dcDate" type="date" value="${today}" /></div>
           <div class="field"><label>Supplier pay days</label><input id="dcSupDays" type="number" placeholder="from terms" /></div>
@@ -617,6 +620,9 @@ routes.pricing = async () => {
     quantity: Number($('#dcQty').value),
     sellingUnitPrice: Number($('#dcSell').value),
     discountPct: Number($('#dcDisc').value),
+    outboundPerUnit: numOrU($('#dcOutbound').value),
+    commissionPct: numOrU($('#dcCommission').value),
+    expectedCreditLossPct: numOrU($('#dcCreditLoss').value),
     supplierPayDays: numOrU($('#dcSupDays').value),
     customerPayDays: numOrU($('#dcCusDays').value),
     orderDate: $('#dcDate').value || undefined,
@@ -655,9 +661,12 @@ function renderDealResult(el, r) {
       <div class="item"><div class="k">Margin %</div><div class="v ${m.marginPct >= 15 ? 'best' : ''}">${pct(m.marginPct)}</div></div>
       <div class="item"><div class="k">Markup / unit</div><div class="v">${money(m.markup, r.baseCurrency)}</div></div>
       <div class="item"><div class="k">Contribution</div><div class="v best">${money(r.deal.contribution.total, r.baseCurrency)}</div></div>
+      <div class="item"><div class="k">Deal costs</div><div class="v">${money((r.deal.contribution && r.deal.contribution.dealCostsTotal) || 0, r.baseCurrency)}</div></div>
       <div class="item"><div class="k">ROI %</div><div class="v">${pct(m.roiPct)}</div></div>
       <div class="item"><div class="k">Annualised ROI</div><div class="v">${cf.annualisedRoiPct != null ? pct(cf.annualisedRoiPct) : '—'}</div></div>
       <div class="item"><div class="k">Capital required</div><div class="v">${money(cf.peakCapital, r.baseCurrency)}</div></div>
+      <div class="item"><div class="k">Deployed capital</div><div class="v">${money((r.deal.return && r.deal.return.deployedCapital) || cf.peakCapital, r.baseCurrency)}</div></div>
+      <div class="item"><div class="k">Deal return</div><div class="v">${r.deal.return && r.deal.return.simpleReturnPct != null ? pct(r.deal.return.simpleReturnPct) : '—'}</div></div>
       <div class="item"><div class="k">Capital days</div><div class="v">${num(cf.capitalDays)}</div></div>
     </div>
     <div class="muted small">Sell ${money(r.selling.sellingUnitPrice, r.baseCurrency)} · qty ${num(r.quantity)} · net revenue ${money(m.netUnitRevenue, r.baseCurrency)}/u · revenue ${money(m.revenueTotal, r.baseCurrency)} · cost ${money(m.costTotal, r.baseCurrency)}${r.selling.discountOffRrpPct != null ? ' · discount off RRP ' + pct(r.selling.discountOffRrpPct) : ''}${cf.negativeWorkingCapital ? ' · <span class="badge good">negative working capital</span>' : ''}</div>
