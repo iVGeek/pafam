@@ -4,6 +4,15 @@ const { db, getSetting } = require('../db');
 const pricing = require('./pricing');
 const { normalizeOffer } = require('./comparison');
 const orders = require('./orders');
+const { consolidateDemands } = require('./purchasePlan');
+const { recommendations } = require('./recommend');
+const trends = require('./trends');
+const alerts = require('./alerts');
+
+function safeNum(v, d = 0) {
+  const n = Number(v);
+  return Number.isFinite(n) ? pricing.round2(n, d) : 0;
+}
 
 function overview() {
   const base = getSetting('base_currency', 'USD');
@@ -135,4 +144,81 @@ function winsByType() {
   return wins;
 }
 
-module.exports = { overview, opportunities, supplierStats, winsByType };
+function kpis(opts = {}) {
+  const base = getSetting('base_currency', 'USD');
+  const capitalLimit = Number(getSetting('capital_limit', '250000'));
+
+  const ov = overview();
+  const plan = consolidateDemands({ approvedOnly: opts.approvedOnly });
+  const recs = recommendations({ actionableOnly: false, limit: 500 });
+
+  const allOrders = orders.listOrders(1000);
+  const settled = allOrders.filter((o) => o.realised.settled);
+  const delivered = settled.filter((o) => o.status === 'delivered');
+
+  const revenue = pricing.round2(settled.reduce((s, o) => s + (o.realised.paidIn || 0), 0));
+  const costPaid = pricing.round2(settled.reduce((s, o) => s + (o.realised.paidOut || 0), 0));
+  const grossProfit = pricing.round2(revenue - costPaid);
+  const grossMarginPct = revenue > 0 ? pricing.round2((grossProfit / revenue) * 100) : 0;
+
+  const openOrders = allOrders.filter((o) => !o.realised.settled);
+  const ar = pricing.round2(openOrders.reduce((s, o) => s + (o.realised.revenueOutstanding || 0), 0));
+  const ap = pricing.round2(openOrders.reduce((s, o) => s + (o.realised.costOutstanding || 0), 0));
+
+  const inventoryCost = pricing.round2(db.prepare('SELECT COALESCE(SUM(on_hand * unit_cost),0) n FROM inventory_lots WHERE unit_cost IS NOT NULL').get().n);
+  const daysInventory = inventoryCost > 0 && costPaid > 0 ? pricing.round2((inventoryCost / costPaid) * 30) : null;
+  const inventoryTurn = daysInventory ? pricing.round2(360 / daysInventory) : null;
+
+  const buyConv = plan.items.length ? pricing.round2(plan.items.reduce((s, i) => s + (i.buyConv || 1), 0) / plan.items.length, 2) : 1.0;
+  const writeDown = pricing.round2(db.prepare(
+    "SELECT COALESCE(SUM(on_hand * unit_cost * 0.1),0) n FROM inventory_lots WHERE unit_cost IS NOT NULL AND expiry_date IS NOT NULL AND date(expiry_date) < date('now')"
+  ).get().n);
+
+  const alertsK = alerts.counts();
+  const movers = trends.priceMovers(10);
+
+  return {
+    baseCurrency: base,
+    summary: {
+      revenue: safeNum(revenue),
+      costPaid: safeNum(costPaid),
+      grossProfit: safeNum(grossProfit),
+      grossMarginPct: safeNum(grossMarginPct, 1),
+      realisedMargin: ov.realisedMargin,
+      ordersSettled: settled.length,
+      ordersDelivered: delivered.length,
+      ordersOpen: openOrders.length,
+    },
+    cash: {
+      ar: safeNum(ar),
+      ap: safeNum(ap),
+      workingCapital: safeNum(pricing.round2(ar - ap)),
+      capitalRequired: plan.totals.capital,
+      capitalLimit,
+      overCapital: plan.totals.overLimit,
+    },
+    stock: {
+      inventoryUnits: ov.inventoryUnits,
+      inventoryCost: safeNum(inventoryCost),
+      daysInventory,
+      inventoryTurn,
+      writeDownRisk: safeNum(writeDown),
+    },
+    buying: {
+      openDemands: ov.openDemands,
+      recsTotal: recs.length,
+      recsActionable: recs.filter((r) => r.actionable).length,
+      planItems: plan.items.length,
+      planActionable: plan.totals.actionable,
+      avgBuyConv: safeNum(buyConv, 2),
+    },
+    quality: {
+      openExceptions: ov.openExceptions,
+      alerts: alertsK,
+      priceMovers: movers.length,
+      overlapProducts: ov.overlapProducts,
+    },
+  };
+}
+
+module.exports = { kpis, overview, opportunities, supplierStats, winsByType };

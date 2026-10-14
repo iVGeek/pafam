@@ -11,6 +11,7 @@ const trends = require('../server/services/trends');
 const orders = require('../server/services/orders');
 const { orderQuantityFor, roundUpTo } = require('../server/services/recommend');
 const { consolidateDemands } = require('../server/services/purchasePlan');
+const analytics = require('../server/services/analytics');
 
 test('GTIN check digit validates real EAN-13', () => {
   assert.equal(gtin.analyse('4006714008789').valid, true);
@@ -361,4 +362,14 @@ test('purchasePlan consolidates demands per product and aggregates totals', () =
   const withCustomers = plan.items.find((i) => i.customers && i.customers.length);
   assert.ok(withCustomers);
   assert.ok(withCustomers.demandQty >= withCustomers.orderQty); // rounded up, never below
+});
+
+test('KPI suite reports profitability, cash, stock and buying blocks', () => {
+  const k = analytics.kpis({});
+  for (const block of ['summary', 'cash', 'stock', 'buying', 'quality']) {
+    assert.ok(k[block] && typeof k[block] === 'object', `missing ${block}`);
+  }
+  assert.equal(k.summary.grossProfit, k.summary.revenue - k.summary.costPaid);
+  assert.ok(k.cash.capitalLimit > 0);
+  assert.equal(typeof k.quality.openExceptions, 'number');
 });

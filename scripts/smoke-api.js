@@ -146,6 +146,16 @@ const server = app.listen(PORT, async () => {
     const recBad = await admin.req('GET', '/recommendations/999999');
     console.log('recommendation missing (expect 404):', recBad.status);
 
+    // purchase plan consolidation
+    const pp = await admin.req('GET', '/purchase-plan');
+    console.log('purchase-plan:', pp.status, '| items:', (pp.body.items || []).length, '| actionable:', pp.body.totals && pp.body.totals.actionable, '| cap:', pp.body.totals && pp.body.totals.capital);
+    const ppA = await admin.req('GET', '/purchase-plan?approvedOnly=1');
+    console.log('purchase-plan (approved):', ppA.status, '| items:', (ppA.body.items || []).length);
+
+    // KPI suite
+    const kp = await admin.req('GET', '/kpis');
+    console.log('kpis:', kp.status, '| grossProfit:', kp.body.summary && kp.body.summary.grossProfit, '| grossMargin:', kp.body.summary && kp.body.summary.grossMarginPct, '| ar:', kp.body.cash && kp.body.cash.ar, '| capitalRequired:', kp.body.cash && kp.body.cash.capitalRequired);
+
     // webhook with secret
     const hook = await anon.req('POST', '/captures/webhook', { source: 'plaud', text: 'Client wants 50 units of Tanqueray. secret: nope' });
     console.log('webhook wrong secret (expect 401):', hook.status);

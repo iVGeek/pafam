@@ -87,7 +87,7 @@ const state = { route: 'dashboard', settings: {}, suppliers: [], user: null };
 const ROUTE_MIN = {
   dashboard: 'viewer', offers: 'viewer', products: 'viewer', compare: 'viewer', lowest: 'viewer', pricing: 'viewer',
   inventory: 'viewer', customers: 'viewer', demands: 'viewer', quotes: 'viewer', suppliers: 'viewer',
-  exceptions: 'viewer', imports: 'buyer', captures: 'analyst', alerts: 'viewer', trends: 'viewer', orders: 'viewer', buying: 'viewer', reports: 'viewer', settings: 'admin', users: 'admin', audit: 'admin',
+  exceptions: 'viewer', imports: 'buyer', captures: 'analyst', alerts: 'viewer', trends: 'viewer', orders: 'viewer', buying: 'viewer', performance: 'viewer', reports: 'viewer', settings: 'admin', users: 'admin', audit: 'admin',
 };
 
 function showLogin() { $('#login').classList.remove('hidden'); }
@@ -1209,6 +1209,52 @@ routes.reports = async () => {
     </div>`;
 };
 
+routes.performance = async () => {
+  const k = await GET('/kpis');
+  const s = k.summary || {};
+  const c = k.cash || {};
+  const st = k.stock || {};
+  const b = k.buying || {};
+  const q = k.quality || {};
+  const alertTotals = (q.alerts && q.alerts.total) || 0;
+  const card = (label, value, sub) => `<div class="card"><div class="k">${esc(label)}</div><div class="v">${value}</div><div class="s">${sub || ''}</div></div>`;
+  $('#view').innerHTML = `
+    <div class="panel"><h2>Profitability</h2>
+      <div class="grid cards">
+        ${card('Revenue (collected)', money(s.revenue, k.baseCurrency), 'from settled orders')}
+        ${card('Cost paid', money(s.costPaid, k.baseCurrency), 'cash out')}
+        ${card('Gross profit', money(s.grossProfit, k.baseCurrency), 'revenue − cost')}
+        ${card('Gross margin', pct(s.grossMarginPct), `${num(s.ordersSettled)} settled · ${num(s.ordersOpen)} open`)}
+      </div>
+    </div>
+    <div class="panel" style="margin-top:16px"><h2>Cash &amp; capital</h2>
+      <div class="grid cards">
+        ${card('Receivable (AR)', money(c.ar, k.baseCurrency), 'owed by customers')}
+        ${card('Payable (AP)', money(c.ap, k.baseCurrency), 'owed to suppliers')}
+        ${card('Working capital', money(c.workingCapital, k.baseCurrency), 'AR − AP')}
+        ${card('Capital required', money(c.capitalRequired, k.baseCurrency), `limit ${money(c.capitalLimit)} · ${c.overCapital ? '<span class="badge bad">over</span>' : '<span class="badge ok">within</span>'}`)}
+      </div>
+    </div>
+    <div class="split" style="margin-top:16px">
+      <div class="panel"><h2>Stock</h2>
+        <div class="grid cards">
+          ${card('Units on hand', num(st.inventoryUnits), 'across all lots')}
+          ${card('Stock at cost', money(st.inventoryCost, k.baseCurrency), 'valued at lot cost')}
+          ${card('Days inventory', st.daysInventory != null ? num(st.daysInventory, 1) : '—', 'at current run-rate')}
+          ${card('Write-down risk', money(st.writeDownRisk, k.baseCurrency), 'expired lots (est. 10%)')}
+        </div>
+      </div>
+      <div class="panel"><h2>Buying &amp; quality</h2>
+        <div class="grid cards">
+          ${card('Open demands', num(b.openDemands), `${num(b.planItems)} in plan`)}
+          ${card('Actionable buys', num(b.recsActionable), `of ${num(b.recsTotal)} recommendations`)}
+          ${card('Open exceptions', num(q.openExceptions), 'rows needing review')}
+          ${card('Unread alerts', num(alertTotals), `${num(q.priceMovers)} price movers`)}
+        </div>
+      </div>
+    </div>`;
+};
+
 routes.buying = async () => {
   const only = state._recActionable ? '?actionable=1' : '';
   const d = await GET('/recommendations' + only);
@@ -1392,6 +1438,7 @@ const TITLES = {
   trends: ['Price Trends', 'Observed supplier price history with date gaps shown'],
   buying: ['Buying', 'Match live demand to the cheapest executable supplier'],
   reports: ['Reports & Exports', 'Supplier performance and one-click Excel exports'],
+  performance: ['Performance', 'Profitability, cash, capital and stock KPIs'],
   orders: ['Orders & Payments', 'Purchase/sales orders, payments and realised vs forecast margin'],
   users: ['Users & Roles', 'Accounts and role-based access'],
   audit: ['Audit Log', 'Who did what, when'],
