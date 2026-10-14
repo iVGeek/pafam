@@ -1175,6 +1175,7 @@ routes.trends = async () => {
 
 routes.reports = async () => {
   const d = await GET('/reports');
+  const integ = await GET('/integrations');
   const o = d.overview || {};
   const wins = Object.entries(d.wins || {});
   const maxWin = Math.max(1, ...wins.map((w) => w[1]));
@@ -1184,6 +1185,8 @@ routes.reports = async () => {
     ['deals', 'Deals & quotes', 'Saved deals with margin, ROI and capital'],
     ['orders', 'Orders & realised margin', 'Forecast vs actual cash margin'],
     ['alerts', 'Alerts', 'Price movements, expiry and stock alerts'],
+    ['gl', 'GL journal (accounting)', 'Cash-basis double-entry from payments'],
+    ['stock', 'Stock snapshot (warehouse)', 'Lots, on-hand, reserved, valuation'],
   ];
   $('#view').innerHTML = `
     <div class="grid cards">
@@ -1205,6 +1208,14 @@ routes.reports = async () => {
     <div class="panel" style="margin-top:16px"><h2>Supplier performance</h2>
       <div class="table-wrap"><table><thead><tr><th>Code</th><th>Name</th><th>Currency</th><th>Price type</th><th class="num">Offers</th><th class="num">Unmatched</th><th class="num">Invalid barcodes</th></tr></thead>
       <tbody>${(d.suppliers || []).map((s) => `<tr><td class="mono">${esc(s.code)}</td><td>${esc(s.name)}</td><td>${esc(s.currency)}</td><td>${esc(s.price_type)}</td><td class="num">${num(s.offers)}</td><td class="num">${num(s.unmatched)}</td><td class="num">${num(s.invalid_barcodes)}</td></tr>`).join('')}
+      </tbody></table></div>
+    </div>
+    <div class="panel" style="margin-top:16px"><h2>Integrations</h2>
+      <div class="muted small" style="margin:6px 0 10px">Machine-readable contract for pulling data into accounting, a WMS, or a lab system. These are live endpoints on this instance.</div>
+      <div class="table-wrap"><table><thead><tr><th>Direction</th><th>What</th><th>Endpoint</th><th>Auth</th></tr></thead><tbody>
+        ${(integ.exports || []).map((e) => `<tr><td><span class="badge info">export</span></td><td>${esc(e.kind)}</td><td class="mono small">GET ${esc(e.url)}</td><td class="small muted">${esc(e.auth)}</td></tr>`).join('')}
+        <tr><td><span class="badge info">export</span></td><td>Customer quote (cost-masked)</td><td class="mono small">GET ${esc(integ.quote.url)}</td><td class="small muted">${esc(integ.quote.auth)}</td></tr>
+        <tr><td><span class="badge ok">webhook</span></td><td>Inbound capture</td><td class="mono small">POST ${esc(integ.webhook.url)}</td><td class="small muted">${esc(integ.webhook.auth)}</td></tr>
       </tbody></table></div>
     </div>`;
 };

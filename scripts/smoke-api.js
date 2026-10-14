@@ -126,6 +126,14 @@ const server = app.listen(PORT, async () => {
     const xlBad = await admin.req('GET', '/export/nope.xlsx');
     console.log('export unknown (expect 404):', xlBad.status);
 
+    // integrations surface: GL journal + stock snapshot + contract
+    const gl = await admin.req('GET', '/export/gl.xlsx');
+    console.log('export gl.xlsx (GL journal):', gl.status, '| chars:', gl.len);
+    const stkl = await admin.req('GET', '/export/stock.xlsx');
+    console.log('export stock.xlsx:', stkl.status, '| chars:', stkl.len);
+    const integ = await admin.req('GET', '/integrations');
+    console.log('integrations:', integ.status, '| exports:', (integ.body.exports || []).length, '| webhook:', integ.body.webhook && integ.body.webhook.url);
+
     // trends series + customer quote export (masked)
     const trSeries = await admin.req('GET', `/trends?productId=${pid}`);
     console.log('trends series:', trSeries.status, '| suppliers:', (trSeries.body.series || []).length,

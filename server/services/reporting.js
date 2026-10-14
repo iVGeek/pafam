@@ -156,12 +156,84 @@ function alertsSheet() {
   };
 }
 
+// Cash-basis general-ledger journal derived from recorded payments. Double
+// entry: paying a supplier debits Purchases and credits Bank; receiving from a
+// customer debits Bank and credits Sales. Intended to be imported into an
+// accounting package (Xero / QuickBooks / Sage) or reconciled by hand.
+function glSheet() {
+  const rows = db.prepare(
+    `SELECT p.*, o.ref AS order_ref, o.supplier_code
+       FROM payments p JOIN orders o ON o.id = p.order_id
+      ORDER BY p.paid_date, p.id`
+  ).all();
+  const lines = [];
+  for (const p of rows) {
+    const amount = Number(p.amount) || 0;
+    const date = p.paid_date || p.created_at || '';
+    const ref = p.order_ref + (p.reference ? ' / ' + p.reference : '');
+    const memo = (p.direction === 'outbound' ? 'Supplier payment' : 'Customer receipt') + ' — ' + ref;
+    if (p.direction === 'outbound') {
+      lines.push({ date, account: 'Purchases', memo, debit: pricing.round2(amount), credit: 0, currency: p.currency, ref: p.order_ref });
+      lines.push({ date, account: 'Bank', memo, debit: 0, credit: pricing.round2(amount), currency: p.currency, ref: p.order_ref });
+    } else {
+      lines.push({ date, account: 'Bank', memo, debit: pricing.round2(amount), credit: 0, currency: p.currency, ref: p.order_ref });
+      lines.push({ date, account: 'Sales', memo, debit: 0, credit: pricing.round2(amount), currency: p.currency, ref: p.order_ref });
+    }
+  }
+  const totalDebit = pricing.round2(lines.reduce((s, l) => s + l.debit, 0));
+  const totalCredit = pricing.round2(lines.reduce((s, l) => s + l.credit, 0));
+  lines.push({ date: '', account: '', memo: 'TOTAL', debit: totalDebit, credit: totalCredit, currency: '', ref: '' });
+  return {
+    name: 'GL Journal',
+    rows: lines,
+    columns: [
+      { title: 'Date', key: 'date', wch: 14 },
+      { title: 'Account', key: 'account', wch: 16 },
+      { title: 'Memo', key: 'memo', wch: 52 },
+      { title: 'Debit', key: 'debit', wch: 12 },
+      { title: 'Credit', key: 'credit', wch: 12 },
+      { title: 'Currency', key: 'currency', wch: 10 },
+      { title: 'Reference', key: 'ref', wch: 14 },
+    ],
+  };
+}
+
+// Warehouse stock snapshot for import into a WMS or for physical stocktakes.
+function stockSheet() {
+  const rows = db.prepare(
+    `SELECT i.*, p.display_name, p.canonical_gtin, p.category
+       FROM inventory_lots i LEFT JOIN products p ON p.id = i.product_id
+      ORDER BY i.id DESC`
+  ).all();
+  return {
+    name: 'Stock',
+    rows,
+    columns: [
+      { title: 'SKU (barcode)', key: 'canonical_gtin', wch: 18 },
+      { title: 'Product', key: 'display_name', wch: 46 },
+      { title: 'Warehouse', key: 'warehouse', wch: 18 },
+      { title: 'Lot', key: 'lot_reference', wch: 16 },
+      { title: 'Supplier', key: 'supplier_code', wch: 12 },
+      { title: 'On hand', key: 'on_hand', wch: 10 },
+      { title: 'Reserved', key: 'reserved', wch: 10 },
+      { title: 'In transit', key: 'in_transit', wch: 10 },
+      { title: 'Quarantined', key: 'quarantined', wch: 12 },
+      { title: 'Unit cost', key: 'unit_cost', wch: 12 },
+      { title: 'Currency', key: 'currency', wch: 10 },
+      { title: 'Expiry', key: 'expiry_date', wch: 14 },
+      { title: 'Value', value: (r) => pricing.round2((Number(r.on_hand) || 0) * (Number(r.unit_cost) || 0)), wch: 14 },
+    ],
+  };
+}
+
 const BUILDERS = {
   opportunities: opportunitiesSheet,
   deals: dealsSheet,
   lowest: lowestSheet,
   orders: ordersSheet,
   alerts: alertsSheet,
+  gl: glSheet,
+  stock: stockSheet,
 };
 
 function build(kind) {

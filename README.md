@@ -81,9 +81,22 @@ Notes:
   points).
 - **Close the loop**: **orders** with payments booked in/out, comparing
   *forecast* to *realised* margin from cash actually moved.
+- **Decide what to buy**: **buying recommendations** match each demand to the
+  cheapest *executable* supplier, rounding up to MOQ/order multiples, selling
+  against the customer target or a policy floor, and flagging anything that
+  breaches margin policy or the capital limit. The **purchase plan** consolidates
+  all demand into one buying list with shortfalls, cash requirement and totals.
+- **Measure**: a **KPI suite** (profitability, cash & capital, stock, buying &
+  quality) and a deliberately conservative **demand forecast** — a moving
+  average of delivered quantity that refuses to extrapolate when there are not
+  enough delivery months, saying so instead of inventing a number.
 - **Report & export**: one-click `.xlsx` for opportunities, lowest landed cost,
   deals, orders and alerts, plus a **cost-masked customer quotation** that never
   reveals supplier names or buying costs.
+- **Integrate**: a cash-basis **GL journal** export (double-entry from payments)
+  and a **stock snapshot** export for a WMS/stocktake, and a machine-readable
+  `/api/integrations` contract covering every export and the inbound **capture
+  webhook**. Honest endpoints, no pretend connectors.
 - **Capture notes** (Plaud / reMarkable / manual / webhook) and turn them into
   demand signals via a heuristic parser (`src/lib/notes.js`) — quantity, price,
   barcode, customer and product hints for a human to confirm.
@@ -111,7 +124,7 @@ server/
   index.js              Express app + static UI + SPA fallback
   seed.js               reset + import + demo data (thin wrapper)
   seedData.js           reusable seed routine (used by seed + auto-seed on boot)
-  routes/               meta, imports, offers, products, trading, auth, captures, sourcing, alerts, orders, export
+  routes/               meta, imports, offers, products, trading, auth, captures, sourcing, alerts, orders, recommend, purchase-plan, kpis, forecast, export
   services/
     importer.js         import pipeline (GTIN, packs, snapshots, exceptions, price_history)
     matcher.js          GTIN/alias -> product master
@@ -121,10 +134,13 @@ server/
     sourcing.js         lowest executable landed cost
     deal.js             buy-side offer + sell-side customer -> full deal
     orders.js           orders, payments and realised vs forecast margin
+    recommend.js        demand -> cheapest executable supplier, MOQ/policy aware
+    purchasePlan.js     consolidated buying list across all open demand
+    forecast.js         moving-average demand baseline (refuses thin history)
     trends.js           price trends and windowed movement
     alerts.js           alert generation, dedupe and read state
-    reporting.js        SheetJS workbooks (incl. cost-masked quote)
-    analytics.js        dashboard, opportunities, wins
+    reporting.js        SheetJS workbooks (incl. cost-masked quote, GL, stock)
+    analytics.js        dashboard, opportunities, wins, KPI suite
     suppliers.js        per-supplier commercial defaults
     fx.js               currency conversion
     auth.js             scrypt password hashing, sessions, role middleware
@@ -143,8 +159,8 @@ samples/                real supplier files used for the demo
 ## Data model (highlights)
 
 `suppliers · uploads · offers · products · product_aliases · exceptions ·
-inventory_lots · customers · demands · quotes · fx_rates · alerts · settings ·
-audit_log · users · sessions · captures`
+inventory_lots · customers · demands · quotes · orders · payments · price_history ·
+fx_rates · alerts · settings · audit_log · users · sessions · captures`
 
 Every offer stores its source file, row, list date and raw values, so imports
 are auditable snapshots rather than destructive overwrites.
