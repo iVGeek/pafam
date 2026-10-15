@@ -87,7 +87,7 @@ const state = { route: 'dashboard', settings: {}, suppliers: [], user: null };
 const ROUTE_MIN = {
   dashboard: 'viewer', offers: 'viewer', products: 'viewer', compare: 'viewer', lowest: 'viewer', pricing: 'viewer',
   inventory: 'viewer', customers: 'viewer', demands: 'viewer', quotes: 'viewer', suppliers: 'viewer',
-  exceptions: 'viewer', imports: 'buyer', captures: 'analyst', alerts: 'viewer', trends: 'viewer', orders: 'viewer', buying: 'viewer', forecast: 'viewer', performance: 'viewer', reports: 'viewer', settings: 'admin', users: 'admin', audit: 'admin',
+  exceptions: 'viewer', imports: 'buyer', captures: 'analyst', alerts: 'viewer', trends: 'viewer', orders: 'viewer', shipments: 'viewer', buying: 'viewer', forecast: 'viewer', performance: 'viewer', reports: 'viewer', settings: 'admin', users: 'admin', audit: 'admin',
 };
 
 function showLogin() { $('#login').classList.remove('hidden'); }
@@ -1083,6 +1083,66 @@ routes.alerts = async () => {
   $$('#view [data-read]').forEach(b=>b.addEventListener('click', async ()=>{ try{ await POST('/alerts/'+b.dataset.read+'/read'); toast('Marked read','ok'); render(); }catch(e){ toast(e.message,'err'); } }));
 };
 
+routes.shipments = async () => {
+  const [rows, drivers] = await Promise.all([GET('/shipments'), GET('/shipments/drivers')]);
+  const canEdit = can('analyst');
+  const totalCost = rows.reduce((s, r) => s + (Number(r.total_cost) || 0), 0);
+  const unreconciled = rows.filter((r) => r.line_count > 0 && !r.reconciled).length;
+  const draft = rows.filter((r) => r.line_count === 0).length;
+  $('#view').innerHTML = `
+    <div class="grid cards" style="margin-bottom:16px">
+      <div class="card"><div class="k">Shipments</div><div class="v">${num(rows.length)}</div></div>
+      <div class="card"><div class="k">Allocated cost</div><div class="v">${money(totalCost)}</div></div>
+      <div class="card"><div class="k">Unreconciled</div><div class="v">${num(unreconciled)}</div><div class="s">allocations must tie to the shipment</div></div>
+      <div class="card"><div class="k">Awaiting allocation</div><div class="v">${num(draft)}</div></div>
+    </div>
+    <div class="split">
+      <div class="panel"><h2>Shipments</h2>
+        <div class="muted small" style="margin:6px 0 10px">Each shipment's cost is split across its lines by one documented driver (chargeable weight, volume or declared value). The allocations always reconcile back to the shipment total.</div>
+        <div class="table-wrap"><table><thead><tr><th>Ref</th><th>Dir</th><th>Cost type</th><th>Driver</th><th class="num">Total</th><th class="num">Allocated</th><th class="num">Diff</th><th>Status</th><th></th></tr></thead>
+        <tbody>${rows.map((r) => `<tr><td class="mono small">${esc(r.ref)}</td><td>${esc(r.direction)}</td><td>${esc(r.cost_type)}</td><td class="small muted">${esc(r.driver)}</td><td class="num">${money(r.total_cost, r.currency)}</td><td class="num">${money(r.allocated_total, r.currency)}</td><td class="num">${r.line_count ? (r.reconciled ? '<span class="badge good">0.00</span>' : `<span class="badge bad">${money(r.difference, r.currency)}</span>`) : '—'}</td><td><span class="badge ${r.status === 'reconciled' ? 'good' : (r.status === 'allocated' ? 'warn' : 'muted')}">${esc(r.status)}</span></td><td>${canEdit && r.line_count ? `<button class="btn sm" data-allocate="${r.id}">Allocate</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="9" class="muted">No shipments yet.</td></tr>'}
+        </tbody></table></div>
+      </div>
+      ${canEdit ? `
+      <div class="panel"><h2>Declare a shipment</h2>
+        <div class="grid" style="grid-template-columns:1fr 1fr;gap:10px">
+          <div class="field"><label>Direction</label><select id="shpDir"><option value="inbound">inbound</option><option value="outbound">outbound</option></select></div>
+          <div class="field"><label>Cost type</label><select id="shpType"><option>freight</option><option>duty</option><option>insurance</option><option>brokerage</option><option>handling</option><option>other</option></select></div>
+          <div class="field"><label>Total cost</label><input id="shpCost" type="number" step="0.01" value="0" /></div>
+          <div class="field"><label>Allocation driver</label><select id="shpDriver">${drivers.map((d) => `<option value="${esc(d.key)}">${esc(d.label)}</option>`).join('')}</select></div>
+          <div class="field"><label>Currency</label><input id="shpCcy" value="USD" /></div>
+          <div class="field"><label>Shipped date</label><input id="shpDate" type="date" /></div>
+        </div>
+        <div class="muted small" style="margin:10px 0 6px">Lines — one basis amount per line for the chosen driver. Format: <code>productId,qty,basis</code> (one per line).</div>
+        <textarea id="shpLines" rows="5" class="mono" placeholder="1,120,4800&#10;2,60,2200"></textarea>
+        <button id="shpAdd" style="margin-top:12px">Create shipment</button>
+      </div>` : '<div class="panel muted">Analyst role required to declare shipments.</div>'}
+    </div>`;
+
+  if ($('#shpAdd')) $('#shpAdd').addEventListener('click', async () => {
+    const lines = ($('#shpLines').value || '').split('\n').map((l) => l.trim()).filter(Boolean)
+      .map((l) => {
+        const [productId, quantity, basisValue] = l.split(',').map((x) => Number(x.trim()));
+        return { productId, quantity, basisValue };
+      });
+    try {
+      await POST('/shipments', {
+        direction: $('#shpDir').value, costType: $('#shpType').value,
+        totalCost: Number($('#shpCost').value), driver: $('#shpDriver').value,
+        currency: $('#shpCcy').value, shippedDate: $('#shpDate').value || undefined, lines,
+      });
+      toast('Shipment created', 'ok'); render();
+    } catch (e) { toast(e.message, 'err'); }
+  });
+  $$('#view [data-allocate]').forEach((b) => b.addEventListener('click', async () => {
+    try {
+      const r = await POST(`/shipments/${b.dataset.allocate}/allocate`, {});
+      toast(r.reconciled ? `Allocated — reconciles to ${money(r.allocatedTotal)}` : `Difference ${money(r.difference)}`, r.reconciled ? 'ok' : 'err');
+      render();
+    } catch (e) { toast(e.message, 'err'); }
+  }));
+};
+
 routes.orders = async () => {
   const rows = await GET('/orders');
   const customers = await loadCustomers();
@@ -1554,6 +1614,7 @@ const TITLES = {
   reports: ['Reports & Exports', 'Supplier performance and one-click Excel exports'],
   performance: ['Performance', 'Profitability, cash, capital and stock KPIs'],
   orders: ['Orders & Payments', 'Purchase/sales orders, payments and realised vs forecast margin'],
+  shipments: ['Shipment Costs', 'Allocate freight, duty and handling across the lines they belong to'],
   users: ['Users & Roles', 'Accounts and role-based access'],
   audit: ['Audit Log', 'Who did what, when'],
 };

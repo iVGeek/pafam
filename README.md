@@ -94,6 +94,11 @@ Notes:
   against the customer target or a policy floor, and flagging anything that
   breaches margin policy or the capital limit. The **purchase plan** consolidates
   all demand into one buying list with shortfalls, cash requirement and totals.
+- **Allocate shipment costs** (§8.2): a shipment's freight, duty, insurance,
+  brokerage or handling is split across the lines it carries by **one documented
+  driver** — chargeable weight, volume or declared value. Allocations always
+  reconcile back to the shipment total (rounding remainder lands on the largest
+  line); anything that does not tie is reported, never hidden.
 - **Measure**: a **KPI suite** (profitability, cash & capital, stock, buying &
   quality) and a deliberately conservative **demand forecast** — a moving
   average of delivered quantity that refuses to extrapolate when there are not
@@ -135,7 +140,7 @@ server/
   index.js              Express app + static UI + SPA fallback
   seed.js               reset + import + demo data (thin wrapper)
   seedData.js           reusable seed routine (used by seed + auto-seed on boot)
-  routes/               meta, imports, offers, products, trading, reservations, auth, captures, sourcing, alerts, orders, recommend, purchase-plan, kpis, forecast, export
+  routes/               meta, imports, offers, products, trading, reservations, tasks, shipments, auth, captures, sourcing, alerts, orders, recommend, purchase-plan, kpis, forecast, export
   services/
     importer.js         import pipeline (GTIN, packs, snapshots, exceptions, price_history)
     matcher.js          GTIN/alias -> product master
@@ -147,6 +152,7 @@ server/
     orders.js           orders, payments and realised vs forecast margin
     reservations.js     stock holds + the no-oversell guard (section 11/20)
     tasks.js             follow-up tasks from captured leads (section 15)
+    shipments.js         allocate shipment cost by a documented driver (section 8.2)
     recommend.js        demand -> cheapest executable supplier, MOQ/policy aware
     purchasePlan.js     consolidated buying list across all open demand
     forecast.js         moving-average demand baseline (refuses thin history)
@@ -172,7 +178,7 @@ samples/                real supplier files used for the demo
 ## Data model (highlights)
 
 `suppliers · uploads · offers · products · product_aliases · exceptions ·
-inventory_lots · reservations · customers · demands · quotes · orders · payments · price_history ·
+inventory_lots · reservations · shipments · shipment_allocations · customers · demands · quotes · orders · payments · price_history ·
 fx_rates · alerts · tasks · settings · audit_log · users · sessions · captures`
 
 Every offer stores its source file, row, list date and raw values, so imports

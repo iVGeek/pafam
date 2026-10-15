@@ -29,6 +29,7 @@ const analytics = require('../server/services/analytics');
 const { movingAverageForecast } = require('../server/services/forecast');
 const reservations = require('../server/services/reservations');
 const tasks = require('../server/services/tasks');
+const shipments = require('../server/services/shipments');
 const { db } = require('../server/db');
 // Seed the throwaway DB once so the DB-backed tests (purchase plan, KPIs,
 // reservations) have deterministic demo data, exactly as the app runs it.
@@ -503,6 +504,56 @@ test('reservations: in-transit stock is not available to sell', () => {
   const lotId = seedLot({ onHand: 0, inTransit: 500 });
   assert.equal(reservations.availableToSell(lotId), 0);
   assert.equal(reservations.reserve({ lotId, quantity: 1 }).ok, false);
+});
+
+test('shipment: allocates cost by the declared driver and reconciles exactly', () => {
+  const s = shipments.createShipment({
+    ref: 'SHIP-TEST-W', direction: 'inbound', supplierCode: 'ALCODIS', costType: 'freight',
+    totalCost: 1000, currency: 'USD', driver: 'value', declaredValue: 6000, createdBy: 'test',
+    lines: [{ productId: 1, quantity: 10, basisValue: 4000 }, { productId: 2, quantity: 5, basisValue: 2000 }],
+  });
+  assert.ok(s.id);
+  const r = shipments.allocate(s.id, 'test');
+  assert.equal(r.reconciled, true);
+  assert.equal(r.shipmentTotal, 1000);
+  assert.equal(r.allocatedTotal, 1000);
+  assert.equal(r.difference, 0);
+  // 4000/6000 of 1000 = 666.67, 2000/6000 = 333.33
+  assert.equal(r.lines[0].allocatedCost, 666.67);
+  assert.equal(r.lines[1].allocatedCost, 333.33);
+});
+
+test('shipment: rounding remainder still reconciles to the total', () => {
+  // 100 / 3 splits into thirds that cannot each be exact.
+  const s = shipments.createShipment({
+    ref: 'SHIP-TEST-R', totalCost: 100, driver: 'weight', totalWeightKg: 3, createdBy: 'test',
+    lines: [{ productId: 1, quantity: 1, basisValue: 1 }, { productId: 2, quantity: 1, basisValue: 1 }, { productId: 3, quantity: 1, basisValue: 1 }],
+  });
+  const r = shipments.allocate(s.id, 'test');
+  assert.equal(r.reconciled, true);
+  assert.equal(r.allocatedTotal, 100);
+  const sum = r.lines.reduce((a, l) => a + l.allocatedCost, 0);
+  assert.equal(Math.round(sum * 100) / 100, 100, 'allocations must add back to the shipment total');
+});
+
+test('shipment: refuses an unknown driver or a zero allocation basis', () => {
+  assert.equal(shipments.createShipment({ totalCost: 100, driver: 'vibes' }).error != null, true);
+  assert.equal(shipments.createShipment({ totalCost: 0, driver: 'value' }).error != null, true);
+
+  const s = shipments.createShipment({
+    ref: 'SHIP-TEST-Z', totalCost: 500, driver: 'weight', createdBy: 'test',
+    lines: [{ productId: 1, quantity: 1, basisValue: 0 }],
+  });
+  const r = shipments.allocate(s.id, 'test');
+  assert.match(r.error, /basis is zero/);
+});
+
+test('shipment: an empty shipment is not reported as reconciled', () => {
+  const s = shipments.createShipment({ ref: 'SHIP-TEST-E', totalCost: 750, driver: 'volume', createdBy: 'test', lines: [] });
+  assert.match(shipments.allocate(s.id, 'test').error, /no lines/);
+  const rec = shipments.reconcile(s.id);
+  assert.equal(rec.reconciled, false);
+  assert.equal(rec.allocatedTotal, 0);
 });
 
 test('tasks: a captured lead gets an automatic follow-up, noise does not', () => {

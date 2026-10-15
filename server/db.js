@@ -338,6 +338,45 @@ CREATE TABLE IF NOT EXISTS payments (
 );
 CREATE INDEX IF NOT EXISTS idx_payments_order ON payments(order_id);
 
+-- Shipment cost allocation (brief section 8 control 2): a shipment's cost is
+-- allocated across the offers/orders it carries using one documented driver
+-- (chargeable weight, volume or value). The allocated amounts MUST reconcile
+-- to the shipment total — enforced in services/shipments.js.
+CREATE TABLE IF NOT EXISTS shipments (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  ref TEXT UNIQUE,
+  direction TEXT NOT NULL DEFAULT 'inbound',   -- inbound (from supplier) | outbound (to customer)
+  supplier_code TEXT,
+  customer_id INTEGER REFERENCES customers(id) ON DELETE SET NULL,
+  incoterm TEXT,
+  cost_type TEXT NOT NULL DEFAULT 'freight',  -- freight | duty | insurance | brokerage | handling | other
+  total_cost REAL NOT NULL DEFAULT 0,
+  currency TEXT DEFAULT 'USD',
+  driver TEXT NOT NULL DEFAULT 'value',       -- weight | volume | value  (documented allocation basis)
+  total_weight_kg REAL,
+  total_volume_m3 REAL,
+  declared_value REAL,
+  shipped_date TEXT,
+  status TEXT NOT NULL DEFAULT 'draft',        -- draft | allocated | reconciled
+  notes TEXT,
+  created_by TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_shipments_status ON shipments(status);
+
+CREATE TABLE IF NOT EXISTS shipment_allocations (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  shipment_id INTEGER NOT NULL REFERENCES shipments(id) ON DELETE CASCADE,
+  offer_id INTEGER,
+  order_id INTEGER REFERENCES orders(id) ON DELETE SET NULL,
+  product_id INTEGER REFERENCES products(id) ON DELETE SET NULL,
+  quantity REAL NOT NULL DEFAULT 0,
+  basis_value REAL NOT NULL DEFAULT 0,        -- the driver's amount for this line
+  allocated_cost REAL NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_alloc_shipment ON shipment_allocations(shipment_id);
+
 CREATE TABLE IF NOT EXISTS audit_log (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   actor TEXT,

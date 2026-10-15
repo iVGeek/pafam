@@ -191,6 +191,23 @@ const server = app.listen(PORT, async () => {
     const qxBad = await admin.req('GET', '/export/quote/999999.xlsx');
     console.log('quote export missing (expect 404):', qxBad.status);
 
+    // shipment cost allocation (section 8 control 2)
+    const drv = await admin.req('GET', '/shipments/drivers');
+    console.log('shipment drivers:', drv.status, '|', (drv.body || []).map((d) => d.key).join(','));
+    const badDrv = await admin.req('POST', '/shipments', { totalCost: 100, driver: 'vibes' });
+    console.log('shipment bad driver (expect 400):', badDrv.status);
+    const shp = await admin.req('POST', '/shipments', {
+      direction: 'inbound', supplierCode: 'ALCODIS', costType: 'freight', totalCost: 1000,
+      driver: 'value', declaredValue: 6000,
+      lines: [{ productId: pid, quantity: 10, basisValue: 4000 }, { productId: pid, quantity: 5, basisValue: 2000 }],
+    });
+    const alloc = await admin.req('POST', `/shipments/${shp.body.id}/allocate`, {});
+    console.log('shipment allocate:', alloc.status, '| total:', alloc.body.shipmentTotal,
+      '| allocated:', alloc.body.allocatedTotal, '| reconciled:', alloc.body.reconciled,
+      '| lines:', (alloc.body.lines || []).map((l) => l.allocatedCost).join('+'));
+    const shpList = await admin.req('GET', '/shipments');
+    console.log('shipments listing:', shpList.status, '| count:', (shpList.body || []).length);
+
     // buying recommendations (demand -> cheapest executable supplier)
     const recs = await admin.req('GET', '/recommendations');
     console.log('recommendations:', recs.status, '| rows:', (recs.body.rows || []).length, '| actionable:', recs.body.summary && recs.body.summary.actionable);
