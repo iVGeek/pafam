@@ -95,7 +95,17 @@ const server = app.listen(PORT, async () => {
 
     // deals: profitability + cash flow
     const offers = await admin.req('GET', '/offers?limit=1');
+    const apprSummary = await admin.req('GET', '/approvals/summary');
+    console.log('approvals:', apprSummary.status, '| review:', apprSummary.body.review, '| approved:', apprSummary.body.approved, '| enforced:', apprSummary.body.required);
     const offerRow = (offers.body.rows || offers.body)[0];
+    if (offerRow) {
+      const vAppr = await viewer.req('POST', `/offers/${offerRow.id}/approve`, {});
+      console.log('viewer approve (expect 403):', vAppr.status);
+      const appr = await admin.req('POST', `/offers/${offerRow.id}/approve`, { note: 'smoke sign-off' });
+      console.log('approve offer:', appr.status, '| status:', appr.body.approvalStatus);
+      const rej = await admin.req('POST', `/offers/${offerRow.id}/reject`, { note: 'smoke reject' });
+      console.log('reject offer:', rej.status, '| status:', rej.body.approvalStatus);
+    }
     const deal = await admin.req('POST', '/deals/compute', { offerId: offerRow.id, customerId: 1, quantity: 24, sellingUnitPrice: 60 });
     console.log('deals/compute:', deal.status, '| margin:', deal.body.deal && deal.body.deal.metrics.marginPct,
       '| contribution:', deal.body.deal && deal.body.deal.contribution.total,

@@ -509,6 +509,19 @@ function migrate() {
   for (const [c, ddl] of [['supplier_code', 'TEXT'], ['dedupe_key', 'TEXT']]) ensureColumn('alerts', c, ddl);
   db.exec('CREATE INDEX IF NOT EXISTS idx_alerts_dedupe ON alerts(dedupe_key)');
   db.exec('CREATE INDEX IF NOT EXISTS idx_alerts_read ON alerts(read)');
+
+  // offers: staff approval (brief sections 3, 16, 20). This is deliberately
+  // separate from `status`, which records the *matching* outcome (new /
+  // matched / exception / ignored). Approval records who signed off on the
+  // price and quantity, which is a different decision made by a different role.
+  const offerApprovalCols = [
+    ['approval_status', "TEXT NOT NULL DEFAULT 'review'"],  // review | approved | rejected | expired
+    ['approved_by', 'TEXT'],
+    ['approved_at', 'TEXT'],
+    ['review_note', 'TEXT'],
+  ];
+  for (const [c, ddl] of offerApprovalCols) ensureColumn('offers', c, ddl);
+  db.exec('CREATE INDEX IF NOT EXISTS idx_offers_approval ON offers(approval_status)');
 }
 
 function init() {
@@ -534,6 +547,7 @@ function init() {
     low_stock_threshold: '10',
     alert_dedupe_days: '7',
     capital_limit: '250000',
+    require_offer_approval: '0',
     followup_days: '2',
     session_hours: '168',
     capture_secret: 'change-me-capture-secret',

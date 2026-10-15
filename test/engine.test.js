@@ -30,6 +30,7 @@ const { movingAverageForecast } = require('../server/services/forecast');
 const reservations = require('../server/services/reservations');
 const tasks = require('../server/services/tasks');
 const shipments = require('../server/services/shipments');
+const sourcing = require('../server/services/sourcing');
 const { db } = require('../server/db');
 // Seed the throwaway DB once so the DB-backed tests (purchase plan, KPIs,
 // reservations) have deterministic demo data, exactly as the app runs it.
@@ -579,6 +580,71 @@ test('realise: reports XIRR only when dated payments support it', () => {
   ]);
   assert.equal(undated.xirrPct, null);
   assert.ok(undated.xirrReason);
+});
+
+test('approvals: staff sign-off is recorded and can be enforced', () => {
+  const approvals = require('../server/services/approvals');
+  const { setSetting } = require('../server/db');
+  const row = db.prepare(
+    `SELECT product_id FROM offers WHERE product_id IS NOT NULL AND price > 0 AND gtin_canonical IS NOT NULL
+     GROUP BY product_id ORDER BY COUNT(*) DESC LIMIT 1`
+  ).get();
+  const pid = row.product_id;
+
+  // Baseline: enforcement off, everything tradeable.
+  setSetting('require_offer_approval', '0');
+  assert.equal(approvals.approvalRequired(), false);
+  const open = sourcing.sourceLowest({ productId: pid, quantity: 12, destination: 'US' });
+  assert.equal(approvals.counts().review > 0, true);
+
+  // Enforcement on: unapproved offers drop out of the executable set.
+  setSetting('require_offer_approval', '1');
+  try {
+    assert.equal(approvals.approvalRequired(), true);
+    const enforced = sourcing.sourceLowest({ productId: pid, quantity: 12, destination: 'US' });
+    assert.ok(enforced.counts.executable <= open.counts.executable);
+    for (const r of enforced.ranked) {
+      assert.equal(r.approvalStatus, 'approved', 'only approved offers may be executable');
+    }
+  } finally {
+    setSetting('require_offer_approval', '0');
+  }
+});
+
+test('approvals: cannot sign off an offer with no price or no barcode', () => {
+  const approvals = require('../server/services/approvals');
+  const noPrice = db.prepare('SELECT id FROM offers WHERE price IS NULL OR price <= 0 LIMIT 1').get();
+  if (noPrice) {
+    const r = approvals.decide(noPrice.id, 'approved', 'buyer');
+    assert.equal(r.ok, false);
+    assert.match(r.error, /no price/);
+  }
+  const noGtin = db.prepare("SELECT id FROM offers WHERE (gtin_canonical IS NULL OR gtin_canonical = '') AND price > 0 LIMIT 1").get();
+  if (noGtin) {
+    const r = approvals.decide(noGtin.id, 'approved', 'buyer');
+    assert.equal(r.ok, false);
+    assert.match(r.error, /no valid barcode/);
+  }
+  assert.match(approvals.decide(1, 'banana', 'buyer').error, /decision must be one of/);
+});
+
+test('GL journal balances per currency and never totals across currencies', () => {
+  const reporting = require('../server/services/reporting');
+  const order = db.prepare('SELECT id FROM orders LIMIT 1').get();
+  db.prepare("INSERT INTO payments(order_id,direction,amount,currency,paid_date) VALUES(?,?,?,?,?)")
+    .run(order.id, 'outbound', 500, 'EUR', '2026-01-05');
+  db.prepare("INSERT INTO payments(order_id,direction,amount,currency,paid_date) VALUES(?,?,?,?,?)")
+    .run(order.id, 'inbound', 900, 'GBP', '2026-02-05');
+
+  const sheet = reporting.BUILDERS.gl();
+  const eur = sheet.currencies.find((c) => c.currency === 'EUR');
+  const gbp = sheet.currencies.find((c) => c.currency === 'GBP');
+  assert.ok(eur && gbp, 'each currency must get its own total');
+  assert.equal(eur.debit, eur.credit, 'EUR must balance');
+  assert.equal(gbp.debit, gbp.credit, 'GBP must balance');
+  // The critical part: no single figure mixes currencies.
+  assert.equal(sheet.currencies.length >= 3, true);
+  for (const c of sheet.currencies) assert.equal(c.debit, c.credit);
 });
 
 test('shipment: allocates cost by the declared driver and reconciles exactly', () => {

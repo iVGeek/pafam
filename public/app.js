@@ -277,19 +277,34 @@ routes.offers = async () => {
   const supOpts = state.suppliers.map((s) => `<option value="${esc(s.code)}" ${params.supplier === s.code ? 'selected' : ''}>${esc(s.name)}</option>`).join('');
   const catOpts = cats.slice(0, 60).map((c) => `<option value="${esc(c.category)}" ${params.category === c.category ? 'selected' : ''}>${esc(c.category)} (${c.n})</option>`).join('');
   $('#view').innerHTML = `
+    <div class="grid cards" style="margin-bottom:16px">
+      <div class="card"><div class="k">Awaiting review</div><div class="v">${num((data.approvals || {}).review)}</div><div class="s">staff sign-off pending</div></div>
+      <div class="card"><div class="k">Approved</div><div class="v">${num((data.approvals || {}).approved)}</div><div class="s">tradeable</div></div>
+      <div class="card"><div class="k">Rejected</div><div class="v">${num((data.approvals || {}).rejected)}</div></div>
+      <div class="card"><div class="k">Approval enforced</div><div class="v">${data.approvalRequired ? 'ON' : 'off'}</div><div class="s">${data.approvalRequired ? 'unapproved offers cannot be traded' : 'review state is recorded only'}</div></div>
+    </div>
     <div class="panel">
       <div class="row" style="margin-bottom:12px">
         <input id="ofQ" placeholder="Search description / barcode / SKU" value="${esc(params.q || '')}" style="min-width:260px" />
         <select id="ofSupplier"><option value="">All suppliers</option>${supOpts}</select>
         <select id="ofStatus"><option value="">All status</option>${['matched', 'exception', 'new'].map((s) => `<option ${params.status === s ? 'selected' : ''}>${s}</option>`).join('')}</select>
+        <select id="ofApproval"><option value="">All approvals</option>${['review', 'approved', 'rejected', 'expired'].map((s) => `<option ${params.approval === s ? 'selected' : ''}>${s}</option>`).join('')}</select>
         <select id="ofCategory"><option value="">All categories</option>${catOpts}</select>
         <button id="ofGo" class="sm">Apply</button>
         <span class="spacer"></span>
         <span class="muted small">${num(data.total)} offers</span>
       </div>
       <div class="table-wrap"><table>
-        <thead><tr><th>Supplier</th><th>Barcode</th><th>Product</th><th>Cat</th><th class="num">Size</th><th class="num">Price</th><th>Basis</th><th>Status</th></tr></thead>
-        <tbody>${data.rows.map((o) => `
+        <thead><tr><th>Supplier</th><th>Barcode</th><th>Product</th><th>Cat</th><th class="num">Size</th><th class="num">Price</th><th>Basis</th><th>Match</th><th>Approval</th><th></th></tr></thead>
+        <tbody>${data.rows.map((o) => {
+          const appr = o.approval_status || 'review';
+          const apprBadge = appr === 'approved'
+            ? `<span class="badge good" title="${esc(o.approved_by || '')}${o.approved_at ? ' · ' + esc(o.approved_at) : ''}">approved</span>`
+            : appr === 'rejected'
+              ? `<span class="badge bad" title="${esc(o.review_note || '')}">rejected</span>`
+              : appr === 'expired' ? '<span class="badge muted">expired</span>'
+              : '<span class="badge warn">in review</span>';
+          return `
           <tr>
             <td><span class="badge info">${esc(o.supplier_code)}</span></td>
             <td class="mono">${esc(o.gtin_source || '')} ${o.gtin_valid ? '' : '<span class="badge bad">!</span>'}</td>
@@ -299,7 +314,10 @@ routes.offers = async () => {
             <td class="num pill-price">${money(o.price, o.currency)}</td>
             <td class="small">${esc(o.price_basis || '')}${o.units_per_case ? ' ×' + o.units_per_case : ''}</td>
             <td>${o.status === 'exception' ? '<span class="badge warn">exception</span>' : (o.status === 'matched' ? '<span class="badge good">matched</span>' : '<span class="badge muted">new</span>')}</td>
-          </tr>`).join('') || '<tr><td colspan="8" class="muted">No offers.</td></tr>'}
+            <td>${apprBadge}</td>
+            <td class="nowrap">${can('buyer') && appr !== 'approved' ? `<button class="btn sm" data-approve="${o.id}">Approve</button> <button class="btn sm ghost" data-reject="${o.id}">Reject</button>` : ''}</td>
+          </tr>`;
+        }).join('') || '<tr><td colspan="10" class="muted">No offers.</td></tr>'}
         </tbody>
       </table></div>
       <div class="row" style="margin-top:12px">
@@ -308,11 +326,19 @@ routes.offers = async () => {
         <button class="ghost sm" id="ofNext" ${params.offset + params.limit >= data.total ? 'disabled' : ''}>Next ›</button>
       </div>
     </div>`;
-  const apply = () => { params.q = $('#ofQ').value.trim(); params.supplier = $('#ofSupplier').value; params.status = $('#ofStatus').value; params.category = $('#ofCategory').value; params.offset = 0; render(); };
+  const apply = () => { params.q = $('#ofQ').value.trim(); params.supplier = $('#ofSupplier').value; params.status = $('#ofStatus').value; params.approval = $('#ofApproval').value; params.category = $('#ofCategory').value; params.offset = 0; render(); };
   $('#ofGo').addEventListener('click', apply);
   $('#ofQ').addEventListener('keydown', (e) => { if (e.key === 'Enter') apply(); });
   $('#ofPrev').addEventListener('click', () => { params.offset = Math.max(0, params.offset - params.limit); render(); });
   $('#ofNext').addEventListener('click', () => { params.offset += params.limit; render(); });
+  for (const [attr, verb] of [['approve', 'approve'], ['reject', 'reject']]) {
+    $$(`#view [data-${attr}]`).forEach((b) => b.addEventListener('click', async () => {
+      const id = b.dataset[attr];
+      const note = verb === 'reject' ? (prompt('Why reject this offer? (optional)') || '') : '';
+      try { await POST(`/offers/${id}/${verb}`, { note }); toast(`Offer ${verb}d`, 'ok'); render(); }
+      catch (e) { toast(e.message, 'err'); }
+    }));
+  }
 };
 
 routes.products = async () => {
@@ -892,6 +918,7 @@ routes.settings = async () => {
   $('#view').innerHTML = `
     <div class="split">
       <div class="panel"><h2>Platform settings</h2>
+        <div class="muted small" style="margin-bottom:10px"><b>require_offer_approval</b> = <code>1</code> makes staff sign-off mandatory: an offer that has not been approved cannot win a sourcing comparison or drive a buying recommendation. Left as <code>0</code>, the review state is still recorded and shown on the Supplier Offers page but does not block trading. <b>followup_days</b> sets how long a captured lead has before its follow-up task is overdue.</div>
         ${Object.entries(s).map(([k, v]) => `<div class="field" style="margin-bottom:8px"><label>${esc(k)}</label><input data-k="${esc(k)}" value="${esc(v)}" /></div>`).join('')}
         <button id="setSave" style="margin-top:10px">Save settings</button>
       </div>

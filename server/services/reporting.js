@@ -162,6 +162,11 @@ function alertsSheet() {
 // entry: paying a supplier debits Purchases and credits Bank; receiving from a
 // customer debits Bank and credits Sales. Intended to be imported into an
 // accounting package (Xero / QuickBooks / Sage) or reconciled by hand.
+//
+// Totals are produced PER CURRENCY. Adding EUR to USD to produce one "total"
+// would be a meaningless number, so we never do it: each currency gets its own
+// balanced TOTAL line, and any unconvertible cross-currency imbalance is
+// called out rather than silently netted off.
 function glSheet() {
   const rows = db.prepare(
     `SELECT p.*, o.ref AS order_ref, o.supplier_code
@@ -174,20 +179,38 @@ function glSheet() {
     const date = p.paid_date || p.created_at || '';
     const ref = p.order_ref + (p.reference ? ' / ' + p.reference : '');
     const memo = (p.direction === 'outbound' ? 'Supplier payment' : 'Customer receipt') + ' — ' + ref;
+    const ccy = p.currency || 'USD';
     if (p.direction === 'outbound') {
-      lines.push({ date, account: 'Purchases', memo, debit: pricing.round2(amount), credit: 0, currency: p.currency, ref: p.order_ref });
-      lines.push({ date, account: 'Bank', memo, debit: 0, credit: pricing.round2(amount), currency: p.currency, ref: p.order_ref });
+      lines.push({ date, account: 'Purchases', memo, debit: pricing.round2(amount), credit: 0, currency: ccy, ref: p.order_ref });
+      lines.push({ date, account: 'Bank', memo, debit: 0, credit: pricing.round2(amount), currency: ccy, ref: p.order_ref });
     } else {
-      lines.push({ date, account: 'Bank', memo, debit: pricing.round2(amount), credit: 0, currency: p.currency, ref: p.order_ref });
-      lines.push({ date, account: 'Sales', memo, debit: 0, credit: pricing.round2(amount), currency: p.currency, ref: p.order_ref });
+      lines.push({ date, account: 'Bank', memo, debit: pricing.round2(amount), credit: 0, currency: ccy, ref: p.order_ref });
+      lines.push({ date, account: 'Sales', memo, debit: 0, credit: pricing.round2(amount), currency: ccy, ref: p.order_ref });
     }
   }
-  const totalDebit = pricing.round2(lines.reduce((s, l) => s + l.debit, 0));
-  const totalCredit = pricing.round2(lines.reduce((s, l) => s + l.credit, 0));
-  lines.push({ date: '', account: '', memo: 'TOTAL', debit: totalDebit, credit: totalCredit, currency: '', ref: '' });
+
+  // Balance each currency separately.
+  const byCurrency = new Map();
+  for (const l of lines) {
+    const k = l.currency || 'USD';
+    const cur = byCurrency.get(k) || { currency: k, debit: 0, credit: 0 };
+    cur.debit = pricing.round2(cur.debit + l.debit);
+    cur.credit = pricing.round2(cur.credit + l.credit);
+    byCurrency.set(k, cur);
+  }
+  const summary = Array.from(byCurrency.values()).sort((a, b) => a.currency.localeCompare(b.currency));
+  for (const t of summary) {
+    lines.push({
+      date: '', account: '',
+      memo: `TOTAL ${t.currency}${t.debit === t.credit ? '' : ' — OUT OF BALANCE'}`,
+      debit: t.debit, credit: t.credit, currency: t.currency, ref: '',
+    });
+  }
+
   return {
     name: 'GL Journal',
     rows: lines,
+    currencies: summary,
     columns: [
       { title: 'Date', key: 'date', wch: 14 },
       { title: 'Account', key: 'account', wch: 16 },

@@ -5,6 +5,7 @@ const { computeLanded } = require('./landing');
 const pricing = require('./pricing');
 const fx = require('./fx');
 const gtin = require('../../src/lib/gtin');
+const approvals = require('./approvals');
 
 // Business Q1: for an exact SKU and quantity delivered to our destination,
 // which supplier offers the lowest EXECUTABLE landed cost? This service loads
@@ -57,6 +58,7 @@ function sourceLowest({ productId, gtin: rawGtin, quantity, destination, baseCur
 
   const rows = db.prepare(OFFER_QUERY).all(product.id);
   const rateCache = {};
+  const approvalEnforced = approvals.approvalRequired();
   const results = rows.map((r) => {
     const key = r.currency;
     if (!(key in rateCache)) rateCache[key] = fx.getRate(r.currency, base) || 1;
@@ -71,13 +73,24 @@ function sourceLowest({ productId, gtin: rawGtin, quantity, destination, baseCur
       handling_per_unit: r.handling_per_unit,
       other_tax_pct: r.other_tax_pct,
     };
-    return computeLanded(r, supplier, {
+    const landed = computeLanded(r, supplier, {
       quantity: qty,
       destination: dest,
       baseCurrency: base,
       settings,
       fxRate: rateCache[key],
     });
+    // Staff approval (section 3/16): when enforcement is on, an offer that has
+    // not been signed off cannot be traded, so it must not win the comparison.
+    const approvalStatus = r.approval_status || 'review';
+    if (approvalEnforced && approvalStatus !== 'approved') {
+      landed.flags.push('not-approved');
+      landed.executable = false;
+      landed.missing.push('staff approval');
+    }
+    landed.approvalStatus = approvalStatus;
+    landed.approvedBy = r.approved_by || null;
+    return landed;
   });
 
   const executable = results

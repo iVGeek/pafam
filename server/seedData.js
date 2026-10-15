@@ -23,6 +23,20 @@ function seedData(opts = {}) {
     log(`imported ${s.code}: ${JSON.stringify(r)}`);
   }
 
+  // Staff approval (section 3/16). Sign off the first list as if a trader had
+  // already reviewed it, and leave the most recent one awaiting review so the
+  // approval queue has something real in it. Enforcement stays off by default
+  // (require_offer_approval), so this is a workflow to work, not a blocker.
+  {
+    const uploads = db.prepare('SELECT id FROM uploads ORDER BY id').all();
+    if (uploads.length) {
+      const approvalsSvc = require('./services/approvals');
+      for (let i = 0; i < uploads.length - 1; i++) {
+        approvalsSvc.decideUpload(uploads[i].id, 'approved', 'admin', 'Reviewed at import');
+      }
+    }
+  }
+
   const today = new Date().toISOString().slice(0, 10);
   fx.setRate('EUR', 'USD', 1.08, { source: 'demo', rateDate: today });
   fx.setRate('GBP', 'USD', 1.27, { source: 'demo', rateDate: today });
