@@ -194,6 +194,28 @@ expiry_date, notes, cap_type, refillable, product_id, status, units_per_case_sou
     `${supplier.code}: ${counters.imported} offers, ${counters.matched} matched, ${counters.blankBarcode} blank, ${counters.invalidBarcode} invalid`);
   try { alerts.generateAlerts({ actor }); } catch (e) { console.warn('alert gen after import failed:', e.message); }
 
+  audit(actor, 'import', 'upload', uploadId,
+    `${supplier.code}: ${counters.imported} offers, ${counters.matched} matched, ${counters.blankBarcode} blank, ${counters.invalidBarcode} invalid`);
+  try { alerts.generateAlerts({ actor }); } catch (e) { console.warn('alert gen after import failed:', e.message); }
+
+  // Autopilot: rewrite the freshly imported list onto the system standard
+  // template (see services/template.js). A cleaning failure must never fail the
+  // import itself, so it is contained and reported in the result.
+  let cleaned = null;
+  if (!opts.skipClean && getSetting('auto_clean_imports', '1') === '1') {
+    try {
+      const template = require('./template');
+      const info = template.cleanUpload(uploadId);
+      if (info) {
+        audit(actor, 'clean', 'upload', uploadId, `Cleaned ${info.rows} rows to standard template`);
+        cleaned = { filename: info.filename, rows: info.rows };
+      }
+    } catch (e) {
+      console.warn('auto-clean after import failed:', e.message);
+      cleaned = { error: e.message };
+    }
+  }
+
   return {
     duplicate: false,
     uploadId,
@@ -202,6 +224,7 @@ expiry_date, notes, cap_type, refillable, product_id, status, units_per_case_sou
     sheet: extracted.sheetName,
     headerRow: extracted.rowIndex,
     rows: extracted.offers.length,
+    cleaned,
     ...counters,
   };
 }

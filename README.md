@@ -59,6 +59,14 @@ Notes:
 - **Import** supplier `.xls`/`.xlsx` price lists with auto header-row detection
   and per-vendor profiles (`src/importers/profiles.js`). Re-importing an
   identical file is ignored (SHA-256 dedupe).
+- **Auto-clean every import to the standard template.** On import (auto-pilot)
+  each upload is rewritten onto the standard supplier template — the column set,
+  enums and field guide in `supplier-template.xlsx` — into
+  `data/cleaned/<supplier>-upload-<id>.xlsx`, with brand, fragrance,
+  concentration, size, gender, retail-pack/tester and enum values normalised.
+  Download it from the import list ("Template") or
+  `GET /api/export/cleaned/:uploadId.xlsx`. Toggle with the `auto_clean_imports`
+  setting. See `server/services/template.js`.
 - **Validate** every barcode with the GS1 check digit and canonicalise to
   GTIN-14; blanks and failures go to an **exception queue**.
 - **Match** offers onto a shared **product master** by canonical GTIN, so the
@@ -157,6 +165,7 @@ server/
   routes/               meta, imports, offers, products, trading, reservations, tasks, shipments, auth, captures, sourcing, alerts, orders, recommend, purchase-plan, kpis, forecast, export
   services/
     importer.js         import pipeline (GTIN, packs, snapshots, exceptions, price_history)
+    template.js         auto-clean to the standard supplier template (after every import)
     matcher.js          GTIN/alias -> product master
     comparison.js       per-bottle normalisation + ranking + flags
     pricing.js          pure pricing/landed-cost/cashflow/scenario/XIRR engine

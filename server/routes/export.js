@@ -4,6 +4,7 @@ const express = require('express');
 const router = express.Router();
 const reporting = require('../services/reporting');
 const analytics = require('../services/analytics');
+const template = require('../services/template');
 
 // GET /api/reports  — supplier performance + win mix + overview for the page.
 router.get('/reports', (req, res) => {
@@ -23,6 +24,12 @@ router.get('/integrations', (req, res) => {
       auth: 'session cookie (viewer+)',
     })),
     quote: { method: 'GET', url: `${base}/export/quote/:id.xlsx`, auth: 'session cookie (viewer+)', note: 'cost-masked, customer-facing' },
+    cleanedImport: {
+      method: 'GET',
+      url: `${base}/export/cleaned/:uploadId.xlsx`,
+      auth: 'session cookie (viewer+)',
+      note: 'the standard-template snapshot auto-generated for each import',
+    },
     webhook: {
       method: 'POST',
       url: `${base}/captures/webhook`,
@@ -41,6 +48,18 @@ router.get('/export/quote/:id', (req, res) => {
   res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
   res.setHeader('Content-Disposition', `attachment; filename="ptp-quote-${id}.xlsx"`);
   res.send(buffer);
+});
+
+// GET /api/export/cleaned/:uploadId.xlsx — the standard-template snapshot that
+// is generated automatically after every import. Serves the stored snapshot if
+// present, otherwise rebuilds it from the stored offers.
+router.get('/export/cleaned/:id', (req, res) => {
+  const id = String(req.params.id || '').replace(/\.xlsx$/i, '');
+  const out = template.cleanedBuffer(isNaN(Number(id)) ? id : Number(id));
+  if (!out) return res.status(404).json({ error: 'upload not found' });
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.setHeader('Content-Disposition', `attachment; filename="${out.filename}"`);
+  res.send(out.buffer);
 });
 
 // GET /api/export/:kind.xlsx  (viewer+ via global auth)

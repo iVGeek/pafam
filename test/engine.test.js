@@ -47,6 +47,8 @@ const tasks = require('../server/services/tasks');
 const shipments = require('../server/services/shipments');
 const sourcing = require('../server/services/sourcing');
 const demands = require('../server/services/demands');
+const template = require('../server/services/template');
+const XLSX = require('xlsx');
 
 // No cached fixture: run the real import pipeline so the DB-backed tests
 // (purchase plan, KPIs, approvals, GL, shipments) see realistic data, then
@@ -923,3 +925,113 @@ test('forecast baseline refuses to extrapolate thin history', () => {
 
   assert.equal(movingAverageForecast([]).sufficient, false);
 });
+
+// ---------------------------------------------------------------------------
+// Standard-template cleaning (auto-run after every import)
+// ---------------------------------------------------------------------------
+
+test('cleaning: concentration, gender, retail pack and confidence normalise', () => {
+  assert.equal(template.parseConcentration('Eau de Toilette 50ml'), 'EDT');
+  assert.equal(template.parseConcentration('EAU DE PARFUM 100 ML'), 'EDP');
+  assert.equal(template.parseConcentration('EXTRAIT DE PARFUM'), 'Parfum');
+  assert.equal(template.parseConcentration('EDC 200ml'), 'EDC');
+  assert.equal(template.parseConcentration('no idea'), '');
+
+  assert.equal(template.parseGender('PERFUME MUJER'), 'Women');
+  assert.equal(template.parseGender('PERFUME HOMBRE'), 'Men');
+  assert.equal(template.parseGender('UNISEX'), 'Unisex');
+  assert.equal(template.parseGender('EAU DE PARFUM'), '');
+
+  assert.equal(template.parseRetailPack('DIOR SAUVAGE TESTER 100ML'), 'Tester');
+  assert.equal(template.parseRetailPack('CHANEL COFFRET GIFT SET'), 'Gift set');
+  assert.equal(template.parseRetailPack('RECARGA REFILL 100ML'), 'Refill');
+  assert.equal(template.parseRetailPack('BLEU DE CHANEL 100ML'), 'Retail');
+
+  assert.equal(template.normUs('Eligible'), 'Eligible');
+  assert.equal(template.normUs('not eligible'), 'Not eligible');
+  assert.equal(template.normUs(''), '');
+  assert.equal(template.normConfidence('on request'), 'On request');
+  assert.equal(template.normConfidence('confirmed'), 'Firm');
+});
+
+test('cleaning: brand and fragrance split out of the supplier description', () => {
+  const a = template.parseBrand('CHANEL BLEU DE CHANEL EAU DE PARFUM 100 ML');
+  assert.equal(a.brand, 'Chanel');
+  assert.equal(template.parseFragrance(a.rest, 100), 'Bleu De Chanel');
+
+  const b = template.parseBrand('Tom Ford Lost Cherry EDP 50ml');
+  assert.equal(b.brand, 'Tom Ford');
+  assert.equal(template.parseFragrance(b.rest, 50), 'Lost Cherry');
+
+  const unknown = template.parseBrand('Acme Wonderland 100ml');
+  assert.equal(unknown.brand, 'Acme');
+
+  const n5 = template.parseBrand('Chanel N°5 Eau de Parfum Vaporizador 30 ml');
+  assert.equal(n5.brand, 'Chanel');
+  assert.equal(template.parseFragrance(n5.rest, 30), 'N°5');
+
+  const iga = template.parseBrand('VERSACE EROS Parfum VAP. 50ML');
+  assert.equal(iga.brand, 'Versace');
+  assert.equal(template.parseFragrance(iga.rest, 50), 'Eros');
+});
+
+test('cleaning: an offer maps onto the standard template columns', () => {
+  const out = template.mapOffer({
+    id: 7, supplier_code: 'ACME', supplier_name: 'Acme Fragrances',
+    description: 'CHANEL BLEU DE CHANEL EAU DE PARFUM 100 ML', category: 'PERFUME HOMBRE',
+    size_ml: 100, price: 540, price_basis: 'case', units_per_case: 12, currency: 'EUR',
+    source_row: 3, us_suitability: 'eligible', stock_confidence: 'confirmed',
+    incoterm: 'dap', incoterm_place: 'New York',
+  });
+  assert.equal(out.length, template.TEMPLATE_COLUMNS.length);
+  assert.equal(out[0], 'ACME');
+  assert.equal(out[1], 'Acme Fragrances');
+  assert.equal(out[10], 'Chanel');
+  assert.equal(out[11], 'Bleu De Chanel');
+  assert.equal(out[12], 'EDP');
+  assert.equal(out[13], 100);
+  assert.equal(out[14], 'Men');
+  assert.equal(out[16], 'Retail');
+  assert.equal(out[25], 'Case');
+  assert.equal(out[26], 12);
+  assert.equal(out[36], 'DAP');
+  assert.equal(out[44], 'Eligible');
+  assert.equal(out[48], 'Firm');
+});
+
+test('cleaning: the Offers sheet matches the shipped standard template', () => {
+  const templatePath = path.join(__dirname, '..', 'supplier-template.xlsx');
+  if (!fs.existsSync(templatePath)) return;
+  const wb = XLSX.readFile(templatePath);
+  const header = XLSX.utils.sheet_to_json(wb.Sheets.Offers, { header: 1, defval: '' })[0]
+    .map((x) => String(x).trim()).filter((x) => x.length);
+  assert.deepEqual(template.TEMPLATE_COLUMNS, header);
+});
+
+test('cleaning: every seeded import has a cleaned snapshot on disk', () => {
+  const up = db.prepare('SELECT id FROM uploads ORDER BY id LIMIT 1').get();
+  assert.ok(up, 'seed should have produced at least one upload');
+  const out = template.cleanedBuffer(up.id);
+  assert.ok(out && out.buffer.length > 0);
+  const wb = XLSX.read(out.buffer, { type: 'buffer' });
+  for (const sheet of ['Offers', 'FieldGuide', 'Enum', 'Instructions']) {
+    assert.ok(wb.Sheets[sheet], `cleaned workbook should contain ${sheet}`);
+  }
+  assert.equal(
+    XLSX.utils.sheet_to_json(wb.Sheets.Offers, { header: 1, defval: '' })[0].filter((x) => String(x).trim()).length,
+    template.TEMPLATE_COLUMNS.length
+  );
+});
+
+test('cleaning: cleanUpload writes a snapshot and records it on the upload', () => {
+  const up = db.prepare('SELECT id FROM uploads ORDER BY id LIMIT 1').get();
+  const info = template.cleanUpload(up.id);
+  assert.ok(info && info.rows >= 1);
+  const row = db.prepare('SELECT cleaned_path, cleaned_rows, cleaned_at FROM uploads WHERE id = ?').get(up.id);
+  assert.equal(row.cleaned_rows, info.rows);
+  assert.ok(row.cleaned_at);
+  assert.ok(fs.existsSync(row.cleaned_path));
+  const offers = XLSX.utils.sheet_to_json(XLSX.readFile(row.cleaned_path).Sheets.Offers, { header: 1, defval: '' });
+  assert.equal(offers.length, info.rows + 1);
+});
+

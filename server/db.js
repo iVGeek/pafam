@@ -535,6 +535,14 @@ function migrate() {
   // "what we believed, and when" is always recoverable.
   ensureColumn('demands', 'supersedes_demand_id', 'INTEGER');
   ensureColumn('demands', 'superseded_by_demand_id', 'INTEGER');
+
+  // uploads: the auto-cleaned snapshot of every import (the system standard
+  // template). Kept beside the audit row so the UI can offer the cleaned file
+  // without re-cleaning, and so we know whether cleaning ran and for how many
+  // rows.
+  ensureColumn('uploads', 'cleaned_path', 'TEXT');
+  ensureColumn('uploads', 'cleaned_rows', 'INTEGER');
+  ensureColumn('uploads', 'cleaned_at', 'TEXT');
 }
 
 function init() {
@@ -564,6 +572,7 @@ function init() {
     alert_dedupe_days: '7',
     capital_limit: '250000',
     require_offer_approval: '0',
+    auto_clean_imports: '1',
     followup_days: '2',
     session_hours: '168',
     capture_secret: 'change-me-capture-secret',

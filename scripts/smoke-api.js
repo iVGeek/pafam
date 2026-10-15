@@ -207,6 +207,17 @@ const server = app.listen(PORT, async () => {
     const integ = await admin.req('GET', '/integrations');
     console.log('integrations:', integ.status, '| exports:', (integ.body.exports || []).length, '| webhook:', integ.body.webhook && integ.body.webhook.url);
 
+    // every import gets an auto-cleaned standard-template snapshot
+    const ups = await admin.req('GET', '/uploads');
+    const upFirst = (ups.body || [])[0];
+    console.log('uploads:', ups.status, '| n:', (ups.body || []).length, '| first cleaned_at:', upFirst && upFirst.cleaned_at, '| rows:', upFirst && upFirst.cleaned_rows);
+    if (upFirst) {
+      const cx = await admin.req('GET', `/export/cleaned/${upFirst.id}.xlsx`);
+      console.log('export cleaned template (expect 200):', cx.status, '| chars:', cx.len, '| type:', cx.ctype);
+    }
+    const cxBad = await admin.req('GET', '/export/cleaned/999999.xlsx');
+    console.log('cleaned export missing (expect 404):', cxBad.status);
+
     // trends series + customer quote export (masked)
     const trSeries = await admin.req('GET', `/trends?productId=${pid}`);
     console.log('trends series:', trSeries.status, '| suppliers:', (trSeries.body.series || []).length,

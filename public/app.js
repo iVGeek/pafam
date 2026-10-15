@@ -202,8 +202,8 @@ routes.imports = async () => {
     <div class="split">
       <div class="panel">
         <h2>Uploads</h2>
-        <div class="table-wrap"><table><thead><tr><th>File</th><th>Supplier</th><th>Sheet</th><th class="num">Rows</th><th class="num">Matched</th><th class="num">Blank</th><th class="num">Invalid</th><th>Date</th></tr></thead><tbody>
-        ${uploads.map((u) => `<tr><td class="mono">${esc(u.filename)}</td><td>${esc(u.supplier_code)}</td><td class="small">${esc(u.sheet || '')}</td><td class="num">${u.rows_total}</td><td class="num">${u.rows_imported}</td><td class="num">${u.rows_blank_barcode}</td><td class="num">${u.rows_invalid_barcode}</td><td class="small">${dt(u.uploaded_at)}</td></tr>`).join('') || '<tr><td colspan="8" class="muted">No uploads yet.</td></tr>'}
+        <div class="table-wrap"><table><thead><tr><th>File</th><th>Supplier</th><th>Sheet</th><th class="num">Rows</th><th class="num">Matched</th><th class="num">Blank</th><th class="num">Invalid</th><th>Cleaned</th><th>Date</th></tr></thead><tbody>
+        ${uploads.map((u) => `<tr><td class="mono">${esc(u.filename)}</td><td>${esc(u.supplier_code)}</td><td class="small">${esc(u.sheet || '')}</td><td class="num">${u.rows_total}</td><td class="num">${u.rows_imported}</td><td class="num">${u.rows_blank_barcode}</td><td class="num">${u.rows_invalid_barcode}</td><td class="small"><a class="btn quiet" style="padding:2px 8px" href="/api/export/cleaned/${u.id}.xlsx" title="Standard-template snapshot${u.cleaned_at ? ` · ${u.cleaned_rows} rows · ${dt(u.cleaned_at)}` : ' (rebuilt on demand)'}">Template${u.cleaned_at ? '' : ' •'}</a></td><td class="small">${dt(u.uploaded_at)}</td></tr>`).join('') || '<tr><td colspan="9" class="muted">No uploads yet.</td></tr>'}
         </tbody></table></div>
       </div>
       <div>
@@ -228,6 +228,9 @@ routes.imports = async () => {
             <li>RRP converted to cost with the supplier's trade discount.</li>
             <li>Non-USD prices converted via FX rates in Settings.</li>
             <li>Re-importing an identical file is ignored (dedupe by hash).</li>
+            <li>After every import, a cleaned copy is written onto the system
+              <strong>standard supplier template</strong> (auto-pilot) and offered
+              as the "Template" download above.</li>
           </ul>
         </div>
       </div>
@@ -256,7 +259,8 @@ routes.imports = async () => {
             <div class="item"><div class="k">blank barcode</div><div class="v">${r.blankBarcode}</div></div>
             <div class="item"><div class="k">invalid</div><div class="v">${r.invalidBarcode}</div></div>
             <div class="item"><div class="k">duplicates</div><div class="v">${r.duplicates}</div></div>
-          </div>`;
+          </div>
+          ${r.cleaned && !r.cleaned.error ? `<div class="small muted" style="margin-top:8px">Cleaned to the standard template: ${r.cleaned.rows} rows — <a href="/api/export/cleaned/${r.uploadId}.xlsx">download</a></div>` : ''}`;
       }
       toast('Import complete', 'ok');
       await loadSettings();
