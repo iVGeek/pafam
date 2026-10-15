@@ -72,6 +72,7 @@ function sourceLowest({ productId, gtin: rawGtin, quantity, destination, baseCur
       brokerage_per_unit: r.brokerage_per_unit,
       handling_per_unit: r.handling_per_unit,
       other_tax_pct: r.other_tax_pct,
+      recoverable_tax_pct: r.recoverable_tax_pct,
     };
     const landed = computeLanded(r, supplier, {
       quantity: qty,

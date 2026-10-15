@@ -15,7 +15,7 @@ function getOffer(offerId) {
     `SELECT o.*, s.name AS supplier_name, s.default_discount_pct AS supplier_discount,
             s.incoterm AS supplier_incoterm, s.payment_terms AS supplier_payment_terms,
             s.duty_pct, s.freight_per_unit, s.insurance_pct, s.brokerage_per_unit,
-            s.handling_per_unit, s.other_tax_pct
+            s.handling_per_unit, s.other_tax_pct, s.recoverable_tax_pct
        FROM offers o JOIN suppliers s ON s.code = o.supplier_code
       WHERE o.id = ?`
   ).get(Number(offerId));
@@ -33,6 +33,7 @@ function supplierFromRow(r) {
     brokerage_per_unit: r.brokerage_per_unit,
     handling_per_unit: r.handling_per_unit,
     other_tax_pct: r.other_tax_pct,
+    recoverable_tax_pct: r.recoverable_tax_pct,
   };
 }
 
@@ -88,6 +89,10 @@ function buildDeal(input) {
     quantity,
     landedUnitCost,
     sellingUnitPrice,
+    // Recoverable tax ties up cash but is not cost (section 8, control 3).
+    recoverableTaxTotal: landed ? landed.recoverableTaxTotal : 0,
+    supplierAdvancePct: input.supplierAdvancePct != null ? Number(input.supplierAdvancePct) : Number(getSetting('default_supplier_advance_pct', '0')),
+    customerDepositPct: input.customerDepositPct != null ? Number(input.customerDepositPct) : Number(getSetting('default_customer_deposit_pct', '0')),
     discountPct: input.discountPct,
     rebatePct: input.rebatePct,
     returnsAllowancePct: input.returnsAllowancePct,

@@ -582,6 +582,52 @@ test('realise: reports XIRR only when dated payments support it', () => {
   assert.ok(undated.xirrReason);
 });
 
+test('recoverable tax ties up cash but never touches cost or margin (8.3)', () => {
+  const base = {
+    quantity: 100, landedUnitCost: 10, sellingUnitPrice: 20,
+    supplierPayDays: 0, customerPayDays: 30, orderDate: '2026-01-01',
+  };
+  const plain = pricing.computeDeal(base);
+  const taxed = pricing.computeDeal({ ...base, recoverableTaxTotal: 210 });
+
+  // It is cash, not cost.
+  assert.equal(taxed.metrics.landedUnitCost, plain.metrics.landedUnitCost);
+  assert.equal(taxed.metrics.costTotal, plain.metrics.costTotal);
+  assert.equal(taxed.metrics.marginPct, plain.metrics.marginPct);
+  assert.equal(taxed.contribution.total, plain.contribution.total);
+
+  // But it does consume funding while outstanding.
+  assert.equal(taxed.cashflow.recoverableTax, 210);
+  assert.equal(taxed.cashflow.peakCapital, plain.cashflow.peakCapital + 210);
+  assert.equal(taxed.cashflow.peakCapitalExcludingTax, plain.cashflow.peakCapital);
+
+  // And it nets out of the cash cycle rather than being lost.
+  const net = taxed.cashflow.schedule.reduce((s, e) => s + e.amount, 0);
+  assert.equal(Math.round(net * 100) / 100, plain.cashflow.schedule.reduce((s, e) => s + e.amount, 0));
+});
+
+test('deposits and advances move cash to the order date (8.4)', () => {
+  const base = {
+    quantity: 100, landedUnitCost: 10, sellingUnitPrice: 20,
+    supplierPayDays: 0, customerPayDays: 30, orderDate: '2026-01-01',
+  };
+  const plain = pricing.computeDeal(base);
+  const withTerms = pricing.computeDeal({ ...base, supplierAdvancePct: 30, customerDepositPct: 20 });
+
+  assert.equal(withTerms.cashflow.supplierAdvance, 300);
+  assert.equal(withTerms.cashflow.customerDeposit, 400);
+  // Net 100 in on day 0, so less capital is tied up.
+  assert.equal(withTerms.cashflow.peakCapital < plain.cashflow.peakCapital, true);
+
+  const first = withTerms.cashflow.schedule.find((e) => e.label === 'Order placed');
+  assert.equal(first.amount, 100, 'deposit less advance lands on the order date');
+
+  // Total economics are unchanged by timing.
+  const net = withTerms.cashflow.schedule.reduce((s, e) => s + e.amount, 0);
+  assert.equal(Math.round(net * 100) / 100, plain.cashflow.schedule.reduce((s, e) => s + e.amount, 0));
+  assert.equal(withTerms.metrics.marginPct, plain.metrics.marginPct);
+});
+
 test('case price with unknown pack size is never treated as a bottle price', () => {
   const opts = { quantity: 12, destination: 'US', baseCurrency: 'USD', fxRate: 1, settings: {} };
   const base = { supplier_code: 'S', price: 240, price_basis: 'case', price_type: 'cost', currency: 'USD', incoterm: 'DDP' };

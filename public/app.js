@@ -614,6 +614,8 @@ routes.pricing = async () => {
           <div class="field"><label>Outbound cost / unit</label><input id="dcOutbound" type="number" step="0.01" value="0" title="Delivery, handling and other per-unit deal costs" /></div>
           <div class="field"><label>Commission %</label><input id="dcCommission" type="number" step="0.1" value="0" title="Of net revenue" /></div>
           <div class="field"><label>Expected credit loss %</label><input id="dcCreditLoss" type="number" step="0.1" value="0" title="Of net revenue" /></div>
+          <div class="field"><label>Supplier advance %</label><input id="dcAdvance" type="number" step="0.1" placeholder="0" title="Paid to the supplier on the order date" /></div>
+          <div class="field"><label>Customer deposit %</label><input id="dcDeposit" type="number" step="0.1" placeholder="0" title="Received from the customer on the order date" /></div>
           <div class="field"><label>Customer</label><select id="dcCustomer"><option value="">— none —</option>${customers.map((c) => `<option value="${c.id}">${esc(c.name)}${c.payment_terms ? ' (' + esc(c.payment_terms) + ')' : ''}</option>`).join('')}</select></div>
           <div class="field"><label>Order date</label><input id="dcDate" type="date" value="${today}" /></div>
           <div class="field"><label>Supplier pay days</label><input id="dcSupDays" type="number" placeholder="from terms" /></div>
@@ -651,6 +653,8 @@ routes.pricing = async () => {
     outboundPerUnit: numOrU($('#dcOutbound').value),
     commissionPct: numOrU($('#dcCommission').value),
     expectedCreditLossPct: numOrU($('#dcCreditLoss').value),
+    supplierAdvancePct: numOrU($('#dcAdvance').value),
+    customerDepositPct: numOrU($('#dcDeposit').value),
     supplierPayDays: numOrU($('#dcSupDays').value),
     customerPayDays: numOrU($('#dcCusDays').value),
     orderDate: $('#dcDate').value || undefined,
@@ -692,7 +696,7 @@ function renderDealResult(el, r) {
       <div class="item"><div class="k">Deal costs</div><div class="v">${money((r.deal.contribution && r.deal.contribution.dealCostsTotal) || 0, r.baseCurrency)}</div></div>
       <div class="item"><div class="k">ROI %</div><div class="v">${pct(m.roiPct)}</div></div>
       <div class="item"><div class="k">Annualised ROI</div><div class="v">${cf.annualisedRoiPct != null ? pct(cf.annualisedRoiPct) : '—'}</div></div>
-      <div class="item"><div class="k">Capital required</div><div class="v">${money(cf.peakCapital, r.baseCurrency)}</div></div>
+      <div class="item"><div class="k">Capital required</div><div class="v">${money(cf.peakCapital, r.baseCurrency)}</div>${cf.recoverableTax ? `<div class="s">incl. ${money(cf.recoverableTax, r.baseCurrency)} recoverable tax (cash, not cost)</div>` : ''}</div>
       <div class="item"><div class="k">Deployed capital</div><div class="v">${money((r.deal.return && r.deal.return.deployedCapital) || cf.peakCapital, r.baseCurrency)}</div></div>
       <div class="item"><div class="k">Deal return</div><div class="v">${r.deal.return && r.deal.return.simpleReturnPct != null ? pct(r.deal.return.simpleReturnPct) : '—'}</div></div>
       <div class="item"><div class="k">Capital days</div><div class="v">${num(cf.capitalDays)}</div></div>
@@ -880,7 +884,7 @@ routes.quotes = async () => {
 routes.suppliers = async () => {
   const rows = await GET('/suppliers');
   $('#view').innerHTML = `<div class="panel"><h2>Suppliers &amp; commercial terms</h2>
-    <div class="table-wrap"><table><thead><tr><th>Code</th><th>Name</th><th>Currency</th><th>Price type</th><th class="num">Trade disc %</th><th>Incoterm</th><th>Stock ctry</th><th>Origin</th><th class="num">Duty %</th><th class="num">Freight/u</th><th class="num">Ins %</th><th class="num">Brok/u</th><th class="num">Hand/u</th><th class="num">Other tax %</th><th></th></tr></thead>
+    <div class="table-wrap"><table><thead><tr><th>Code</th><th>Name</th><th>Currency</th><th>Price type</th><th class="num">Trade disc %</th><th>Incoterm</th><th>Stock ctry</th><th>Origin</th><th class="num">Duty %</th><th class="num">Freight/u</th><th class="num">Ins %</th><th class="num">Brok/u</th><th class="num">Hand/u</th><th class="num">Other tax %</th><th class="num">Recoverable tax %</th><th></th></tr></thead>
     <tbody>${rows.map((s) => `
       <tr data-code="${esc(s.code)}">
         <td class="mono">${esc(s.code)}</td>
@@ -897,10 +901,11 @@ routes.suppliers = async () => {
         <td class="num"><input data-f="brokeragePerUnit" type="number" step="0.01" value="${s.brokerage_per_unit ?? ''}" style="width:56px" /></td>
         <td class="num"><input data-f="handlingPerUnit" type="number" step="0.01" value="${s.handling_per_unit ?? ''}" style="width:56px" /></td>
         <td class="num"><input data-f="otherTaxPct" type="number" step="0.01" value="${s.other_tax_pct ?? ''}" style="width:64px" /></td>
+        <td class="num"><input data-f="recoverableTaxPct" type="number" step="0.01" value="${s.recoverable_tax_pct ?? ''}" style="width:64px" /></td>
         <td><button class="sm" data-save="${esc(s.code)}">Save</button></td>
       </tr>`).join('')}
     </tbody></table></div>
-    <div class="muted small" style="margin-top:10px">Price type "rrp" means the supplier quotes retail; the trade discount converts it to our acquisition cost. Duty %, insurance % and other tax % are applied on the purchase cost; freight, brokerage and handling are per bottle. These feed the landed-cost engine (blank = unknown, shown as assumed).</div>
+    <div class="muted small" style="margin-top:10px">Price type "rrp" means the supplier quotes retail; the trade discount converts it to our acquisition cost. Duty %, insurance % and other tax % are applied on the purchase cost; freight, brokerage and handling are per bottle. <b>Recoverable tax %</b> (VAT/IVA you get back) is deliberately NOT part of landed cost — it is cash you front and recover, so it only raises the capital you need. These feed the landed-cost engine (blank = unknown, shown as assumed).</div>
   </div>`;
   $$('#view [data-save]').forEach((b) => b.addEventListener('click', async () => {
     const tr = b.closest('tr');

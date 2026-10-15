@@ -34,6 +34,7 @@ CREATE TABLE IF NOT EXISTS suppliers (
   brokerage_per_unit REAL,
   handling_per_unit REAL,
   other_tax_pct REAL,
+  recoverable_tax_pct REAL,
   active INTEGER NOT NULL DEFAULT 1,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -482,6 +483,7 @@ function migrate() {
     ['brokerage_per_unit', 'REAL'],
     ['handling_per_unit', 'REAL'],
     ['other_tax_pct', 'REAL'],
+    ['recoverable_tax_pct', 'REAL'],
     ['origin_country', 'TEXT'],
   ];
   for (const [c, ddl] of supplierCols) ensureColumn('suppliers', c, ddl);
@@ -545,6 +547,9 @@ function init() {
     default_insurance_pct: '0',
     default_handling_per_unit: '0',
     default_other_tax_pct: '0',
+    default_recoverable_tax_pct: '0',
+    default_supplier_advance_pct: '0',
+    default_customer_deposit_pct: '0',
     default_supplier_payment_days: '0',
     default_customer_payment_days: '30',
     default_transit_days: '0',

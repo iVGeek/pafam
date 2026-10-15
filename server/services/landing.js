@@ -158,6 +158,13 @@ function computeLanded(offer, supplier, opts) {
   const landedUnitCost = round4(purchaseUSD + added);
   const totalCost = round4(landedUnitCost * quantity);
 
+  // Recoverable tax (§8 control 3): we pay it on import and get it back, so it
+  // is NOT part of landed cost and must not touch margin. It does tie up cash
+  // until it is recovered, so we hand it back to the cash-flow engine.
+  const recoverableTaxPct = toNum(sup.recoverable_tax_pct, toNum(s.default_recoverable_tax_pct, 0)) || 0;
+  const recoverableTaxPerUnit = round4(purchaseUSD * recoverableTaxPct / 100);
+  const recoverableTaxTotal = round4(recoverableTaxPerUnit * quantity);
+
   // Executability vs the order.
   const moq = toNum(offer.moq, null);
   const orderMultiple = toNum(offer.order_multiple, null);
@@ -215,6 +222,10 @@ unitsPerCase,
     components,
     landedUnitCost,
     totalCost,
+    // Reported separately from landed cost: this is cash, not cost.
+    recoverableTaxPct,
+    recoverableTaxPerUnit,
+    recoverableTaxTotal,
     complete: missing.length === 0,
     missing,
     moq, orderMultiple, moqOk, multipleOk,

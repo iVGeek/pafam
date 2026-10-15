@@ -33,7 +33,7 @@ router.post('/suppliers/:code', auth.requireRole('admin'), (req, res) => {
     `UPDATE suppliers SET name = ?, currency = ?, incoterm = ?, incoterm_place = ?,
        price_type = ?, default_discount_pct = ?, stock_country = ?, payment_terms = ?, active = ?,
        origin_country = ?, duty_pct = ?, freight_per_unit = ?, insurance_pct = ?,
-       brokerage_per_unit = ?, handling_per_unit = ?, other_tax_pct = ?
+       brokerage_per_unit = ?, handling_per_unit = ?, other_tax_pct = ?, recoverable_tax_pct = ?
      WHERE code = ?`
   ).run(
     b.name != null ? b.name : current.name,
@@ -52,6 +52,7 @@ router.post('/suppliers/:code', auth.requireRole('admin'), (req, res) => {
     numOr(b.brokeragePerUnit, current.brokerage_per_unit),
     numOr(b.handlingPerUnit, current.handling_per_unit),
     numOr(b.otherTaxPct, current.other_tax_pct),
+    numOr(b.recoverableTaxPct, current.recoverable_tax_pct),
     code
   );
   audit('user', 'update-supplier', 'supplier', code, JSON.stringify(b));

@@ -193,6 +193,13 @@ function daysBetween(a, b) {
 // Dated cash-flow schedule for a single buy-sell cycle. Shows when cash leaves
 // (supplier paid) and returns (customer pays), the peak funding requirement
 // (capital) and how many days that capital is employed.
+//
+// Two §8 controls are modelled here rather than buried in the margin:
+//   * Recoverable taxes (control 3) are paid on import and recovered later.
+//     They are NOT cost, but they DO tie up cash while outstanding — so they
+//     raise peak funding without touching margin.
+//   * Deposits and advances (control 4) move cash to day 0: a supplier advance
+//     or a customer deposit is real cash out/in on the order date.
 function cashflow(input) {
   const totalCost = safe(input.totalCost);
   const totalRevenue = safe(input.totalRevenue);
@@ -202,16 +209,22 @@ function cashflow(input) {
   const transitDays = safe(input.transitDays, 0);
   const orderDate = input.orderDate || new Date().toISOString().slice(0, 10);
 
+  // Recoverable tax is cash out on receipt and cash back on collection.
+  const recoverableTax = safe(input.recoverableTaxTotal);
+  // Deposits / advances are a slice of the same totals, just paid earlier.
+  const supplierAdvance = round2(totalCost * (safe(input.supplierAdvancePct) / 100));
+  const customerDeposit = round2(totalRevenue * (safe(input.customerDepositPct) / 100));
+
   const goodsDays = leadTimeDays + transitDays;
   const supplierDue = addDays(orderDate, supplierPayDays);
   const goodsDate = addDays(orderDate, goodsDays);
   const customerDue = addDays(goodsDate, customerPayDays);
 
   const events = [
-    { label: 'Order placed', date: orderDate, day: 0, amount: 0 },
-    { label: 'Pay supplier', date: supplierDue, day: supplierPayDays, amount: -totalCost },
-    { label: 'Goods received', date: goodsDate, day: goodsDays, amount: 0 },
-    { label: 'Customer pays', date: customerDue, day: goodsDays + customerPayDays, amount: totalRevenue },
+    { label: 'Order placed', date: orderDate, day: 0, amount: customerDeposit - supplierAdvance },
+    { label: 'Pay supplier', date: supplierDue, day: supplierPayDays, amount: -(totalCost - supplierAdvance) },
+    { label: 'Goods received', date: goodsDate, day: goodsDays, amount: -recoverableTax },
+    { label: 'Customer pays', date: customerDue, day: goodsDays + customerPayDays, amount: totalRevenue - customerDeposit + recoverableTax },
   ].sort((a, b) => a.day - b.day);
 
   let balance = 0;
@@ -236,6 +249,12 @@ function cashflow(input) {
     transitDays,
     capitalDays,
     peakCapital,
+    // Goods-only capital, i.e. what the peak would be with no recoverable tax
+    // outstanding. The gap between the two is cash tied up purely in tax.
+    peakCapitalExcludingTax: round2(Math.max(0, peakCapital - recoverableTax)),
+    recoverableTax: round2(recoverableTax),
+    supplierAdvance: round2(supplierAdvance),
+    customerDeposit: round2(customerDeposit),
     negativeWorkingCapital: capitalDays < 0,
     capitalTurnover: capitalDays > 0 ? round4(365 / capitalDays) : null,
     schedule,
@@ -274,6 +293,9 @@ function computeDeal(input) {
     leadTimeDays: input.leadTimeDays,
     transitDays: input.transitDays,
     orderDate: input.orderDate,
+    recoverableTaxTotal: input.recoverableTaxTotal,
+    supplierAdvancePct: input.supplierAdvancePct,
+    customerDepositPct: input.customerDepositPct,
   });
 
   const annualisedRoiPct = cf.capitalDays > 0
