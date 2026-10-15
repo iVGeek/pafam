@@ -5,6 +5,7 @@ const router = express.Router();
 const { db, getSetting, audit } = require('../db');
 const pricing = require('../services/pricing');
 const deal = require('../services/deal');
+const demandsSvc = require('../services/demands');
 const auth = require('../services/auth');
 
 // ---- Pricing calculator (stateless) ----
@@ -176,6 +177,21 @@ router.post('/demands', auth.requireRole('buyer'), (req, res) => {
   );
   audit('user', 'demand-add', 'demand', Number(info.lastInsertRowid));
   res.json({ ok: true, id: Number(info.lastInsertRowid) });
+});
+
+// Revise a demand: creates a NEW version that supersedes the old one rather
+// than editing it in place (section 15). Refused once it is on an order.
+router.post('/demands/:id/revise', auth.requireRole('buyer'), (req, res) => {
+  const r = demandsSvc.revise(req.params.id, req.body || {}, req.user.username);
+  if (r.error) return res.status(r.notFound ? 404 : (r.locked ? 409 : 400)).json(r);
+  res.json(r);
+});
+
+// Full version chain for a demand, oldest first.
+router.get('/demands/:id/history', (req, res) => {
+  const h = demandsSvc.history(req.params.id);
+  if (!h) return res.status(404).json({ error: 'demand not found' });
+  res.json({ demandId: Number(req.params.id), versions: h });
 });
 
 // ---- Quotes ----

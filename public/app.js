@@ -819,8 +819,9 @@ routes.demands = async () => {
   $('#view').innerHTML = `
     <div class="split">
       <div class="panel"><h2>Demand book</h2>
-        <div class="table-wrap"><table><thead><tr><th>Customer</th><th>Product</th><th class="num">Qty</th><th>Status</th><th>Needed by</th><th>Approved</th></tr></thead>
-        <tbody>${rows.map((d) => `<tr><td>${esc(d.customer_name)}</td><td>${esc((d.display_name || '').slice(0, 40))}</td><td class="num">${num(d.quantity)}</td><td><span class="badge info">${esc(d.status)}</span></td><td class="small">${esc(d.needed_by || '')}</td><td>${d.approved ? '<span class="badge good">yes</span>' : '<span class="badge muted">no</span>'}</td></tr>`).join('') || '<tr><td colspan="6" class="muted">No demands.</td></tr>'}
+        <div class="muted small" style="margin:6px 0 10px">Revising a demand creates a new version — the old one is kept, never overwritten. Once a demand is on an order it is locked and must not be rewritten.</div>
+        <div class="table-wrap"><table><thead><tr><th>Customer</th><th>Product</th><th class="num">Qty</th><th>Status</th><th>Needed by</th><th>Approved</th><th></th></tr></thead>
+        <tbody>${rows.filter((d) => d.status !== 'superseded').map((d) => `<tr><td>${esc(d.customer_name)}</td><td>${esc((d.display_name || '').slice(0, 40))}</td><td class="num">${num(d.quantity)}</td><td><span class="badge info">${esc(d.status)}</span></td><td class="small">${esc(d.needed_by || '')}</td><td>${d.approved ? '<span class="badge good">yes</span>' : '<span class="badge muted">no</span>'}</td><td class="nowrap"><button class="btn sm ghost" data-hist="${d.id}">History</button> ${can('buyer') ? `<button class="btn sm" data-revise="${d.id}">Revise</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="7" class="muted">No demands.</td></tr>'}
         </tbody></table></div>
       </div>
       <div class="panel"><h2>Add demand</h2>
@@ -843,6 +844,42 @@ routes.demands = async () => {
       toast('Demand added', 'ok'); render();
     } catch (e) { toast(e.message, 'err'); }
   });
+  for (const b of $$('#view [data-revise]')) {
+    b.addEventListener('click', async () => {
+      const id = b.dataset.revise;
+      const d = rows.find((x) => String(x.id) === String(id));
+      modal('Revise demand', `
+        <div class="muted small" style="margin-bottom:8px">Current quantity <b>${num(d.quantity)}</b>. Saving creates a new version and keeps this one.</div>
+        <div class="grid" style="grid-template-columns:1fr 1fr;gap:10px">
+          <div class="field"><label>New quantity</label><input id="rvQty" type="number" value="${d.quantity}" /></div>
+          <div class="field"><label>Target price</label><input id="rvTarget" type="number" step="0.01" value="${d.target_price || ''}" /></div>
+        </div>
+        <div class="field" style="margin-bottom:8px"><label>Note</label><input id="rvNote" placeholder="why it changed" /></div>
+        <button id="rvGo" style="width:100%">Save as new version</button>`, (bg) => {
+        bg.querySelector('#rvGo').addEventListener('click', async () => {
+          try {
+            await POST(`/demands/${id}/revise`, {
+              quantity: Number(bg.querySelector('#rvQty').value),
+              target_price: bg.querySelector('#rvTarget').value === '' ? null : Number(bg.querySelector('#rvTarget').value),
+              notes: bg.querySelector('#rvNote').value,
+            });
+            bg.remove(); toast('New version created', 'ok'); render();
+          } catch (e) { toast(e.message, 'err'); }
+        });
+      });
+    });
+  }
+  for (const b of $$('#view [data-hist]')) {
+    b.addEventListener('click', async () => {
+      try {
+        const h = await GET(`/demands/${b.dataset.hist}/history`);
+        modal('Demand history', `
+          <div class="muted small" style="margin-bottom:8px">Every version, oldest first.</div>
+          <div class="table-wrap"><table><thead><tr><th>Id</th><th class="num">Qty</th><th class="num">Target</th><th>Status</th><th>Created</th><th>Note</th></tr></thead>
+          <tbody>${(h.versions || []).map((v) => `<tr><td class="mono">${v.id}${v.current ? ' <span class="badge info">current</span>' : ''}${v.locked ? ' <span class="badge warn">locked</span>' : ''}</td><td class="num">${num(v.quantity)}</td><td class="num">${v.target_price == null ? '—' : money(v.target_price)}</td><td>${esc(v.status)}</td><td class="small muted">${esc(v.captured_at || '')}</td><td class="small">${esc(v.notes || '')}</td></tr>`).join('')}</tbody></table></div>`, null);
+      } catch (e) { toast(e.message, 'err'); }
+    });
+  }
 };
 
 routes.quotes = async () => {

@@ -83,6 +83,15 @@ Notes:
   usable stock (`on hand − quarantined`); in-transit stock is not sellable
   until received. Reservations can be released or fulfilled, and every change
   is audited.
+- **Never lose the thread**: a demand is **revised by superseding it**, not by
+  editing it. The previous version is retained and linked, so you can always see
+  what was believed and when. Once a demand is on an order it is **locked** and
+  cannot be rewritten — raise a new demand instead.
+- **Staff sign-off**: offers carry an approval state (`review` / `approved` /
+  `rejected`) with who signed off and when, separate from the matching outcome.
+  Turn on `require_offer_approval` and an unapproved offer can no longer win a
+  sourcing comparison or drive a buying recommendation. An offer with no price
+  or no valid barcode can never be approved.
 - **Track prices**: an immutable `price_history` records every observed price;
   **alerts** flag price movements, expiries and low stock, and the **price
   trends** view shows 7/30/90/180-day movement with real date gaps (no invented
@@ -156,6 +165,8 @@ server/
     orders.js           orders, payments and realised vs forecast margin
     reservations.js     stock holds + the no-oversell guard (section 11/20)
     tasks.js             follow-up tasks from captured leads (section 15)
+    demands.js           demand version history — supersede, never overwrite
+    approvals.js         staff sign-off on offers (section 3/16)
     shipments.js         allocate shipment cost by a documented driver (section 8.2)
     recommend.js        demand -> cheapest executable supplier, MOQ/policy aware
     purchasePlan.js     consolidated buying list across all open demand

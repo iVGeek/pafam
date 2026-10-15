@@ -31,6 +31,7 @@ const reservations = require('../server/services/reservations');
 const tasks = require('../server/services/tasks');
 const shipments = require('../server/services/shipments');
 const sourcing = require('../server/services/sourcing');
+const demands = require('../server/services/demands');
 const { db } = require('../server/db');
 // Seed the throwaway DB once so the DB-backed tests (purchase plan, KPIs,
 // reservations) have deterministic demo data, exactly as the app runs it.
@@ -580,6 +581,63 @@ test('realise: reports XIRR only when dated payments support it', () => {
   ]);
   assert.equal(undated.xirrPct, null);
   assert.ok(undated.xirrReason);
+});
+
+test('demand revisions create a new version and never edit the old one', () => {
+  const cust = db.prepare('SELECT id FROM customers LIMIT 1').get().id;
+  const prod = db.prepare('SELECT id FROM products LIMIT 1').get().id;
+  const mk = (qty, notes) => Number(db.prepare(
+    "INSERT INTO demands(customer_id, product_id, status, quantity, target_price, currency, source, notes) VALUES(?,?,'open',?,12.0,'USD','manual',?)"
+  ).run(cust, prod, qty, notes).lastInsertRowid);
+
+  const v1 = mk(100, 'original');
+  const v2 = demands.revise(v1, { quantity: 250, notes: 'customer confirmed 250' }, 'buyer');
+  assert.equal(v2.ok, true);
+  assert.equal(v2.supersedes, v1);
+
+  // The original row is intact, just retired — not overwritten.
+  const original = demands.get(v1);
+  assert.equal(original.quantity, 100, 'the original quantity must survive');
+  assert.equal(original.notes, 'original');
+  assert.equal(original.status, 'superseded');
+  assert.equal(original.superseded_by_demand_id, v2.id);
+
+  const v3 = demands.revise(v2.id, { quantity: 300, target_price: 11.5 }, 'buyer');
+  assert.equal(v3.supersedes, v2.id);
+
+  const chain = demands.history(v3.id);
+  assert.deepEqual(chain.map((v) => v.id), [v1, v2.id, v3.id]);
+  assert.equal(chain[0].quantity, 100);
+  assert.equal(chain[2].quantity, 300);
+  assert.equal(chain[2].current, true);
+  // Traversable from any version in the chain.
+  assert.deepEqual(demands.history(v1).map((v) => v.id), [v1, v2.id, v3.id]);
+});
+
+test('a demand already on an order cannot be silently rewritten (15)', () => {
+  const cust = db.prepare('SELECT id FROM customers LIMIT 1').get().id;
+  const prod = db.prepare('SELECT id FROM products LIMIT 1').get().id;
+  const id = Number(db.prepare(
+    "INSERT INTO demands(customer_id, product_id, status, quantity, target_price, currency, source) VALUES(?,?,'open',50,12.0,'USD','manual')"
+  ).run(cust, prod).lastInsertRowid);
+  db.prepare(
+    "INSERT INTO orders(ref, demand_id, customer_id, product_id, quantity, status, order_date) VALUES(?,?,?,?,?,'closed',?)"
+  ).run('ORD-HIST-TEST', id, cust, prod, 50, '2026-01-01');
+
+  const r = demands.revise(id, { quantity: 999 }, 'buyer');
+  assert.equal(r.ok, undefined);
+  assert.equal(r.locked, true);
+  assert.match(r.error, /already on order/);
+  // And the confirmed quantity is untouched.
+  assert.equal(demands.get(id).quantity, 50);
+
+  // Unknown fields and missing rows are refused cleanly. (The order lock is
+  // checked first, so these use a fresh, unlocked demand.)
+  const fresh = Number(db.prepare(
+    "INSERT INTO demands(customer_id, product_id, status, quantity, target_price, currency, source) VALUES(?,?,'open',10,12.0,'USD','manual')"
+  ).run(cust, prod).lastInsertRowid);
+  assert.match(demands.revise(fresh, { customer_id: 99 }, 'buyer').error, /cannot revise/);
+  assert.equal(demands.revise(999999, { quantity: 1 }, 'buyer').notFound, true);
 });
 
 test('recoverable tax ties up cash but never touches cost or margin (8.3)', () => {

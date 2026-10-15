@@ -529,6 +529,12 @@ function migrate() {
   // off the supplier's own file is stronger evidence than one parsed out of the
   // description text, and "unknown" must stay unknown rather than becoming 1.
   ensureColumn('offers', 'units_per_case_source', "TEXT NOT NULL DEFAULT 'unknown'");
+
+  // demands: version history (brief section 15). A revised demand is never
+  // edited in place — a new row supersedes the old one and links back to it, so
+  // "what we believed, and when" is always recoverable.
+  ensureColumn('demands', 'supersedes_demand_id', 'INTEGER');
+  ensureColumn('demands', 'superseded_by_demand_id', 'INTEGER');
 }
 
 function init() {

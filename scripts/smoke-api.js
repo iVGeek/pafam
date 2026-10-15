@@ -127,6 +127,16 @@ const server = app.listen(PORT, async () => {
       '| simpleReturn:', s9d.return && s9d.return.simpleReturnPct,
       '| annualised(90d):', s9d.return && s9d.return.annualisedReturnPct);
 
+    // demand version history (section 15): revisions supersede, never overwrite
+    const newDem = await admin.req('POST', '/demands', { customerId: 1, productId: pid, quantity: 100, targetPrice: 12 });
+    const rev = await admin.req('POST', `/demands/${newDem.body.id}/revise`, { quantity: 250, notes: 'smoke revision' });
+    console.log('demand revise:', rev.status, '| new id:', rev.body.id, '| supersedes:', rev.body.supersedes);
+    const hist = await admin.req('GET', `/demands/${rev.body.id}/history`);
+    console.log('demand history:', hist.status, '| versions:', (hist.body.versions || []).length,
+      '| quantities:', (hist.body.versions || []).map((v) => v.quantity).join(' -> '));
+    const badRev = await admin.req('POST', `/demands/${newDem.body.id}/revise`, { customer_id: 1 });
+    console.log('demand revise unknown field (expect 400):', badRev.status);
+
     // reservations: availability, oversell guard, release (section 11/20)
     const inv = await admin.req('GET', '/inventory');
     const lot = (inv.body.rows || [])[0];
