@@ -5,13 +5,18 @@ const router = express.Router();
 const { db, getSetting, audit } = require('../db');
 const auth = require('../services/auth');
 const { parseNote } = require('../../src/lib/notes');
+const tasks = require('../services/tasks');
 
 function insertCapture({ source, title, text, createdBy }) {
   const parsed = parseNote(text);
   const info = db.prepare(
-    'INSERT INTO captures(source, title, raw_text, parsed_json, created_by) VALUES (?,?,?,?,?)'
+    'INSERT INTO captures(source, title, raw_text, parsed_json, created_by) VALUES(?,?,?,?,?)'
   ).run(source || 'manual', title || null, text || '', JSON.stringify(parsed), createdBy || 'system');
-  return Number(info.lastInsertRowid);
+  const id = Number(info.lastInsertRowid);
+  // A note that contains a real lead signal gets an open follow-up task so it
+  // cannot sit in the inbox unworked (brief section 15).
+  const taskId = tasks.taskForCapture({ id, source, title }, parsed, createdBy);
+  return { id, taskId };
 }
 
 // ---- Public webhook (device -> platform). Auth via shared secret. ----
@@ -23,9 +28,9 @@ router.post('/captures/webhook', (req, res) => {
   const b = req.body || {};
   const text = b.text || b.transcript || b.content || b.note || '';
   if (!text) return res.status(400).json({ error: 'no text/transcript provided' });
-  const id = insertCapture({ source: b.source || 'webhook', title: b.title, text, createdBy: 'webhook' });
+  const { id, taskId } = insertCapture({ source: b.source || 'webhook', title: b.title, text, createdBy: 'webhook' });
   audit('webhook', 'capture-ingest', 'capture', id, b.source || 'webhook');
-  res.json({ ok: true, id });
+  res.json({ ok: true, id, taskId });
 });
 
 // ---- Authenticated capture endpoints ----
@@ -43,9 +48,9 @@ router.post('/captures', auth.requireRole('analyst'), (req, res, next) => {
   try {
     const b = req.body || {};
     if (!b.text) return res.status(400).json({ error: 'text required' });
-    const id = insertCapture({ source: b.source || 'manual', title: b.title, text: b.text, createdBy: req.user.username });
+    const { id, taskId } = insertCapture({ source: b.source || 'manual', title: b.title, text: b.text, createdBy: req.user.username });
     audit(req.user.username, 'capture-create', 'capture', id, b.source || 'manual');
-    res.json({ ok: true, id, capture: db.prepare('SELECT * FROM captures WHERE id = ?').get(id) });
+    res.json({ ok: true, id, taskId, capture: db.prepare('SELECT * FROM captures WHERE id = ?').get(id) });
   } catch (e) { next(e); }
 });
 
@@ -74,6 +79,8 @@ router.post('/captures/:id/promote', auth.requireRole('buyer'), (req, res, next)
     );
     const demandId = Number(info.lastInsertRowid);
     db.prepare("UPDATE captures SET status = 'promoted', demand_id = ? WHERE id = ?").run(demandId, id);
+    // The note has now been actioned, so its follow-up task is done.
+    tasks.closeForCapture(id, req.user.username, `Promoted to demand #${demandId}`);
     audit(req.user.username, 'capture-promote', 'capture', id, `demand ${demandId}`);
     res.json({ ok: true, demandId });
   } catch (e) { next(e); }
@@ -82,6 +89,7 @@ router.post('/captures/:id/promote', auth.requireRole('buyer'), (req, res, next)
 router.post('/captures/:id/ignore', auth.requireRole('analyst'), (req, res) => {
   const id = Number(req.params.id);
   db.prepare("UPDATE captures SET status = 'ignored' WHERE id = ?").run(id);
+  tasks.closeForCapture(id, req.user.username, 'Capture ignored');
   audit(req.user.username, 'capture-ignore', 'capture', id);
   res.json({ ok: true });
 });

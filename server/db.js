@@ -380,6 +380,29 @@ CREATE TABLE IF NOT EXISTS captures (
   demand_id INTEGER REFERENCES demands(id) ON DELETE SET NULL
 );
 CREATE INDEX IF NOT EXISTS idx_captures_status ON captures(status);
+
+-- Follow-up tasks (brief section 15): a captured note is not a deal until a
+-- human has done something about it. Every capture that looks like a lead
+-- gets an open task so it cannot silently rot in the inbox.
+CREATE TABLE IF NOT EXISTS tasks (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  capture_id INTEGER REFERENCES captures(id) ON DELETE CASCADE,
+  demand_id INTEGER REFERENCES demands(id) ON DELETE SET NULL,
+  customer_id INTEGER REFERENCES customers(id) ON DELETE SET NULL,
+  title TEXT NOT NULL,
+  detail TEXT,
+  due_date TEXT,
+  owner TEXT,
+  priority TEXT NOT NULL DEFAULT 'normal',   -- low | normal | high
+  status TEXT NOT NULL DEFAULT 'open',       -- open | done | cancelled
+  created_by TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  completed_at TEXT,
+  completed_by TEXT,
+  notes TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status, due_date);
+CREATE INDEX IF NOT EXISTS idx_tasks_capture ON tasks(capture_id);
 `;
 
 // Lightweight additive migrations for databases created by an earlier version.
@@ -472,6 +495,7 @@ function init() {
     low_stock_threshold: '10',
     alert_dedupe_days: '7',
     capital_limit: '250000',
+    followup_days: '2',
     session_hours: '168',
     capture_secret: 'change-me-capture-secret',
   };

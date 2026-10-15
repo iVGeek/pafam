@@ -28,6 +28,7 @@ const { consolidateDemands } = require('../server/services/purchasePlan');
 const analytics = require('../server/services/analytics');
 const { movingAverageForecast } = require('../server/services/forecast');
 const reservations = require('../server/services/reservations');
+const tasks = require('../server/services/tasks');
 const { db } = require('../server/db');
 // Seed the throwaway DB once so the DB-backed tests (purchase plan, KPIs,
 // reservations) have deterministic demo data, exactly as the app runs it.
@@ -502,6 +503,55 @@ test('reservations: in-transit stock is not available to sell', () => {
   const lotId = seedLot({ onHand: 0, inTransit: 500 });
   assert.equal(reservations.availableToSell(lotId), 0);
   assert.equal(reservations.reserve({ lotId, quantity: 1 }).ok, false);
+});
+
+test('tasks: a captured lead gets an automatic follow-up, noise does not', () => {
+  const lead = parseNote('Customer: Atlantic Spirits. Interested in 500 bottles of Jack Daniels, target 18.50 EUR.');
+  const noise = parseNote('ok');
+  assert.equal(tasks.looksLikeLead(lead), true);
+  assert.equal(tasks.looksLikeLead(noise), false);
+  assert.equal(tasks.looksLikeLead(null), false);
+
+  const capId = Number(db.prepare(
+    "INSERT INTO captures(source, title, raw_text, parsed_json, created_by) VALUES('plaud','Call back','x','{}','test')"
+  ).run().lastInsertRowid);
+
+  const id = tasks.taskForCapture({ id: capId, source: 'plaud', title: 'Call back' }, lead, 'test');
+  assert.ok(id, 'expected an automatic follow-up task');
+  const t = tasks.list({ openOnly: '1' }).find((x) => x.id === id);
+  assert.ok(t);
+  assert.equal(t.status, 'open');
+  assert.equal(t.capture_id, capId);
+  assert.ok(t.due_date, 'task must have a due date');
+  assert.match(t.detail, /500 units/);
+
+  // A note with no signals must not manufacture work.
+  assert.equal(tasks.taskForCapture({ id: capId, source: 'manual' }, noise, 'test'), null);
+});
+
+test('tasks: completing is guarded and closing a capture task releases it', () => {
+  const parsed = parseNote('Interested in 200 units, price 12.00 USD.');
+  const capId = Number(db.prepare(
+    "INSERT INTO captures(source, title, raw_text, parsed_json, created_by) VALUES('manual','Lead','x','{}','test')"
+  ).run().lastInsertRowid);
+  const id = tasks.taskForCapture({ id: capId, source: 'manual', title: 'Lead' }, parsed, 'test');
+  assert.ok(id);
+
+  assert.equal(tasks.complete(id, 'test').ok, true);
+  assert.equal(tasks.complete(id, 'test').ok, false, 'completing twice must be refused');
+  assert.equal(tasks.list({ status: 'done' }).some((t) => t.id === id), true);
+
+  const id2 = tasks.taskForCapture({ id: capId, source: 'manual', title: 'Lead 2' }, parsed, 'test');
+  assert.equal(tasks.closeForCapture(capId, 'test', 'promoted'), 1);
+  assert.equal(tasks.list({ status: 'done' }).some((t) => t.id === id2), true);
+});
+
+test('tasks: an overdue task is flagged, not dropped', () => {
+  const id = tasks.create({ title: 'Chase overdue', dueDate: '2020-01-01', createdBy: 'test' });
+  const t = tasks.list({ openOnly: '1' }).find((x) => x.id === id);
+  assert.ok(t);
+  assert.equal(t.overdue, true);
+  assert.ok(tasks.summary().overdue >= 1);
 });
 
 test('forecast baseline refuses to extrapolate thin history', () => {

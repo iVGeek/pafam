@@ -107,7 +107,10 @@ Notes:
   webhook**. Honest endpoints, no pretend connectors.
 - **Capture notes** (Plaud / reMarkable / manual / webhook) and turn them into
   demand signals via a heuristic parser (`src/lib/notes.js`) — quantity, price,
-  barcode, customer and product hints for a human to confirm.
+  barcode, customer and product hints for a human to confirm. A captured note
+  that looks like a lead automatically opens a **follow-up task** with a due
+  date, and promoting the note to a demand closes the task, so nothing rots in
+  the inbox. Overdue tasks are flagged, never dropped.
 - **Access control**: session login with roles (`viewer < analyst < buyer <
   admin`); sensitive write endpoints are rank-guarded.
 
@@ -143,6 +146,7 @@ server/
     deal.js             buy-side offer + sell-side customer -> full deal
     orders.js           orders, payments and realised vs forecast margin
     reservations.js     stock holds + the no-oversell guard (section 11/20)
+    tasks.js             follow-up tasks from captured leads (section 15)
     recommend.js        demand -> cheapest executable supplier, MOQ/policy aware
     purchasePlan.js     consolidated buying list across all open demand
     forecast.js         moving-average demand baseline (refuses thin history)
@@ -169,7 +173,7 @@ samples/                real supplier files used for the demo
 
 `suppliers · uploads · offers · products · product_aliases · exceptions ·
 inventory_lots · reservations · customers · demands · quotes · orders · payments · price_history ·
-fx_rates · alerts · settings · audit_log · users · sessions · captures`
+fx_rates · alerts · tasks · settings · audit_log · users · sessions · captures`
 
 Every offer stores its source file, row, list date and raw values, so imports
 are auditable snapshots rather than destructive overwrites.

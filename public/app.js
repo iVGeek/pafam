@@ -927,9 +927,14 @@ routes.audit = async () => {
 
 routes.captures = async () => {
   const status = state._capStatus || '';
-  const rows = await GET('/captures' + (status ? '?status=' + status : ''));
+  const [rows, taskData] = await Promise.all([
+    GET('/captures' + (status ? '?status=' + status : '')),
+    GET('/tasks'),
+  ]);
   const canPromote = can('buyer');
   const canIngest = can('analyst');
+  const ts = taskData.summary || {};
+  const openTasks = (taskData.rows || []).filter((t) => t.status === 'open');
   const webhookCard = can('admin') ? `
     <div class="panel" style="margin-top:16px">
       <h2>Device webhook</h2>
@@ -969,6 +974,21 @@ routes.captures = async () => {
   }).join('') || '<div class="panel muted">No captures yet.</div>';
 
   $('#view').innerHTML = `
+    ${canIngest ? `
+    <div class="panel" style="margin-bottom:12px">
+      <div class="row" style="justify-content:space-between;align-items:center">
+        <h2 style="margin:0">Follow-up tasks</h2>
+        <div class="row">
+          <span class="badge ${ts.overdue ? 'bad' : 'muted'}">${num(ts.overdue)} overdue</span>
+          <span class="badge ${ts.dueToday ? 'warn' : 'muted'}">${num(ts.dueToday)} due today</span>
+          <span class="badge info">${num(ts.open)} open</span>
+        </div>
+      </div>
+      <div class="muted small" style="margin:6px 0 10px">Every captured note that looks like a lead gets a task automatically, so nothing rots in the inbox.</div>
+      <div class="table-wrap"><table><thead><tr><th>Task</th><th>Due</th><th>Priority</th><th>Source</th><th></th></tr></thead>
+      <tbody>${openTasks.map((t) => `<tr><td>${esc(t.title)}${t.detail ? `<div class="small muted">${esc(t.detail)}</div>` : ''}</td><td>${t.overdue ? `<span class="badge bad">${esc(t.due_date)}</span>` : `<span class="small">${esc(t.due_date || '—')}</span>`}</td><td><span class="badge ${t.priority === 'high' ? 'warn' : 'muted'}">${esc(t.priority)}</span></td><td class="small muted">${esc(t.capture_source || '')}</td><td>${canIngest ? `<button class="btn sm" data-task-done="${t.id}">Done</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="5" class="muted">No open follow-ups.</td></tr>'}
+      </tbody></table></div>
+    </div>` : ''}
     <div class="split">
       <div>
         <div class="panel" style="margin-bottom:12px">
@@ -1011,6 +1031,9 @@ routes.captures = async () => {
     try { await DEL('/captures/' + b.dataset.del); toast('Deleted', 'ok'); render(); } catch (e) { toast(e.message, 'err'); }
   }));
   $$('#view [data-promote]').forEach((b) => b.addEventListener('click', () => promoteCapture(Number(b.dataset.promote), rows.find((r) => r.id === Number(b.dataset.promote)))));
+  $$('#view [data-task-done]').forEach((b) => b.addEventListener('click', async () => {
+    try { await POST('/tasks/' + b.dataset.taskDone + '/done', {}); toast('Follow-up done', 'ok'); render(); } catch (e) { toast(e.message, 'err'); }
+  }));
 };
 
 async function promoteCapture(capId, cap) {

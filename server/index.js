@@ -35,6 +35,7 @@ app.use('/api', require('./routes/products'));
 app.use('/api', require('./routes/sourcing'));
 app.use('/api', require('./routes/trading'));
 app.use('/api', require('./routes/reservations'));
+app.use('/api', require('./routes/tasks'));
 app.use('/api', require('./routes/alerts'));
 app.use('/api', require('./routes/orders'));
 app.use('/api', require('./routes/recommend'));

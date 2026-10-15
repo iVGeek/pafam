@@ -59,13 +59,29 @@ const server = app.listen(PORT, async () => {
     // analyst can ingest capture, cannot promote
     await analyst.req('POST', '/auth/login', { username: 'analyst', password: 'analyst123' });
     const aCap = await analyst.req('POST', '/captures', { source: 'manual', title: 'test', text: 'Need 300 bottles of Absolut Vodka, 12.50 EUR' });
-    console.log('analyst POST /captures (expect 200):', aCap.status, '| id:', aCap.body.id);
+    console.log('analyst POST /captures (expect 200):', aCap.status, '| id:', aCap.body.id, '| auto task:', aCap.body.taskId);
     const aPromote = await analyst.req('POST', `/captures/${aCap.body.id}/promote`, { customerId: 1, productId: 1, quantity: 300 });
     console.log('analyst promote (expect 403):', aPromote.status);
 
     // admin can promote
     const promote = await admin.req('POST', `/captures/${aCap.body.id}/promote`, { customerId: 1, productId: 1, quantity: 300 });
     console.log('admin promote (expect 200):', promote.status, '| demandId:', promote.body.demandId);
+
+    // follow-up tasks: auto-created by the capture, closed by promoting it
+    const taskList = await admin.req('GET', '/tasks');
+    const autoTask = (taskList.body.rows || []).find((t) => t.capture_id === aCap.body.id);
+    console.log('tasks:', taskList.status, '| summary:', JSON.stringify(taskList.body.summary),
+      '| capture task status:', autoTask && autoTask.status);
+    const newCap = await admin.req('POST', '/captures', { source: 'plaud', title: 'lead', text: 'Wants 120 units at 9.00 USD' });
+    const t2 = await admin.req('GET', '/tasks');
+    const leadTask = (t2.body.rows || []).find((t) => t.capture_id === newCap.body.id && t.status === 'open');
+    console.log('new lead task:', leadTask ? `open due ${leadTask.due_date} overdue=${leadTask.overdue}` : 'NONE');
+    if (leadTask) {
+      const doneRes = await admin.req('POST', `/tasks/${leadTask.id}/done`, {});
+      console.log('task done (expect 200):', doneRes.status, '| open now:', doneRes.body.summary && doneRes.body.summary.open);
+      const twice = await admin.req('POST', `/tasks/${leadTask.id}/done`, {});
+      console.log('task done twice (expect 400):', twice.status);
+    }
 
     // sourcing: lowest executable landed cost
     const multi = await admin.req('GET', '/products?multi=1&limit=1');
