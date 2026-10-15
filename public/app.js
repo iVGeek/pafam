@@ -56,7 +56,7 @@ function can(min) { return (RANK[state.user && state.user.role] || 0) >= (RANK[m
 function modal(title, bodyHtml, onMount) {
   const bg = document.createElement('div');
   bg.className = 'modal-bg';
-  bg.innerHTML = `<div class="modal"><div class="row" style="justify-content:space-between"><h2 style="margin:0">${esc(title)}</h2><button class="ghost sm" data-close>✕</button></div><div style="margin-top:14px" data-body></div></div>`;
+  bg.innerHTML = `<div class="modal"><div class="row" style="justify-content:space-between"><h2 style="margin:0">${esc(title)}</h2><button class="ghost sm" data-close aria-label="Close">&#10005;</button></div><div style="margin-top:14px" data-body></div></div>`;
   bg.querySelector('[data-body]').innerHTML = bodyHtml;
   const close = () => { bg.remove(); document.removeEventListener('keydown', onKey); };
   const onKey = (e) => { if (e.key === 'Escape') close(); };

@@ -1,8 +1,8 @@
 {
-  "name": "perfume-trading-platform",
+  "name": "perfumes",
   "version": "0.2.0",
   "private": true,
-  "description": "Standalone perfume wholesale trading platform",
+  "description": "Perfumes — standalone wholesale trading platform for perfume & spirits",
   "main": "server/index.js",
   "engines": {
     "node": "24.x"

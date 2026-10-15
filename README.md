@@ -1,4 +1,4 @@
-# Perfume Trading Platform
+# Perfumes
 
 A bespoke, standalone wholesale trading platform for perfume & spirits: it
 ingests messy supplier price lists, resolves products by barcode, normalises

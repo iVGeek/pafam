@@ -82,7 +82,7 @@ if (require.main === module) {
   }
 
   app.listen(PORT, HOST, () => {
-    console.log(`Perfume Trading Platform running at http://${HOST}:${PORT}`);
+    console.log(`Perfumes running at http://${HOST}:${PORT}`);
   });
 }
 

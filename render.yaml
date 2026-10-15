@@ -2,7 +2,7 @@
 # Deploy: push this repo, then in Render choose "New > Blueprint" and point at it.
 services:
   - type: web
-    name: perfume-trading-platform
+    name: perfumes
     runtime: node
     plan: starter          # persistent disks require a paid plan
     region: oregon
