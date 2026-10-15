@@ -22,7 +22,7 @@ Other scripts:
 | `npm run seed` | Wipe `data/ptp.db`, re-import `samples/`, add demo customers/demands/inventory |
 | `npm start` | Start the web app (API + UI) on port 4173 (`PORT` env to change) |
 | `npm run import` | Headless importer spike / data-quality report (writes `output/`) |
-| `npm test` | Unit tests for the GTIN, pack-size, pricing, reservation and forecast engines (runs against a throwaway database) |
+| `npm test` | Unit tests for the GTIN, pack-size, pricing, reservation, forecast and integrity engines (runs against a throwaway database; the first run seeds it from the sample files and caches a fixture, later runs take ~1s. Set `PTP_TEST_NO_CACHE=1` to force a fresh seed) |
 
 ## Deploy on Render
 

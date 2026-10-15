@@ -1,10 +1,18 @@
 'use strict';
 // Tests run against a throwaway database so they never touch the dev DB
 // (and never leave stray rows behind). Must be set before requiring the db.
+//
+// The DB-backed tests need realistic offers/products, which means running the
+// real import of the sample Excel files (~45s). We therefore seed once and
+// snapshot the result; later runs copy the snapshot instead of re-importing.
+// Delete the snapshot (or set PTP_TEST_NO_CACHE=1) to force a fresh seed.
 const os = require('os');
 const path = require('path');
 const fs = require('fs');
 const TMP_DB = path.join(os.tmpdir(), `ptp-test-${process.pid}.db`);
+const SNAP = path.join(os.tmpdir(), 'ptp-test-fixture.db');
+const useCache = process.env.PTP_TEST_NO_CACHE !== '1' && fs.existsSync(SNAP);
+
 process.env.PTP_DATA_DIR = path.dirname(TMP_DB);
 process.env.PTP_DB = TMP_DB;
 process.on('exit', () => {
@@ -14,6 +22,13 @@ process.on('exit', () => {
 });
 
 const { test } = require('node:test');
+
+// Restore the cached fixture BEFORE anything opens the database. Requiring
+// server/db first would create an empty file and SQLite would then be reading
+// through a handle that no longer matches what we copied in.
+if (useCache) {
+  fs.copyFileSync(SNAP, TMP_DB);
+}
 const assert = require('node:assert');
 const pricing = require('../server/services/pricing');
 const gtin = require('../src/lib/gtin');
@@ -32,10 +47,24 @@ const tasks = require('../server/services/tasks');
 const shipments = require('../server/services/shipments');
 const sourcing = require('../server/services/sourcing');
 const demands = require('../server/services/demands');
+
+// No cached fixture: run the real import pipeline so the DB-backed tests
+// (purchase plan, KPIs, approvals, GL, shipments) see realistic data, then
+// snapshot it for next time.
+if (!useCache) {
+  require('../server/seedData').seedData({ log: () => {} });
+  if (process.env.PTP_TEST_NO_CACHE !== '1') {
+    try {
+      // Flush the WAL into the main file first, otherwise the snapshot is
+      // missing everything still sitting in the log.
+      require('../server/db').db.prepare('PRAGMA wal_checkpoint(TRUNCATE)').get();
+      fs.copyFileSync(TMP_DB, SNAP);
+      for (const suffix of ['-wal', '-shm']) { try { fs.unlinkSync(SNAP + suffix); } catch (e) { /* ignore */ } }
+    } catch (e) { /* no snapshot just means we re-seed next time */ }
+  }
+}
+
 const { db } = require('../server/db');
-// Seed the throwaway DB once so the DB-backed tests (purchase plan, KPIs,
-// reservations) have deterministic demo data, exactly as the app runs it.
-require('../server/seedData').seedData({ log: () => {} });
 
 // Creates a throwaway inventory lot for reservation tests so they do not
 // depend on whatever demo data the seeded database happens to contain.
