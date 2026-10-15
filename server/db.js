@@ -165,7 +165,27 @@ CREATE TABLE IF NOT EXISTS inventory_lots (
   expiry_date TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
-CREATE INDEX IF NOT EXISTS idx_inv_product ON inventory_lots(product_id);
+CREATE INDEX IF NOT EXISTS idx_inventory_lots_product ON inventory_lots(product_id);
+
+-- Stock reservations (brief section 11 / 20): stock held for a specific
+-- demand or order. Sum of active reservations per lot can never exceed
+-- usable stock (on_hand - quarantined); in-transit stock is excluded
+-- because it is not yet sellable.
+CREATE TABLE IF NOT EXISTS reservations (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  lot_id INTEGER NOT NULL REFERENCES inventory_lots(id) ON DELETE CASCADE,
+  demand_id INTEGER REFERENCES demands(id) ON DELETE CASCADE,
+  order_id INTEGER REFERENCES orders(id) ON DELETE CASCADE,
+  customer_id INTEGER REFERENCES customers(id),
+  quantity REAL NOT NULL DEFAULT 0,
+  status TEXT NOT NULL DEFAULT 'active',   -- active | released | fulfilled
+  notes TEXT,
+  created_by TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  released_at TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_reservations_lot ON reservations(lot_id, status);
+CREATE INDEX IF NOT EXISTS idx_reservations_demand ON reservations(demand_id);
 
 CREATE TABLE IF NOT EXISTS customers (
   id INTEGER PRIMARY KEY AUTOINCREMENT,

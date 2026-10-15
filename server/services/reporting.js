@@ -200,14 +200,23 @@ function glSheet() {
 
 // Warehouse stock snapshot for import into a WMS or for physical stocktakes.
 function stockSheet() {
+  const reservations = require('./reservations');
   const rows = db.prepare(
     `SELECT i.*, p.display_name, p.canonical_gtin, p.category
        FROM inventory_lots i LEFT JOIN products p ON p.id = i.product_id
       ORDER BY i.id DESC`
   ).all();
+  const enriched = rows.map((r) => {
+    const avail = reservations.availableToSell(r.id);
+    return {
+      ...r,
+      reserved_held: reservations.reservedFor(r.id),
+      available_to_sell: avail == null ? '' : avail,
+    };
+  });
   return {
     name: 'Stock',
-    rows,
+    rows: enriched,
     columns: [
       { title: 'SKU (barcode)', key: 'canonical_gtin', wch: 18 },
       { title: 'Product', key: 'display_name', wch: 46 },
@@ -215,9 +224,10 @@ function stockSheet() {
       { title: 'Lot', key: 'lot_reference', wch: 16 },
       { title: 'Supplier', key: 'supplier_code', wch: 12 },
       { title: 'On hand', key: 'on_hand', wch: 10 },
-      { title: 'Reserved', key: 'reserved', wch: 10 },
-      { title: 'In transit', key: 'in_transit', wch: 10 },
       { title: 'Quarantined', key: 'quarantined', wch: 12 },
+      { title: 'Reserved (held)', key: 'reserved_held', wch: 14 },
+      { title: 'Available to sell', key: 'available_to_sell', wch: 16 },
+      { title: 'In transit', key: 'in_transit', wch: 10 },
       { title: 'Unit cost', key: 'unit_cost', wch: 12 },
       { title: 'Currency', key: 'currency', wch: 10 },
       { title: 'Expiry', key: 'expiry_date', wch: 14 },

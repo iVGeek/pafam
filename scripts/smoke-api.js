@@ -100,6 +100,25 @@ const server = app.listen(PORT, async () => {
       '| deployedCapital:', s9d.return && s9d.return.deployedCapital,
       '| simpleReturn:', s9d.return && s9d.return.simpleReturnPct,
       '| annualised(90d):', s9d.return && s9d.return.annualisedReturnPct);
+
+    // reservations: availability, oversell guard, release (section 11/20)
+    const inv = await admin.req('GET', '/inventory');
+    const lot = (inv.body.rows || [])[0];
+    if (lot) {
+      const avail = await admin.req('GET', `/inventory/availability`);
+      const a0 = (avail.body || []).find((l) => l.lotId === lot.id) || {};
+      const tooMuch = await admin.req('POST', '/reservations', { lotId: lot.id, quantity: 999999 });
+      console.log('reserve oversell (expect 400):', tooMuch.status, '|', tooMuch.body && tooMuch.body.error);
+      const ok = await admin.req('POST', '/reservations', { lotId: lot.id, quantity: 1 });
+      console.log('reserve 1 (expect 200):', ok.status, '| availableToSell:', ok.body && ok.body.availableToSell);
+      if (ok.body && ok.body.id) {
+        const rel = await admin.req('POST', `/reservations/${ok.body.id}/release`, {});
+        console.log('release (expect 200):', rel.status, '| availableToSell:', rel.body && rel.body.availableToSell);
+      }
+      console.log('availability lot', lot.id, ':', JSON.stringify(a0));
+    }
+    const reservationsList = await admin.req('GET', '/reservations');
+    console.log('reservations listing:', reservationsList.status, '| lots:', (reservationsList.body.lots || []).length);
     const save = await admin.req('POST', '/deals', { offerId: offerRow.id, customerId: 1, quantity: 24, sellingUnitPrice: 60 });
     console.log('deals save (expect 200):', save.status, '| id:', save.body.id);
     const quotes = await admin.req('GET', '/quotes');

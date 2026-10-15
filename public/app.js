@@ -685,18 +685,25 @@ function renderDealResult(el, r) {
 }
 
 routes.inventory = async () => {
-  const d = await GET('/inventory');
+  const [d, res] = await Promise.all([GET('/inventory'), GET('/reservations')]);
+  const avail = {};
+  for (const l of res.lots || []) avail[l.lotId] = l;
   $('#view').innerHTML = `
     <div class="grid cards" style="margin-bottom:16px">
       <div class="card"><div class="k">On hand</div><div class="v">${num(d.totals.on_hand)}</div></div>
       <div class="card"><div class="k">Reserved</div><div class="v">${num(d.totals.reserved)}</div></div>
-      <div class="card"><div class="k">In transit</div><div class="v">${num(d.totals.in_transit)}</div></div>
+      <div class="card"><div class="k">Available to sell</div><div class="v">${num((res.lots || []).reduce((s, l) => s + l.availableToSell, 0))}</div><div class="s">on hand − quarantined − reserved</div></div>
+      <div class="card"><div class="k">In transit</div><div class="v">${num(d.totals.in_transit)}</div><div class="s">not yet sellable</div></div>
       <div class="card"><div class="k">Quarantined</div><div class="v">${num(d.totals.quarantined)}</div></div>
     </div>
     <div class="split">
       <div class="panel"><h2>Lots</h2>
-        <div class="table-wrap"><table><thead><tr><th>Product</th><th>Warehouse</th><th>Lot</th><th class="num">On hand</th><th class="num">Reserved</th><th class="num">In transit</th><th class="num">Unit cost</th><th>Expiry</th></tr></thead>
-        <tbody>${d.rows.map((r) => `<tr><td>${esc((r.display_name || '').slice(0, 40))}</td><td>${esc(r.warehouse || '')}</td><td class="mono">${esc(r.lot_reference || '')}</td><td class="num">${num(r.on_hand)}</td><td class="num">${num(r.reserved)}</td><td class="num">${num(r.in_transit)}</td><td class="num">${money(r.unit_cost)}</td><td class="small">${esc(r.expiry_date || '')}</td></tr>`).join('') || '<tr><td colspan="8" class="muted">No inventory.</td></tr>'}
+        <div class="muted small" style="margin:6px 0 10px">Reserve stock for a demand or order so two traders cannot sell the same bottle. Reservations can never exceed usable stock (on hand minus quarantined).</div>
+        <div class="table-wrap"><table><thead><tr><th>Product</th><th>Warehouse</th><th>Lot</th><th class="num">On hand</th><th class="num">Quar.</th><th class="num">Reserved</th><th class="num">Available</th><th class="num">In transit</th><th class="num">Unit cost</th><th>Expiry</th><th></th></tr></thead>
+        <tbody>${d.rows.map((r) => {
+          const a = avail[r.id] || { availableToSell: 0, reserved: r.reserved };
+          return `<tr><td>${esc((r.display_name || '').slice(0, 40))}</td><td>${esc(r.warehouse || '')}</td><td class="mono">${esc(r.lot_reference || '')}</td><td class="num">${num(r.on_hand)}</td><td class="num">${num(r.quarantined)}</td><td class="num">${num(a.reserved)}</td><td class="num"><b>${num(a.availableToSell)}</b></td><td class="num">${num(r.in_transit)}</td><td class="num">${money(r.unit_cost)}</td><td class="small">${esc(r.expiry_date || '')}</td><td>${can('buyer') && a.availableToSell > 0 ? `<button class="btn sm" data-reserve="${r.id}">Reserve</button>` : ''}</td></tr>`;
+        }).join('') || '<tr><td colspan="11" class="muted">No inventory.</td></tr>'}
         </tbody></table></div>
       </div>
       <div class="panel"><h2>Add lot</h2>
@@ -710,7 +717,26 @@ routes.inventory = async () => {
         </div>
         <button id="invAdd" style="margin-top:12px">Add lot</button>
       </div>
+    </div>
+    <div class="panel" style="margin-top:16px"><h2>Reservations</h2>
+      <div class="table-wrap"><table><thead><tr><th>Product</th><th>Lot</th><th class="num">Qty</th><th>Customer</th><th>Status</th><th>Created</th><th></th></tr></thead>
+      <tbody>${(res.rows || []).map((r) => `<tr><td>${esc((r.display_name || '').slice(0, 32))}</td><td class="mono small">${esc(r.lot_reference || '')}</td><td class="num">${num(r.quantity)}</td><td class="small">${esc(r.customer_name || '—')}</td><td><span class="badge ${r.status === 'active' ? 'info' : 'good'}">${esc(r.status)}</span></td><td class="small muted">${esc(r.created_at || '')}</td><td>${r.status === 'active' && can('buyer') ? `<button class="btn sm" data-release="${r.id}">Release</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="7" class="muted">No reservations yet.</td></tr>'}
+      </tbody></table></div>
     </div>`;
+  for (const b of document.querySelectorAll('[data-reserve]')) {
+    b.addEventListener('click', async () => {
+      const qty = Number(prompt('Quantity to reserve', '1'));
+      if (!(qty > 0)) return;
+      try { await POST('/reservations', { lotId: Number(b.dataset.reserve), quantity: qty }); toast('Stock reserved', 'ok'); render(); }
+      catch (e) { toast(e.message, 'err'); }
+    });
+  }
+  for (const b of document.querySelectorAll('[data-release]')) {
+    b.addEventListener('click', async () => {
+      try { await POST(`/reservations/${b.dataset.release}/release`, {}); toast('Reservation released', 'ok'); render(); }
+      catch (e) { toast(e.message, 'err'); }
+    });
+  }
   mountProductPicker($('#view'));
   $('#invAdd').addEventListener('click', async () => {
     const pid = $('#invId'); const hidden = $('[data-pp-id]', $('#view'));

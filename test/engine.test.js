@@ -1,4 +1,18 @@
 'use strict';
+// Tests run against a throwaway database so they never touch the dev DB
+// (and never leave stray rows behind). Must be set before requiring the db.
+const os = require('os');
+const path = require('path');
+const fs = require('fs');
+const TMP_DB = path.join(os.tmpdir(), `ptp-test-${process.pid}.db`);
+process.env.PTP_DATA_DIR = path.dirname(TMP_DB);
+process.env.PTP_DB = TMP_DB;
+process.on('exit', () => {
+  for (const suffix of ['', '-wal', '-shm']) {
+    try { fs.unlinkSync(TMP_DB + suffix); } catch (e) { /* ignore */ }
+  }
+});
+
 const { test } = require('node:test');
 const assert = require('node:assert');
 const pricing = require('../server/services/pricing');
@@ -13,6 +27,22 @@ const { orderQuantityFor, roundUpTo } = require('../server/services/recommend');
 const { consolidateDemands } = require('../server/services/purchasePlan');
 const analytics = require('../server/services/analytics');
 const { movingAverageForecast } = require('../server/services/forecast');
+const reservations = require('../server/services/reservations');
+const { db } = require('../server/db');
+// Seed the throwaway DB once so the DB-backed tests (purchase plan, KPIs,
+// reservations) have deterministic demo data, exactly as the app runs it.
+require('../server/seedData').seedData({ log: () => {} });
+
+// Creates a throwaway inventory lot for reservation tests so they do not
+// depend on whatever demo data the seeded database happens to contain.
+function seedLot({ onHand = 0, quarantined = 0, inTransit = 0 } = {}) {
+  const product = db.prepare('SELECT id FROM products ORDER BY id LIMIT 1').get();
+  const info = db.prepare(
+    `INSERT INTO inventory_lots(product_id, supplier_code, warehouse, lot_reference, on_hand, quarantined, in_transit, unit_cost, currency)
+     VALUES(?, 'TEST', 'TEST', 'LOT-' || ?, ?, ?, ?, 1, 'USD')`
+  ).run(product ? product.id : 1, 'RES-TEST', onHand, quarantined, inTransit);
+  return Number(info.lastInsertRowid);
+}
 
 test('GTIN check digit validates real EAN-13', () => {
   assert.equal(gtin.analyse('4006714008789').valid, true);
@@ -410,6 +440,68 @@ test('deal contribution subtracts deal costs from gross profit', () => {
   assert.equal(withCosts.contributionTotal, 750);
   assert.equal(withCosts.contributionMarginPct, 37.5);
   assert.equal(withCosts.deployedCapital, 1250);
+});
+
+test('reservations: usable stock excludes quarantined stock', () => {
+  const lot = { on_hand: 100, quarantined: 10, in_transit: 500 };
+  assert.equal(reservations.usableStock(lot), 90);
+});
+
+test('reservations: cannot reserve more than usable stock (section 20)', () => {
+  const lotId = seedLot({ onHand: 100, quarantined: 10 });
+
+  // 90 usable, not 100 and not 110.
+  assert.equal(reservations.availableToSell(lotId), 90);
+
+  const tooBig = reservations.reserve({ lotId, quantity: 95 });
+  assert.equal(tooBig.ok, false);
+  assert.match(tooBig.error, /oversell/);
+  assert.equal(tooBig.available, 90);
+
+  const exact = reservations.reserve({ lotId, quantity: 90 });
+  assert.equal(exact.ok, true);
+  assert.equal(reservations.availableToSell(lotId), 0);
+
+  // Second reservation cannot oversell what is left.
+  const second = reservations.reserve({ lotId, quantity: 1 });
+  assert.equal(second.ok, false);
+  assert.match(second.error, /no stock available/);
+});
+
+test('reservations: partial reservations accumulate and release frees stock', () => {
+  const lotId = seedLot({ onHand: 50 });
+  const a = reservations.reserve({ lotId, quantity: 20 });
+  const b = reservations.reserve({ lotId, quantity: 15 });
+  assert.ok(a.ok && b.ok);
+  assert.equal(reservations.reservedFor(lotId), 35);
+  assert.equal(reservations.availableToSell(lotId), 15);
+
+  // Releasing frees the stock again.
+  const rel = reservations.release(a.id);
+  assert.equal(rel.ok, true);
+  assert.equal(reservations.reservedFor(lotId), 15);
+  assert.equal(reservations.availableToSell(lotId), 35);
+
+  // Releasing twice is refused rather than double-counting.
+  assert.equal(reservations.release(a.id).ok, false);
+});
+
+test('reservations: fulfilling consumes stock and reserved together', () => {
+  const lotId = seedLot({ onHand: 40 });
+  const r = reservations.reserve({ lotId, quantity: 25 });
+  assert.ok(r.ok);
+  const f = reservations.fulfil(r.id);
+  assert.equal(f.ok, true);
+  const lot = db.prepare('SELECT on_hand, reserved FROM inventory_lots WHERE id = ?').get(lotId);
+  assert.equal(lot.on_hand, 15);   // stock physically left
+  assert.equal(lot.reserved, 0);   // and is no longer held
+  assert.equal(reservations.availableToSell(lotId), 15);
+});
+
+test('reservations: in-transit stock is not available to sell', () => {
+  const lotId = seedLot({ onHand: 0, inTransit: 500 });
+  assert.equal(reservations.availableToSell(lotId), 0);
+  assert.equal(reservations.reserve({ lotId, quantity: 1 }).ok, false);
 });
 
 test('forecast baseline refuses to extrapolate thin history', () => {

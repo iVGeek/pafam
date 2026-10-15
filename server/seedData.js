@@ -85,12 +85,22 @@ function seedData(opts = {}) {
       new Date(Date.now() + 30 * 864e5).toISOString().slice(0, 10), 'manual', i < 2 ? 1 : 0, 'Demo demand');
   });
 
-  const addInv = db.prepare(
+const addInv = db.prepare(
     `INSERT INTO inventory_lots(product_id, supplier_code, warehouse, lot_reference, on_hand, reserved, in_transit, quarantined, unit_cost, currency)
-     VALUES (?,?,?,?,?,?,?,?,?,?)`
+     VALUES(?,?,?,?,?,?,?,?,?,?)`
   );
+  const lotIds = [];
   pids.slice(0, 4).forEach((pid, i) => {
-    addInv.run(pid, i % 2 ? 'IGAN' : 'ALCODIS', 'Madrid WH', 'LOT-' + (1000 + i), 60 + i * 20, 10, 40, 0, 8 + i, 'USD');
+    const info = addInv.run(pid, i % 2 ? 'IGAN' : 'ALCODIS', 'Madrid WH', 'LOT-' + (1000 + i), 60 + i * 20, 0, 40, 0, 8 + i, 'USD');
+    lotIds.push(Number(info.lastInsertRowid));
+  });
+
+  // Demo reservations so the available-to-sell view is meaningful. Held via
+  // real reservation rows (not a hand-set column) so the oversell guard has
+  // something to reason about.
+  const reservationsSvc = require('./services/reservations');
+  lotIds.slice(0, 2).forEach((lotId, i) => {
+    reservationsSvc.reserve({ lotId, quantity: 10, customerId: custIds[i], notes: 'Demo hold', actor: 'seed' });
   });
 
   // Demo orders with payments so the realised-margin view has data: one fully

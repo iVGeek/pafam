@@ -22,7 +22,7 @@ Other scripts:
 | `npm run seed` | Wipe `data/ptp.db`, re-import `samples/`, add demo customers/demands/inventory |
 | `npm start` | Start the web app (API + UI) on port 4173 (`PORT` env to change) |
 | `npm run import` | Headless importer spike / data-quality report (writes `output/`) |
-| `npm test` | Unit tests for the GTIN, pack-size and pricing engines |
+| `npm test` | Unit tests for the GTIN, pack-size, pricing, reservation and forecast engines (runs against a throwaway database) |
 
 ## Deploy on Render
 
@@ -78,6 +78,11 @@ Notes:
   contribution, plus conservative/base/upside scenarios and price-drop and
   customer-default stress cases (never presented as forecasts).
 - **Trade**: inventory lots, customers, a demand book and quotes.
+- **Hold stock**: **reservations** tie stock in a lot to a demand or order so
+  two traders cannot sell the same bottle. Active reservations can never exceed
+  usable stock (`on hand − quarantined`); in-transit stock is not sellable
+  until received. Reservations can be released or fulfilled, and every change
+  is audited.
 - **Track prices**: an immutable `price_history` records every observed price;
   **alerts** flag price movements, expiries and low stock, and the **price
   trends** view shows 7/30/90/180-day movement with real date gaps (no invented
@@ -127,7 +132,7 @@ server/
   index.js              Express app + static UI + SPA fallback
   seed.js               reset + import + demo data (thin wrapper)
   seedData.js           reusable seed routine (used by seed + auto-seed on boot)
-  routes/               meta, imports, offers, products, trading, auth, captures, sourcing, alerts, orders, recommend, purchase-plan, kpis, forecast, export
+  routes/               meta, imports, offers, products, trading, reservations, auth, captures, sourcing, alerts, orders, recommend, purchase-plan, kpis, forecast, export
   services/
     importer.js         import pipeline (GTIN, packs, snapshots, exceptions, price_history)
     matcher.js          GTIN/alias -> product master
@@ -137,6 +142,7 @@ server/
     sourcing.js         lowest executable landed cost
     deal.js             buy-side offer + sell-side customer -> full deal
     orders.js           orders, payments and realised vs forecast margin
+    reservations.js     stock holds + the no-oversell guard (section 11/20)
     recommend.js        demand -> cheapest executable supplier, MOQ/policy aware
     purchasePlan.js     consolidated buying list across all open demand
     forecast.js         moving-average demand baseline (refuses thin history)
@@ -162,7 +168,7 @@ samples/                real supplier files used for the demo
 ## Data model (highlights)
 
 `suppliers · uploads · offers · products · product_aliases · exceptions ·
-inventory_lots · customers · demands · quotes · orders · payments · price_history ·
+inventory_lots · reservations · customers · demands · quotes · orders · payments · price_history ·
 fx_rates · alerts · settings · audit_log · users · sessions · captures`
 
 Every offer stores its source file, row, list date and raw values, so imports
