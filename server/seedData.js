@@ -109,9 +109,15 @@ const addInv = db.prepare(
   const ordersSvc = require('./services/orders');
   const demoOrders = [
     { pid: pids[0], cust: custIds[0], qty: 200, cost: 8.5, price: 12.5, status: 'closed',
-      out: 1700, in: 2500, ordDate: new Date(Date.now() - 40 * 864e5).toISOString().slice(0, 10) },
+      out: 1700, in: 2500, ordDate: new Date(Date.now() - 40 * 864e5).toISOString().slice(0, 10),
+      // Supplier paid on the order date, customer pays 45 days later: a real
+      // capital cycle, so the XIRR on the dated payments is meaningful.
+      outDate: new Date(Date.now() - 40 * 864e5).toISOString().slice(0, 10),
+      inDate: new Date(Date.now() + 5 * 864e5).toISOString().slice(0, 10) },
     { pid: pids[1], cust: custIds[1], qty: 100, cost: 10, price: 15, status: 'delivered',
-      out: 1000, in: 600, ordDate: new Date(Date.now() - 20 * 864e5).toISOString().slice(0, 10) },
+      out: 1000, in: 600, ordDate: new Date(Date.now() - 20 * 864e5).toISOString().slice(0, 10),
+      outDate: new Date(Date.now() - 20 * 864e5).toISOString().slice(0, 10),
+      inDate: new Date(Date.now() + 10 * 864e5).toISOString().slice(0, 10) },
     { pid: pids[2], cust: custIds[2], qty: 50, cost: 6, price: 9, status: 'draft',
       out: 0, in: 0, ordDate: new Date().toISOString().slice(0, 10) },
   ];
@@ -127,8 +133,8 @@ const addInv = db.prepare(
     });
     if (r.error) continue;
     ordersCreated++;
-    if (d.out) ordersSvc.recordPayment(r.id, { direction: 'outbound', amount: d.out, method: 'Transfer', reference: 'PO-' + r.id });
-    if (d.in) ordersSvc.recordPayment(r.id, { direction: 'inbound', amount: d.in, method: 'Transfer', reference: 'INV-' + r.id });
+    if (d.out) ordersSvc.recordPayment(r.id, { direction: 'outbound', amount: d.out, paidDate: d.outDate || d.ordDate, method: 'Transfer', reference: 'PO-' + r.id });
+    if (d.in) ordersSvc.recordPayment(r.id, { direction: 'inbound', amount: d.in, paidDate: d.inDate || d.ordDate, method: 'Transfer', reference: 'INV-' + r.id });
   }
 
   // Several months of delivered history for one product/customer so the demand

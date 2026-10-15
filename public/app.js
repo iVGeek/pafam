@@ -1156,13 +1156,17 @@ routes.orders = async () => {
       </div>
       <div class="table-wrap" style="margin-top:12px"><table><thead><tr>
         <th>Ref</th><th>Customer</th><th>Product</th><th>Supplier</th><th>Status</th><th class="num">Qty</th>
-        <th class="num">Forecast margin</th><th class="num">Realised</th><th class="num">Paid out/in</th><th class="num">Outstanding</th><th></th>
+        <th class="num">Forecast margin</th><th class="num">Realised</th><th class="num">Paid out/in</th><th class="num">Outstanding</th>
+        <th class="num">XIRR</th><th></th>
       </tr></thead><tbody>
         ${rows.map((o) => {
           const r = o.realised;
           const marginCell = r.forecastMarginPct != null ? `<span class="badge ${r.forecastMarginPct >= 15 ? 'good' : 'bad'}">${money(r.forecastMargin)} / ${pct(r.forecastMarginPct)}</span>` : '—';
           const realCell = r.settled ? `<span class="badge good">${money(r.realisedMargin)}${r.marginVariance != null ? ` (${r.marginVariance >= 0 ? '+' : ''}${money(r.marginVariance)})` : ''}</span>` : '<span class="badge muted">open</span>';
           const outstanding = (!r.costSettled || !r.revenueSettled) ? `${money(r.costOutstanding)} / ${money(r.revenueOutstanding)}` : '<span class="badge good">settled</span>';
+          const xirrCell = r.xirrPct != null
+            ? `<span class="badge info" title="Money-weighted annualised return on the actual dated payments">${pct(r.xirrPct)}</span><div class="small muted">${num(r.daysFunded)}d funded</div>`
+            : `<span class="badge muted" title="${esc(r.xirrReason || '')}">n/a</span>`;
           return `<tr>
             <td class="mono">${esc(o.ref || '')}</td>
             <td>${esc(o.customer_name || '')}</td>
@@ -1174,9 +1178,10 @@ routes.orders = async () => {
             <td class="num">${realCell}</td>
             <td class="num small">${money(r.paidOut)} / ${money(r.paidIn)}</td>
             <td class="num small">${outstanding}</td>
+            <td class="num small">${xirrCell}</td>
             <td class="nowrap">${canEdit ? `<button class="sm" data-pay="${o.id}">Record payment</button>` : ''}</td>
           </tr>`;
-        }).join('') || '<tr><td colspan="11" class="muted">No orders yet.</td></tr>'}
+        }).join('') || '<tr><td colspan="12" class="muted">No orders yet.</td></tr>'}
       </tbody></table></div>
     </div>
     ${canEdit ? `<div class="split" style="margin-top:14px">

@@ -341,6 +341,120 @@ function scenarios(input) {
   ];
 }
 
+// ---- XIRR / dated cash-flow returns (brief section 8, control 7) ------------
+//
+// "use XIRR only where dated cash flows support it". These helpers are
+// deliberately conservative: when the dates cannot support a money-weighted
+// return they return null with a reason rather than a misleading number.
+
+// Net present value of dated cash flows at an annual rate (ACT/365).
+function npv(ratePct, flows) {
+  const r = ratePct / 100;
+  if (r <= -1) return null;
+  const t0 = flows[0].t;
+  return flows.reduce((sum, f) => sum + f.amount / Math.pow(1 + r, (f.t - t0) / 365), 0);
+}
+
+// Annualised money-weighted return for dated cash flows.
+// flows: [{ date: 'YYYY-MM-DD', amount: number }]. Money out is negative.
+// Returns null (with a reason) when the flows cannot support an XIRR.
+function xirr(flows) {
+  const clean = (flows || [])
+    .map((f) => ({ date: f.date, amount: Number(f.amount) }))
+    .filter((f) => f.date && Number.isFinite(f.amount) && f.amount !== 0);
+  if (clean.length < 2) return { xirrPct: null, reason: 'need at least two dated cash flows' };
+
+  const base = new Date(clean[0].date + 'T00:00:00Z').getTime();
+  const dated = clean.map((f) => ({ ...f, t: Math.round((new Date(f.date + 'T00:00:00Z').getTime() - base) / 86400000) }));
+
+  const pos = dated.some((f) => f.amount > 0);
+  const neg = dated.some((f) => f.amount < 0);
+  if (!pos || !neg) return { xirrPct: null, reason: 'need at least one inflow and one outflow' };
+
+  if (dated.every((f) => f.t === 0)) {
+    return { xirrPct: null, reason: 'all cash flows fall on the same day' };
+  }
+
+  // Bracket the root. Rates a trade can genuinely produce run from slightly
+  // negative to many thousands of percent on a short capital cycle, so we
+  // search a wide log-spaced range rather than a narrow one and only give up
+  // when the NPV genuinely never changes sign.
+  const factors = [];
+  for (let e = -6; e <= 14; e++) factors.push(Math.pow(10, e / 2));   // 0.001 .. 1e7
+  let lo = null;
+  let hi = null;
+  let npvLo = null;
+  let npvHi = null;
+  for (const f of factors) {
+    if (f >= 1) { const v = npv((f - 1) * 100, dated); if (v != null && v <= 0) { hi = (f - 1) * 100; npvHi = v; break; } }
+  }
+  for (let i = factors.length - 1; i >= 0; i--) {
+    const f = factors[i];
+    if (f < 1) { const v = npv((f - 1) * 100, dated); if (v != null && v >= 0) { lo = (f - 1) * 100; npvLo = v; break; } }
+  }
+  if (lo == null) { lo = -99.9999; npvLo = npv(lo, dated); }
+  if (hi == null) { hi = 1e9; npvHi = npv(hi, dated); }
+  if (npvLo == null || npvHi == null || npvLo * npvHi > 0) {
+    return { xirrPct: null, reason: 'no rate in a plausible range zeroes the NPV' };
+  }
+
+  for (let i = 0; i < 300; i++) {
+    const mid = (lo + hi) / 2;
+    const npvMid = npv(mid, dated);
+    if (npvMid == null) break;
+    if (Math.abs(npvMid) < 1e-7) { lo = hi = mid; break; }
+    if (npvLo * npvMid < 0) { hi = mid; npvHi = npvMid; } else { lo = mid; npvLo = npvMid; }
+  }
+  const rate = (lo + hi) / 2;
+  return {
+    xirrPct: round4(rate),
+    npvAtRate: round4(npv(rate, dated) || 0),
+    days: dated[dated.length - 1].t - dated[0].t,
+    flows: dated.length,
+  };
+}
+
+// Daily funding balance between the first and last dated movement. This is
+// what actually tells you how long capital was tied up when there are several
+// payments/receipts rather than one clean in and one clean out.
+function dailyFunding(flows) {
+  const clean = (flows || [])
+    .map((f) => ({ date: f.date, amount: Number(f.amount) }))
+    .filter((f) => f.date && Number.isFinite(f.amount));
+  if (!clean.length) return { days: [], peakDeficit: 0, peakDeficitDay: null, daysFunded: 0 };
+
+  clean.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+  const start = new Date(clean[0].date + 'T00:00:00Z');
+  const end = new Date(clean[clean.length - 1].date + 'T00:00:00Z');
+  const span = Math.round((end - start) / 86400000);
+
+  const byDay = new Map();
+  for (const f of clean) {
+    const d = Math.round((new Date(f.date + 'T00:00:00Z') - start) / 86400000);
+    byDay.set(d, round2((byDay.get(d) || 0) + f.amount));
+  }
+
+  let balance = 0;
+  let peakDeficit = 0;
+  let peakDeficitDay = null;
+  let daysFunded = 0;
+  const days = [];
+  for (let d = 0; d <= span; d++) {
+    balance = round2(balance + (byDay.get(d) || 0));
+    if (balance < 0) daysFunded++;
+    if (balance < peakDeficit) { peakDeficit = balance; peakDeficitDay = d; }
+    days.push({ day: d, date: new Date(start.getTime() + d * 864e5).toISOString().slice(0, 10), balance, movement: byDay.get(d) || 0 });
+  }
+  return {
+    days,
+    spanDays: span,
+    peakDeficit,
+    peakDeficitDay,
+    daysFunded,
+    weightedDays: clean.reduce((s, f) => s + f.amount * Math.round((new Date(f.date + 'T00:00:00Z') - start) / 86400000), 0),
+  };
+}
+
 module.exports = {
   round2, round4,
   unitAcquisitionPrice,
@@ -354,4 +468,7 @@ module.exports = {
   cashflow,
   computeDeal,
   scenarios,
+  xirr,
+  npv,
+  dailyFunding,
 };

@@ -506,6 +506,81 @@ test('reservations: in-transit stock is not available to sell', () => {
   assert.equal(reservations.reserve({ lotId, quantity: 1 }).ok, false);
 });
 
+test('xirr: annualises dated cash flows and declines when unsupported', () => {
+  // -1000 today, +1100 in 364 days -> ~10.03% annualised.
+  const r = pricing.xirr([
+    { date: '2026-01-01', amount: -1000 },
+    { date: '2026-12-31', amount: 1100 },
+  ]);
+  assert.ok(r.xirrPct > 10 && r.xirrPct < 10.1, `got ${r.xirrPct}`);
+  assert.equal(r.days, 364);
+  assert.equal(r.flows, 2);
+
+  // Several receipts: money-weighted, not the same as a simple average.
+  const multi = pricing.xirr([
+    { date: '2026-01-01', amount: -1200 },
+    { date: '2026-04-01', amount: 400 },
+    { date: '2026-07-01', amount: 400 },
+    { date: '2026-10-01', amount: 500 },
+  ]);
+  assert.ok(multi.xirrPct > 0 && Number.isFinite(multi.xirrPct));
+  assert.equal(multi.flows, 4);
+
+  // Honest refusals rather than a meaningless number.
+  assert.equal(pricing.xirr([]).xirrPct, null);
+  assert.equal(pricing.xirr([{ date: '2026-01-01', amount: -1000 }]).xirrPct, null);
+  const sameDay = pricing.xirr([
+    { date: '2026-01-01', amount: -1000 },
+    { date: '2026-01-01', amount: 1100 },
+  ]);
+  assert.equal(sameDay.xirrPct, null);
+  assert.match(sameDay.reason, /same day/);
+  const noInflow = pricing.xirr([
+    { date: '2026-01-01', amount: -1000 },
+    { date: '2026-02-01', amount: -100 },
+  ]);
+  assert.equal(noInflow.xirrPct, null);
+  assert.match(noInflow.reason, /inflow and one outflow/);
+});
+
+test('daily funding tracks the peak deficit across dated movements', () => {
+  const f = pricing.dailyFunding([
+    { date: '2026-01-01', amount: -1000 },
+    { date: '2026-01-11', amount: -200 },
+    { date: '2026-02-01', amount: 1400 },
+  ]);
+  assert.equal(f.spanDays, 31);
+  assert.equal(f.peakDeficit, -1200);
+  assert.equal(f.daysFunded, 31);
+  assert.ok(f.days.length >= 32);
+
+  const clean = pricing.dailyFunding([
+    { date: '2026-01-01', amount: -500 },
+    { date: '2026-01-11', amount: 550 },
+  ]);
+  assert.equal(clean.peakDeficit, -500);
+  assert.equal(clean.daysFunded, 10);
+});
+
+test('realise: reports XIRR only when dated payments support it', () => {
+  const order = { quantity: 100, unit_cost: 10, unit_price: 13 };
+  const dated = orders.realise(order, [
+    { direction: 'outbound', amount: 1000, paid_date: '2026-01-01' },
+    { direction: 'inbound', amount: 1300, paid_date: '2027-01-01' },
+  ]);
+  assert.ok(dated.xirrPct > 25 && dated.xirrPct < 35, `got ${dated.xirrPct}`);
+  assert.equal(dated.xirrReason, null);
+  assert.equal(dated.datedPayments, 2);
+
+  // Undated payments: we say so rather than inventing a return.
+  const undated = orders.realise(order, [
+    { direction: 'outbound', amount: 1000 },
+    { direction: 'inbound', amount: 1300 },
+  ]);
+  assert.equal(undated.xirrPct, null);
+  assert.ok(undated.xirrReason);
+});
+
 test('shipment: allocates cost by the declared driver and reconciles exactly', () => {
   const s = shipments.createShipment({
     ref: 'SHIP-TEST-W', direction: 'inbound', supplierCode: 'ALCODIS', costType: 'freight',

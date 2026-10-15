@@ -135,6 +135,8 @@ function ordersSheet() {
       { title: 'Paid in', value: (r) => r.realised.paidIn, wch: 12 },
       { title: 'Realised margin', value: (r) => r.realised.realisedMargin, wch: 16 },
       { title: 'Settled', value: (r) => (r.realised.settled ? 'yes' : 'no'), wch: 10 },
+      { title: 'XIRR %', value: (r) => (r.realised.xirrPct != null ? r.realised.xirrPct : ''), wch: 10 },
+      { title: 'Days funded', value: (r) => (r.realised.daysFunded != null ? r.realised.daysFunded : ''), wch: 12 },
     ],
   };
 }

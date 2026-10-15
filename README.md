@@ -88,7 +88,11 @@ Notes:
   trends** view shows 7/30/90/180-day movement with real date gaps (no invented
   points).
 - **Close the loop**: **orders** with payments booked in/out, comparing
-  *forecast* to *realised* margin from cash actually moved.
+  *forecast* to *realised* margin from cash actually moved. Where the dated
+  payments support it, each settled order also reports a money-weighted **XIRR**
+  and how many days capital was actually funded; where they do not (same-day
+  movements, missing dates, still-open orders) it reports *why* instead of a
+  misleading number.
 - **Decide what to buy**: **buying recommendations** match each demand to the
   cheapest *executable* supplier, rounding up to MOQ/order multiples, selling
   against the customer target or a policy floor, and flagging anything that
@@ -145,7 +149,7 @@ server/
     importer.js         import pipeline (GTIN, packs, snapshots, exceptions, price_history)
     matcher.js          GTIN/alias -> product master
     comparison.js       per-bottle normalisation + ranking + flags
-    pricing.js          pure pricing/landed-cost/cashflow/scenario engine
+    pricing.js          pure pricing/landed-cost/cashflow/scenario/XIRR engine
     landing.js          Incoterm-aware landed-cost components
     sourcing.js         lowest executable landed cost
     deal.js             buy-side offer + sell-side customer -> full deal

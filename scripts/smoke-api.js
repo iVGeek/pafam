@@ -157,6 +157,11 @@ const server = app.listen(PORT, async () => {
     const ordRealised = (ordList.body || []).filter((o) => o.realised && o.realised.settled)
       .reduce((s, o) => s + o.realised.realisedMargin, 0);
     console.log('orders listing:', ordList.status, '| count:', (ordList.body || []).length, '| realised margin:', ordRealised);
+    // XIRR is only reported where the dated payments support it (section 8.7)
+    const settledOrder = (ordList.body || []).find((o) => o.realised && o.realised.settled);
+    const openOrder = (ordList.body || []).find((o) => o.realised && !o.realised.settled);
+    console.log('xirr settled order:', settledOrder ? `${settledOrder.ref} xirr=${settledOrder.realised.xirrPct}% funded=${settledOrder.realised.daysFunded}d` : 'none');
+    console.log('xirr open order (expect withheld):', openOrder ? `${openOrder.ref} xirr=${openOrder.realised.xirrPct} reason="${openOrder.realised.xirrReason}"` : 'none');
     const ordNew = await admin.req('POST', '/orders', { customerId: 1, productId: pid, quantity: 20, unitCost: 7, unitPrice: 11, currency: 'USD' });
     console.log('orders create (expect 200):', ordNew.status, '| id:', ordNew.body.id);
     if (ordNew.body.id) {

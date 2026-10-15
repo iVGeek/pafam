@@ -37,6 +37,21 @@ function realise(order, payments) {
   const settled = costSettled && revenueSettled;
   const marginVariance = forecastMargin != null && settled ? round2(realisedMargin - forecastMargin) : null;
 
+  // Money-weighted return on the actual dated payments (section 8.7). Only
+  // reported when the dates genuinely support it; otherwise the reason is kept
+  // so the UI can say why instead of showing a number that means nothing.
+  const dated = (payments || [])
+    .map((p) => ({
+      date: p.paid_date || p.paidDate || null,
+      amount: p.direction === 'outbound' ? -(Number(p.amount) || 0) : (Number(p.amount) || 0),
+    }))
+    .filter((f) => f.date);
+  // A money-weighted return on an order that is still open is not a result,
+  // it is an artefact of a partial receipt — so we only report it once the
+  // order has actually settled.
+  const xirrResult = settled ? pricing.xirr(dated) : { xirrPct: null, reason: 'order not settled yet' };
+  const funding = dated.length ? pricing.dailyFunding(dated) : null;
+
   return {
     quantity: qty,
     forecastCost, forecastRevenue, forecastMargin, forecastMarginPct,
@@ -45,6 +60,11 @@ function realise(order, payments) {
     costOutstanding, revenueOutstanding,
     costSettled, revenueSettled, settled,
     marginVariance,
+    xirrPct: xirrResult.xirrPct,
+    xirrReason: xirrResult.xirrPct == null ? (xirrResult.reason || null) : null,
+    daysFunded: funding ? funding.daysFunded : null,
+    peakFunding: funding ? funding.peakDeficit : null,
+    datedPayments: dated.length,
   };
 }
 
