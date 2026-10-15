@@ -582,6 +582,34 @@ test('realise: reports XIRR only when dated payments support it', () => {
   assert.ok(undated.xirrReason);
 });
 
+test('case price with unknown pack size is never treated as a bottle price', () => {
+  const opts = { quantity: 12, destination: 'US', baseCurrency: 'USD', fxRate: 1, settings: {} };
+  const base = { supplier_code: 'S', price: 240, price_basis: 'case', price_type: 'cost', currency: 'USD', incoterm: 'DDP' };
+
+  const known = computeLanded({ ...base, id: 1, units_per_case: 24 }, {}, opts);
+  assert.equal(known.acquisitionPerBottle, 10);
+  assert.equal(known.executable, true);
+  assert.equal(known.packKnown, true);
+
+  // Unknown pack size: we must not divide by an assumed 1.
+  const unknown = computeLanded({ ...base, id: 2, units_per_case: null }, {}, opts);
+  assert.equal(unknown.executable, false, 'a case price with no pack size is not executable');
+  assert.ok(unknown.flags.includes('units-per-case-unknown'));
+  assert.ok(unknown.missing.includes('units per case'));
+
+  // The old importer coerced unknown -> 1, which silently produced a bottle
+  // price. That must now be refused too.
+  const coerced = computeLanded({ ...base, id: 3, units_per_case: 1 }, {}, opts);
+  assert.equal(coerced.executable, false);
+  assert.ok(coerced.flags.includes('units-per-case-unknown'));
+
+  // Unit-basis offers are unaffected by any of this.
+  const unit = computeLanded({ ...base, id: 4, price: 10, price_basis: 'unit', units_per_case: null }, {}, opts);
+  assert.equal(unit.acquisitionPerBottle, 10);
+  assert.equal(unit.executable, true);
+  assert.equal(unit.flags.includes('units-per-case-unknown'), false);
+});
+
 test('approvals: staff sign-off is recorded and can be enforced', () => {
   const approvals = require('../server/services/approvals');
   const { setSetting } = require('../server/db');

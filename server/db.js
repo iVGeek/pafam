@@ -522,6 +522,11 @@ function migrate() {
   ];
   for (const [c, ddl] of offerApprovalCols) ensureColumn('offers', c, ddl);
   db.exec('CREATE INDEX IF NOT EXISTS idx_offers_approval ON offers(approval_status)');
+
+  // offers: where units-per-case came from (brief section 6). A pack size read
+  // off the supplier's own file is stronger evidence than one parsed out of the
+  // description text, and "unknown" must stay unknown rather than becoming 1.
+  ensureColumn('offers', 'units_per_case_source', "TEXT NOT NULL DEFAULT 'unknown'");
 }
 
 function init() {

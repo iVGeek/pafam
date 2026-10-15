@@ -58,8 +58,8 @@ function importFile(filePath, opts = {}) {
        incoterm, incoterm_place, valid_until, ready_date, lead_time_days,
        country_of_origin, stock_country, stock_warehouse, last_confirmed_at, stock_confidence,
        permitted_destination, us_suitability, freight_inclusions, stock_owner_id, unique_lot_ref,
-       expiry_date, notes, cap_type, refillable, product_id, status)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+expiry_date, notes, cap_type, refillable, product_id, status, units_per_case_source)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
   );
   const insertHistory = db.prepare(
     `INSERT INTO price_history(supplier_code, gtin_canonical, product_id, upload_id, offer_id,
@@ -114,9 +114,12 @@ function importFile(filePath, opts = {}) {
     // case, record price_basis='case' so the engine divides before comparing.
     let unitsPerCase = o.unitsPerCase != null ? o.unitsPerCase : null;
     let packFromDescription = false;
+    // Provenance matters (section 6): a pack size the supplier stated in a
+    // column is stronger evidence than one we inferred from description text.
+    let packSource = unitsPerCase > 1 ? 'file' : 'unknown';
     if (!unitsPerCase) {
       const p = parsePackSize(o.description);
-      if (p) { unitsPerCase = p; packFromDescription = true; }
+      if (p) { unitsPerCase = p; packFromDescription = true; packSource = 'description'; }
     }
     const priceBasis = (supplier.priceBasisFromPack && unitsPerCase && unitsPerCase > 1 && packFromDescription)
       ? 'case'
@@ -135,7 +138,7 @@ function importFile(filePath, opts = {}) {
       o.countryOfOrigin, o.stockCountry, o.stockWarehouse, o.lastStockConfirmation, o.stockConfidence,
       o.permittedDestination, o.usSuitabilityStatus, o.freightInclusions, o.stockOwnerId, o.uniqueLotRef,
       o.expiryDate, o.notes, o.capType, o.refillable == null ? null : (o.refillable ? 1 : 0),
-      productId, status
+      productId, status, packSource
     );
     const offerId = Number(info.lastInsertRowid);
     counters.imported++;
@@ -143,7 +146,11 @@ function importFile(filePath, opts = {}) {
     // Record a price-history point for trend analysis (even for exceptions,
     // but prefer normalised acquisition cost where possible).
     let unitCostBase = null;
-    if (price != null) {
+    // A per-case price with an unknown pack size cannot be converted to a
+    // per-bottle cost. We record "unknown" rather than dividing by 1, so the
+    // trend series shows a gap instead of a fictional figure (section 6).
+    const packUnknown = priceBasis === 'case' && !(unitsPerCase > 1);
+    if (price != null && !packUnknown) {
       const baseCur = getSetting('base_currency', 'USD');
       const acqHist = pricing.unitAcquisitionPrice({
         price,

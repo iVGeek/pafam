@@ -78,13 +78,24 @@ function computeLanded(offer, supplier, opts) {
   const s = opts.settings || {};
   const sup = supplier || {};
 
-  const unitsPerCase = toNum(offer.units_per_case, 0) > 0 ? Number(offer.units_per_case) : 1;
+  const declaredPack = toNum(offer.units_per_case, 0);
+  const unitsPerCase = declaredPack > 1 ? declaredPack : 1;
   const discountPct = toNum(sup.default_discount_pct, toNum(offer.default_discount_pct, 0)) || 0;
   const basePrice = toNum(offer.price, null);
   const tierSel = selectTier(offer.tiers_json, quantity, basePrice, offer.price_basis || 'unit');
 
   const flags = [];
   const missing = [];
+
+  // Section 6: a case price must never be treated as a bottle price. If the
+  // supplier quoted per case but did not say how many units are in the case,
+  // we cannot convert it — so we say so instead of dividing by an assumed 1.
+  const packKnown = declaredPack > 1;
+  const packBasis = offer.price_basis || 'unit';
+  if (packBasis === 'case' && !packKnown) {
+    flags.push('units-per-case-unknown');
+    missing.push('units per case');
+  }
 
   let acquisition = null;   // per bottle, source currency
   let acquisitionNotes = [];
@@ -94,8 +105,8 @@ function computeLanded(offer, supplier, opts) {
       if (discountPct > 0) { p = p * (1 - discountPct / 100); acquisitionNotes.push(`RRP − ${discountPct}%`); }
       else flags.push('retail-price');
     }
-    const basis = tierSel.basis || offer.price_basis || 'unit';
-    if (basis === 'case') { p = p / unitsPerCase; acquisitionNotes.push(`per case of ${unitsPerCase}`); }
+    const basis = tierSel.basis || packBasis;
+    if (basis === 'case' && packKnown) { p = p / unitsPerCase; acquisitionNotes.push(`per case of ${unitsPerCase}`); }
     acquisition = p;
   }
   if (tierSel.applied) flags.push('tier-applied');
@@ -173,7 +184,10 @@ function computeLanded(offer, supplier, opts) {
   if (missing.length) flags.push('incomplete-cost');
 
   const isRetail = flags.includes('retail-price');
-  const executable = !isRetail && moqOk && multipleOk && availableOk !== false && notExpired && eligible;
+  // A case price we cannot convert to a bottle price is not executable: we
+  // cannot honestly compare it with anything else (section 6).
+  const packConvertible = !(packBasis === 'case' && !packKnown);
+  const executable = !isRetail && moqOk && multipleOk && availableOk !== false && notExpired && eligible && packConvertible;
 
   return {
     offerId: offer.id,
@@ -184,7 +198,9 @@ function computeLanded(offer, supplier, opts) {
     baseCurrency,
     quantity,
     destination,
-    unitsPerCase,
+unitsPerCase,
+    packKnown,
+    packSource: offer.units_per_case_source || null,
     price: basePrice,
     priceBasis: offer.price_basis,
     priceType: offer.price_type,
