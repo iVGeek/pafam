@@ -2,7 +2,7 @@
   "name": "perfumes",
   "version": "0.2.0",
   "private": true,
-  "description": "Perfumes — standalone wholesale trading platform for perfume & spirits",
+  "description": "Perfumes — standalone wholesale trading platform for fine fragrance",
   "main": "server/index.js",
   "engines": {
     "node": "24.x"
@@ -12,6 +12,7 @@
     "dev": "node --no-warnings server/index.js",
     "seed": "node --no-warnings server/seed.js",
     "import": "node src/index.js",
+    "gen:samples": "node --no-warnings scripts/generate-samples.js",
     "test": "node --test"
   },
   "dependencies": {

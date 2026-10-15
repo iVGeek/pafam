@@ -58,7 +58,7 @@ const server = app.listen(PORT, async () => {
 
     // analyst can ingest capture, cannot promote
     await analyst.req('POST', '/auth/login', { username: 'analyst', password: 'analyst123' });
-    const aCap = await analyst.req('POST', '/captures', { source: 'manual', title: 'test', text: 'Need 300 bottles of Absolut Vodka, 12.50 EUR' });
+    const aCap = await analyst.req('POST', '/captures', { source: 'manual', title: 'test', text: 'Need 300 bottles of Dior Sauvage Eau de Parfum, 12.50 EUR' });
     console.log('analyst POST /captures (expect 200):', aCap.status, '| id:', aCap.body.id, '| auto task:', aCap.body.taskId);
     const aPromote = await analyst.req('POST', `/captures/${aCap.body.id}/promote`, { customerId: 1, productId: 1, quantity: 300 });
     console.log('analyst promote (expect 403):', aPromote.status);

@@ -1,6 +1,6 @@
 # Perfumes
 
-A bespoke, standalone wholesale trading platform for perfume & spirits: it
+A bespoke, standalone wholesale trading platform for fine fragrance: it
 ingests messy supplier price lists, resolves products by barcode, normalises
 unit vs case vs RRP pricing, compares suppliers, and prices deals to a margin
 policy. No Odoo, no external services — one Node process and one SQLite file.
@@ -9,7 +9,7 @@ policy. No Odoo, no external services — one Node process and one SQLite file.
 
 ```powershell
 npm install          # express, multer, xlsx
-npm run seed         # reset DB and import the two real samples + demo data
+npm run seed         # reset DB and import the two sample supplier lists + demo data
 npm start            # http://localhost:4173
 ```
 
@@ -22,6 +22,7 @@ Other scripts:
 | `npm run seed` | Wipe `data/ptp.db`, re-import `samples/`, add demo customers/demands/inventory |
 | `npm start` | Start the web app (API + UI) on port 4173 (`PORT` env to change) |
 | `npm run import` | Headless importer spike / data-quality report (writes `output/`) |
+| `npm run gen:samples` | Regenerate the two demo perfume supplier lists under `samples/` (deterministic) |
 | `npm test` | Unit tests for the GTIN, pack-size, pricing, reservation, forecast and integrity engines (runs against a throwaway database; the first run seeds it from the sample files and caches a fixture, later runs take ~1s. Set `PTP_TEST_NO_CACHE=1` to force a fresh seed) |
 
 ## Deploy on Render
@@ -187,7 +188,7 @@ src/
 public/
   index.html app.js styles.css   dependency-free SPA
 data/ptp.db             the database (created on first run)
-samples/                real supplier files used for the demo
+samples/                demo perfume price lists (generated; scripts/generate-samples.js)
 ```
 
 ## Data model (highlights)

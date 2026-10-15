@@ -20,9 +20,9 @@ const UNIT_WORDS = [
 ].join('|');
 
 const PRODUCT_KEYWORDS = [
-  'whisky', 'whiskey', 'vodka', 'gin', 'rum', 'ron', 'tequila', 'brandy', 'cognac',
-  'champagne', 'cava', 'prosecco', 'wine', 'vino', 'beer', 'cerveza', 'licor', 'liqueur',
-  'absinthe', 'absenta', 'mezcal', 'sake', 'baijiu', 'bourbon', 'scotch',
+  'perfume', 'parfum', 'fragrance', 'eau de parfum', 'eau de toilette',
+  'eau de cologne', 'cologne', 'colonia', 'after shave', 'aftershave', 'body mist',
+  'extrait', 'splash', 'deodorant', 'edp', 'edt',
 ];
 
 const INTENT_WORDS = [

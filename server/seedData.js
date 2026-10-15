@@ -55,7 +55,7 @@ function seedData(opts = {}) {
     'INSERT INTO customers(code, name, region, currency, payment_terms, credit_limit) VALUES (?,?,?,?,?,?)'
   );
   const customers = [
-    ['CUST-001', 'Atlantic Spirits LLC', 'US', 'USD', 'Net 30', 250000],
+    ['CUST-001', 'Atlantic Beauty Group LLC', 'US', 'USD', 'Net 30', 250000],
     ['CUST-002', 'Nordic Distribution AB', 'EU', 'EUR', 'Net 45', 120000],
     ['CUST-003', 'Gulf Trading FZE', 'ME', 'USD', 'Net 15', 300000],
   ];
@@ -192,12 +192,12 @@ const addInv = db.prepare(
 
   const captureStmt = db.prepare('INSERT INTO captures(source, title, raw_text, parsed_json, created_by) VALUES (?,?,?,?,?)');
   const demoCaptures = [
-    { source: 'plaud', title: 'Call with Atlantic Spirits', by: 'admin',
-      text: 'Customer: Atlantic Spirits. They are interested in 500 bottles of Jack Daniels Old No.7 1L. Target price around 18.50 EUR. Need a quote by Friday, ship to New York. Barcode 5099873088333.' },
+    { source: 'plaud', title: 'Call with Atlantic Beauty', by: 'admin',
+      text: 'Customer: Atlantic Beauty Group. They are interested in 500 bottles of Bleu de Chanel Eau de Parfum 100 ml. Target price around 18.50 EUR. Need a quote by Friday, ship to New York. Barcode 5099873088333.' },
     { source: 'remarkable', title: 'Trade fair notes', by: 'buyer',
-      text: 'Nordic Distribution asked about Bacardi Carta Blanca. Quote 24 units at 7.20 USD per bottle, availability first.' },
+      text: 'Nordic Distribution asked about Yves Saint Laurent Libre Eau de Parfum. Quote 24 units at 7.20 USD per bottle, availability first.' },
     { source: 'plaud', title: 'Gulf Trading enquiry', by: 'analyst',
-      text: 'Cliente Gulf Trading FZE, presupuesto para 1000 unidades de Vodka Absolut 1L, precio 9.90 USD, entrega Dubai.' },
+      text: 'Cliente Gulf Trading FZE, presupuesto para 1000 unidades de Dior Sauvage Eau de Parfum 100 ml, precio 9.90 USD, entrega Dubai.' },
   ];
   for (const c of demoCaptures) captureStmt.run(c.source, c.title, c.text, JSON.stringify(parseNote(c.text)), c.by);
 

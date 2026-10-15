@@ -89,10 +89,10 @@ test('GTIN handles EAN-8 and UPC-A', () => {
 });
 
 test('pack size parsing', () => {
-  assert.equal(parsePackSize('CORONA BOT. 4*6 35,5CL'), 24);
-  assert.equal(parsePackSize('Cerveza Corona Botella 6 Pack  0,355 Litros'), 6);
-  assert.equal(parsePackSize('Whisky Old Parr 12 años 1,00 Litro'), null);
-  assert.equal(parsePackSize('Strongbow 24 Uds 33cl'), 24);
+  assert.equal(parsePackSize('CHANEL N°5 EDT 4*6 100ML'), 24);
+  assert.equal(parsePackSize('Bleu de Chanel Eau de Parfum 6 Pack 100 ml'), 6);
+  assert.equal(parsePackSize('Coco Mademoiselle Eau de Parfum 100 ml'), null);
+  assert.equal(parsePackSize('PACO RABANNE 1 MILLION 24 Uds 100ml'), 24);
 });
 
 test('pricing: 30% discount off 100, cost 49 -> 30% margin', () => {
@@ -132,7 +132,7 @@ test('discount off RRP', () => {
 });
 
 test('note parser extracts quantity, price, barcode, intent', () => {
-  const p = parseNote('Customer: Atlantic Spirits. Interested in 500 bottles of Jack Daniels, target 18.50 EUR. Barcode 5099873088333.');
+  const p = parseNote('Customer: Atlantic Beauty. Interested in 500 bottles of Bleu de Chanel Eau de Parfum, target 18.50 EUR. Barcode 5099873088333.');
   assert.equal(p.suggestedQuantity, 500);
   assert.equal(p.suggestedPrice, 18.5);
   assert.equal(p.suggestedCurrency, 'EUR');
@@ -142,7 +142,7 @@ test('note parser extracts quantity, price, barcode, intent', () => {
 });
 
 test('note parser handles Spanish and empty input', () => {
-  const p = parseNote('Cliente Gulf Trading, presupuesto para 1000 unidades de Vodka Absolut, precio 9.90 USD.');
+  const p = parseNote('Cliente Gulf Trading, presupuesto para 1000 unidades de Dior Sauvage Eau de Parfum, precio 9.90 USD.');
   assert.equal(p.suggestedQuantity, 1000);
   assert.equal(p.suggestedCurrency, 'USD');
   assert.equal(p.language, 'es');
@@ -859,7 +859,7 @@ test('shipment: an empty shipment is not reported as reconciled', () => {
 });
 
 test('tasks: a captured lead gets an automatic follow-up, noise does not', () => {
-  const lead = parseNote('Customer: Atlantic Spirits. Interested in 500 bottles of Jack Daniels, target 18.50 EUR.');
+  const lead = parseNote('Customer: Atlantic Beauty. Interested in 500 bottles of Bleu de Chanel Eau de Parfum, target 18.50 EUR.');
   const noise = parseNote('ok');
   assert.equal(tasks.looksLikeLead(lead), true);
   assert.equal(tasks.looksLikeLead(noise), false);
