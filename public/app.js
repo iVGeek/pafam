@@ -85,7 +85,7 @@ function badgeList(flags) {
 const state = { route: 'dashboard', settings: {}, suppliers: [], user: null };
 
 const ROUTE_MIN = {
-  dashboard: 'viewer', offers: 'viewer', products: 'viewer', compare: 'viewer', lowest: 'viewer', pricing: 'viewer',
+  dashboard: 'viewer', offers: 'viewer', products: 'viewer', compare: 'viewer', lowest: 'viewer', pricing: 'viewer', builder: 'viewer',
   inventory: 'viewer', customers: 'viewer', demands: 'viewer', quotes: 'viewer', suppliers: 'viewer',
   exceptions: 'viewer', imports: 'buyer', captures: 'analyst', alerts: 'viewer', trends: 'viewer', orders: 'viewer', shipments: 'viewer', buying: 'viewer', forecast: 'viewer', performance: 'viewer', reports: 'viewer', settings: 'admin', users: 'admin', audit: 'admin',
 };
@@ -719,6 +719,167 @@ function renderDealResult(el, r) {
     <tbody>${r.deal.scenarios.map((s) => `<tr><td><span class="badge ${s.kind === 'base' ? 'info' : s.kind.startsWith('stress') ? (s.survives ? 'warn' : 'bad') : s.survives ? 'good' : 'bad'}">${esc(s.label)}</span></td><td class="small muted">${esc(s.description)}</td><td class="num ${s.contributionTotal < 0 ? 'muted' : ''}">${money(s.contributionTotal, r.baseCurrency)}</td><td class="num">${pct(s.marginPct)}</td><td>${s.passesPolicy ? '<span class="badge good">pass</span>' : '<span class="badge bad">fail</span>'}</td></tr>`).join('')}
     </tbody></table></div>` : ''}`;
 }
+
+/* ================= cost price -> selling price (offer builder) ================= */
+let builderLast = null;
+let builderPickOffer = () => {};
+
+routes.builder = async () => {
+  const customers = await loadCustomers().catch(() => []);
+  const base = (state.settings.base_currency) || 'USD';
+  const minMargin = Number(state.settings.min_margin_pct != null ? state.settings.min_margin_pct : 15);
+  $('#view').innerHTML = `
+    <div class="split">
+      <div class="panel">
+        <h2>Cost price → selling price <span class="muted small">— build an offer from a target margin</span></h2>
+        <div class="field" style="margin-bottom:8px"><label>Product (optional)</label>
+          <div data-pp><input data-pp-input placeholder="search product…" /><input type="hidden" data-pp-id /><div data-pp-results style="margin-top:6px;max-height:170px;overflow:auto"></div></div>
+        </div>
+        <div class="field" style="margin-bottom:8px"><label>Auto-fill from supplier offer</label>
+          <select id="obOffer"><option value="">— enter a cost price manually —</option></select>
+        </div>
+        <div class="grid" style="grid-template-columns:1fr 1fr;gap:10px">
+          <div class="field"><label>Cost price / bottle</label><input id="obCost" type="number" step="0.01" placeholder="0.00" /></div>
+          <div class="field"><label>Cost currency</label><input id="obCur" value="${esc(base)}" style="width:80px" /></div>
+          <div class="field"><label>FX rate <span class="muted small">1 cost = ? ${esc(base)}</span></label><input id="obFx" type="number" step="0.0001" placeholder="auto" /></div>
+          <div class="field"><label>Freight / bottle</label><input id="obFreight" type="number" step="0.01" placeholder="0" /></div>
+          <div class="field"><label>Duty %</label><input id="obDuty" type="number" step="0.01" placeholder="0" /></div>
+          <div class="field"><label>Insurance / bottle</label><input id="obInsurance" type="number" step="0.01" placeholder="0" /></div>
+          <div class="field"><label>Brokerage / bottle</label><input id="obBrokerage" type="number" step="0.01" placeholder="0" /></div>
+          <div class="field"><label>Handling / bottle</label><input id="obHandling" type="number" step="0.01" placeholder="0" /></div>
+          <div class="field"><label>Other taxes / bottle</label><input id="obOther" type="number" step="0.01" placeholder="0" /></div>
+          <div class="field"><label>Target margin %</label><input id="obMargin" type="number" step="0.1" value="${minMargin}" /></div>
+          <div class="field"><label>Quantity</label><input id="obQty" type="number" value="100" /></div>
+        </div>
+        <div class="row" style="margin-top:12px"><button id="obGo">Calculate selling price</button></div>
+      </div>
+      <div class="panel" id="obOut"><div class="muted small">Enter a cost price (or pick a product and offer), set a target margin, and calculate. Both margin conventions are shown side by side.</div></div>
+    </div>`;
+  mountProductPicker($('#view'), async (pid) => {
+    try {
+      const r = await GET(`/products/${pid}/compare`);
+      const offers = (r.offers || []).filter((o) => !o.isRetail && o.perBottleBase != null);
+      $('#obOffer').innerHTML = `<option value="">— enter a cost price manually —</option>` + offers.map((o) =>
+        `<option value="${o.offerId}" data-ppb="${o.perBottleBase}" data-cur="${esc(o.currency || base)}">${esc(o.supplier)} · ${money(o.perBottleBase, base)} / bottle${o.incoterm ? ' · ' + esc(o.incoterm) : ''}</option>`
+      ).join('');
+      builderLast = { productId: pid, offers };
+      if (offers[0]) $('#obOffer').value = String(offers[0].offerId);
+      pickOffer();
+    } catch (e) { toast(e.message, 'err'); }
+  });
+  function pickOffer() {
+    const sel = $('#obOffer');
+    const o = builderLast && builderLast.offers ? builderLast.offers.find((x) => String(x.offerId) === sel.value) : null;
+    if (o) { $('#obCost').value = o.perBottleBase; $('#obCur').value = base; $('#obFx').value = ''; }
+  }
+  builderPickOffer = pickOffer;
+  $('#obOffer').addEventListener('change', pickOffer);
+  $('#obGo').addEventListener('click', async () => {
+    const numOrU = (v) => (v === '' || v == null ? undefined : Number(v));
+    const body = {
+      offerId: $('#obOffer').value || undefined,
+      costPrice: $('#obCost').value === '' ? undefined : Number($('#obCost').value),
+      costCurrency: $('#obCur').value.trim() || base,
+      fxRate: numOrU($('#obFx').value),
+      freightPerUnit: numOrU($('#obFreight').value),
+      dutyPct: numOrU($('#obDuty').value),
+      insurancePerUnit: numOrU($('#obInsurance').value),
+      brokeragePerUnit: numOrU($('#obBrokerage').value),
+      handlingPerUnit: numOrU($('#obHandling').value),
+      otherTaxesPerUnit: numOrU($('#obOther').value),
+      targetMarginPct: numOrU($('#obMargin').value),
+      quantity: numOrU($('#obQty').value),
+      baseCurrency: base,
+    };
+    if (!body.offerId && !(body.costPrice > 0)) return toast('Enter a cost price or pick an offer', 'err');
+    try { const r = await POST('/pricing/offer', body); renderBuilderResult(r, customers); }
+    catch (e) { toast(e.message, 'err'); }
+  });
+};
+
+function renderBuilderResult(r, customers) {
+  const cur = r.baseCurrency;
+  const opts = [r.options.markupOnCost, r.options.marginOnSelling];
+  const card = (o) => `
+    <div class="card" style="border:1px solid var(--border);padding:12px" data-basis="${o.basis}">
+      <div class="row" style="justify-content:space-between">
+        <label class="row" style="gap:6px;cursor:pointer"><input type="radio" name="obBasis" value="${o.basis}" ${o.basis === 'margin_on_selling' ? 'checked' : ''} style="width:auto" />
+          <span style="font-weight:600">${o.basis === 'markup_on_cost' ? 'Markup on cost' : 'Margin on selling price'}</span></label>
+        <span class="badge ${o.passesPolicy ? 'good' : 'bad'}">${o.passesPolicy ? 'meets policy' : 'below policy'}</span>
+      </div>
+      <div class="muted small" style="margin:6px 0 8px">${o.basis === 'markup_on_cost' ? 'SP = cost × (1 + m)' : 'SP = cost ÷ (1 − m)'}</div>
+      <div class="kpi-inline">
+        <div class="item"><div class="k">Selling price</div><div class="v best">${o.valid ? money(o.sellingUnitPrice, cur) : '—'}</div></div>
+        <div class="item"><div class="k">Margin %</div><div class="v">${o.marginPctOnSell != null ? pct(o.marginPctOnSell) : '—'}</div></div>
+        <div class="item"><div class="k">Markup / unit</div><div class="v">${o.markupPerUnit != null ? money(o.markupPerUnit, cur) : '—'}</div></div>
+        <div class="item"><div class="k">Profit (${num(r.quantity)} u)</div><div class="v">${o.marginTotal != null ? money(o.marginTotal, cur) : '—'}</div></div>
+      </div>
+      ${o.valid ? '' : `<div class="badge warn" style="margin-top:8px">${esc(o.reason || 'not computable')}</div>`}
+    </div>`;
+  const landedRows = [
+    ['Cost / bottle', money(r.acquisition.perBottle, r.acquisition.currency) + (r.acquisition.currency !== cur ? ` → ${money(r.acquisition.perBottleBase, cur)}` : '')],
+    ['Duty', money(r.landed.duty, cur)],
+    ['Freight', money(r.landed.freight, cur)],
+    ['Insurance', money(r.landed.insurance, cur)],
+    ['Brokerage', money(r.landed.brokerage, cur)],
+    ['Handling', money(r.landed.handling, cur)],
+    ['Other taxes', money(r.landed.otherTaxes, cur)],
+    ['Landed / bottle', `<b>${money(r.landed.total, cur)}</b>`],
+  ];
+  const supplierRows = builderLast && builderLast.productId ? (builderLast.offers || []).map((o) => {
+    const extras = (Number(r.landed.freight) + Number(r.landed.insurance) + Number(r.landed.brokerage) + Number(r.landed.handling) + Number(r.landed.otherTaxes));
+    const est = o.perBottleBase + o.perBottleBase * (r.landed.purchase > 0 ? (r.landed.duty / r.landed.purchase) : 0) + extras;
+    const sp = est / (1 - r.targetMarginPct / 100);
+    return { ...o, est, sp };
+  }).sort((a, b) => a.est - b.est) : [];
+  const bestId = supplierRows[0] ? supplierRows[0].offerId : null;
+  $('#obOut').innerHTML = `
+    <h2>Selling price at ${pct(r.targetMarginPct)}</h2>
+    <div class="muted small" style="margin:4px 0 12px">Cost ${money(r.acquisition.perBottle, r.acquisition.currency)}${r.acquisition.currency !== cur ? ` × FX ${r.fxRate} = ${money(r.acquisition.perBottleBase, cur)}` : ''} · landed ${money(r.landed.total, cur)} / bottle · qty ${num(r.quantity)}</div>
+    <div class="grid cards" style="grid-template-columns:1fr 1fr">${opts.map(card).join('')}</div>
+    <div class="row" style="margin-top:14px;gap:10px;align-items:flex-end">
+      <div class="field" style="flex:1"><label>Customer (to save as a quote)</label>
+        <select id="obCust"><option value="">— none —</option>${(customers || []).map((c) => `<option value="${c.id}">${esc(c.name)}</option>`).join('')}</select></div>
+      <button id="obSave">Save as quote</button>
+    </div>
+    <div style="margin-top:14px;max-width:420px"><div class="muted small" style="margin-bottom:4px">Landed cost build-up / bottle (${esc(cur)})</div>
+      <table>${landedRows.map((l) => `<tr><td class="muted">${l[0]}</td><td class="num">${l[1]}</td></tr>`).join('')}</table></div>
+    ${supplierRows.length ? `<h2 style="font-size:13px;margin-top:16px">Suppliers for this product <span class="muted small">— ranked by landed cost, SP at your target margin</span></h2>
+      <div class="table-wrap"><table><thead><tr><th>Supplier</th><th class="num">Cost / bottle</th><th class="num">Est. landed</th><th class="num">SP @ ${pct(r.targetMarginPct)}</th><th></th></tr></thead>
+      <tbody>${supplierRows.map((o) => `<tr ${o.offerId === bestId ? 'style="background:rgba(79,206,155,.08)"' : ''}>
+        <td><span class="badge ${o.offerId === bestId ? 'good' : 'info'}">${esc(o.supplier)}</span></td>
+        <td class="num">${money(o.perBottleBase, cur)}</td>
+        <td class="num">${money(o.est, cur)}</td>
+        <td class="num pill-price ${o.offerId === bestId ? 'best' : ''}">${money(o.sp, cur)}</td>
+        <td>${builderLast.productId ? `<button class="btn sm" data-offer="${o.offerId}">Use this supplier</button>` : ''}</td></tr>`).join('')}
+      </tbody></table></div>
+      <div class="muted small" style="margin-top:6px">Estimated landed applies the freight/duty inputs above to each supplier's quoted cost; open the Deal Calculator for a full per-supplier costing.</div>` : ''}`;
+  const save = async () => {
+    if (!can('buyer')) return toast('Buyer role required to save', 'err');
+    if (!builderLast || !builderLast.productId) return toast('Pick a product first', 'err');
+    const cust = $('#obCust') ? $('#obCust').value : '';
+    if (!cust) return toast('Pick a customer', 'err');
+    const basis = (document.querySelector('input[name="obBasis"]:checked') || {}).value;
+    const chosen = r.options[basis === 'markup_on_cost' ? 'markupOnCost' : 'marginOnSelling'];
+    if (!chosen || !chosen.valid) return toast('That convention is not computable', 'err');
+    try {
+      const res = await POST('/quotes', {
+        customerId: Number(cust), productId: builderLast.productId, quantity: r.quantity,
+        unitPrice: chosen.sellingUnitPrice, landedUnitCost: r.landed.total, currency: cur,
+      });
+      toast('Quote saved (#' + res.id + ') · margin ' + pct(res.marginPct), 'ok');
+    } catch (e) { toast(e.message, 'err'); }
+  };
+  $('#obSave').addEventListener('click', save);
+  $$('#obOut [data-basis]').forEach((el) => el.addEventListener('click', (ev) => {
+    if (ev.target.tagName !== 'INPUT') { const r = el.querySelector('input'); if (r) r.checked = true; }
+  }));
+  $$('#obOut [data-offer]').forEach((el) => el.addEventListener('click', () => {
+    $('#obOffer').value = el.dataset.offer;
+    builderPickOffer();
+  }));
+}
+
 
 routes.inventory = async () => {
   const [d, res] = await Promise.all([GET('/inventory'), GET('/reservations')]);
@@ -1680,6 +1841,7 @@ const TITLES = {
   compare: ['Price Comparison', 'Normalise and rank offers for a barcode'],
   lowest: ['Lowest Landed Cost', 'Cheapest executable supplier for an exact SKU and quantity'],
   pricing: ['Deal Calculator', 'Landed cost, margin, markup and ROI'],
+  builder: ['Offer Builder', 'Cost price → selling price at a target margin'],
   inventory: ['Inventory', 'Lots, reservations and in-transit stock'],
   customers: ['Customers', 'Buyers and commercial terms'],
   demands: ['Demand Book', 'Customer requests to match against supply'],

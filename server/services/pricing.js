@@ -163,6 +163,80 @@ function convert(amount, rate) {
   return safe(amount) * safe(rate, 1);
 }
 
+/* ======================= cost price -> selling price ======================= */
+
+// Margin and markup at a given cost and price.
+//   margin %  = (price - cost) / price   (what the platform's policy uses)
+//   markup %  = (price - cost) / cost    (the "on the cost price" reading)
+function marginFromPrices(cost, price) {
+  const c = safe(cost);
+  const p = safe(price);
+  return {
+    cost: round4(c),
+    price: round4(p),
+    marginPct: p > 0 ? round4(((p - c) / p) * 100) : 0,
+    markup: round4(p - c),
+    markupPctOfCost: c > 0 ? round4(((p - c) / c) * 100) : 0,
+  };
+}
+
+// Selling price from a markup applied to the cost price:  SP = cost × (1 + m).
+function sellingPriceFromMarkup(cost, markupPct) {
+  return round4(safe(cost) * (1 + safe(markupPct) / 100));
+}
+
+// Selling price to achieve a target margin on the selling price:
+//   SP = cost / (1 - margin%). Undefined at or above 100%.
+function sellingPriceFromMargin(cost, marginPct) {
+  const c = safe(cost);
+  const m = safe(marginPct);
+  if (m >= 100) return null;
+  return round4(c / (1 - m / 100));
+}
+
+// Both conventions from one cost + target %, so a trader can use whichever
+// reading they mean. Every option carries the resulting margin and markup so
+// the difference between the two conventions is visible, never hidden.
+function priceFromMargin(cost, marginPct) {
+  const c = safe(cost);
+  const m = safe(marginPct);
+  const build = (basis, price) => {
+    const valid = price != null && Number.isFinite(price) && price > 0;
+    const marginPctOnSell = valid && price > 0 ? round4(((price - c) / price) * 100) : null;
+    const markupPctOfCost = valid && c > 0 ? round4(((price - c) / c) * 100) : null;
+    return {
+      basis,
+      sellingUnitPrice: valid ? round4(price) : null,
+      marginPctOnSell,
+      markupPctOfCost,
+      markupPerUnit: valid ? round4(price - c) : null,
+      valid,
+      reason: valid ? null : (m >= 100 && basis === 'margin_on_selling' ? 'a margin on selling price must be below 100%' : 'cost required'),
+    };
+  };
+  return {
+    cost: round4(c),
+    targetMarginPct: round4(m),
+    markupOnCost: build('markup_on_cost', sellingPriceFromMarkup(c, m)),
+    marginOnSelling: build('margin_on_selling', sellingPriceFromMargin(c, m)),
+  };
+}
+
+// Effective margin (on selling price) of a price built on cost, and whether it
+// clears the house policy. Used by the offer builder's guard rails.
+function pricePolicy(cost, price, minMarginPct, minMarkup) {
+  const c = safe(cost);
+  const p = safe(price);
+  const marginPct = p > 0 ? ((p - c) / p) * 100 : 0;
+  const markup = p - c;
+  return {
+    marginPct: round4(marginPct),
+    markup: round4(markup),
+    passesPolicy: marginPct >= safe(minMarginPct, 0) - 1e-9 && markup >= safe(minMarkup, 0) - 1e-9,
+  };
+}
+
+
 /* ======================= payment terms & dated cash flow ======================= */
 
 // Read the number of days from free-text commercial terms, e.g.
@@ -484,6 +558,10 @@ module.exports = {
   dealMetrics,
   discountOffRrpPct,
   convert,
+  priceFromMargin,
+  sellingPriceFromMarkup,
+  sellingPriceFromMargin,
+  pricePolicy,
   parseTermsDays,
   addDays,
   daysBetween,

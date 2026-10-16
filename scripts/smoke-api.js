@@ -114,6 +114,21 @@ const server = app.listen(PORT, async () => {
       '| terms(sup/cus):', deal.body.terms && `${deal.body.terms.supplierPayDays}/${deal.body.terms.customerPayDays}`);
     console.log('deal scenarios:', (deal.body.deal.scenarios || []).map((s) => s.kind).join(', '));
 
+    // CP -> SP offer builder (both margin conventions, freight + FX slots)
+    const ob = await admin.req('POST', '/pricing/offer', {
+      offerId: offerRow.id, targetMarginPct: 20, quantity: 100, freightPerUnit: 0.5,
+    });
+    const obm = ob.body && ob.body.options && ob.body.options.markupOnCost;
+    const obs = ob.body && ob.body.options && ob.body.options.marginOnSelling;
+    console.log('pricing/offer:', ob.status, '| landed:', ob.body && ob.body.landed && ob.body.landed.total,
+      '| markup-on-cost SP:', obm && obm.sellingUnitPrice, '(', obm && obm.marginPctOnSell, '%)',
+      '| margin-on-selling SP:', obs && obs.sellingUnitPrice, '(', obs && obs.marginPctOnSell, '%)');
+    const obManual = await admin.req('POST', '/pricing/offer', { costPrice: 100, costCurrency: 'EUR', fxRate: 1.1, targetMarginPct: 25, quantity: 10 });
+    console.log('pricing/offer manual+FX:', obManual.status, '| base cost:', obManual.body && obManual.body.acquisition.perBottleBase,
+      '| margin-on-selling SP:', obManual.body && obManual.body.options.marginOnSelling.sellingUnitPrice);
+    const obBad = await admin.req('POST', '/pricing/offer', { targetMarginPct: 20 });
+    console.log('pricing/offer no cost (expect 400):', obBad.status);
+
     // §9 worked example reconciliation over HTTP (deal costs included)
     const s9 = await admin.req('POST', '/deals/compute', {
       quantity: 1000, landedUnitCost: 33, sellingUnitPrice: 40, outboundPerUnit: 2,

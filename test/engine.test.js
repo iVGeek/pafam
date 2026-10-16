@@ -133,6 +133,32 @@ test('discount off RRP', () => {
   assert.equal(pricing.discountOffRrpPct(70, 100), 30);
 });
 
+test('offer builder: selling price from both margin conventions', () => {
+  // cost 100, target 20%.
+  //   markup on cost   -> 100 * 1.20 = 120  (margin then 16.67%)
+  //   margin on selling -> 100 / 0.80 = 125 (margin 20%)
+  const o = pricing.priceFromMargin(100, 20);
+  assert.equal(o.markupOnCost.sellingUnitPrice, 120);
+  assert.equal(o.markupOnCost.marginPctOnSell, 16.6667);
+  assert.equal(o.marginOnSelling.sellingUnitPrice, 125);
+  assert.equal(o.marginOnSelling.marginPctOnSell, 20);
+  assert.equal(o.marginOnSelling.markupPerUnit, 25);
+});
+
+test('selling price helpers agree with their definitions', () => {
+  assert.equal(pricing.sellingPriceFromMarkup(80, 25), 100);
+  assert.equal(pricing.sellingPriceFromMargin(80, 20), 100);
+  assert.equal(pricing.sellingPriceFromMargin(80, 100), null);
+});
+
+test('price policy flags a below-minimum margin', () => {
+  const good = pricing.pricePolicy(100, 125, 15, 0.75);
+  assert.equal(good.marginPct, 20);
+  assert.equal(good.passesPolicy, true);
+  const bad = pricing.pricePolicy(100, 110, 15, 0.75);
+  assert.equal(bad.passesPolicy, false);
+});
+
 test('note parser extracts quantity, price, barcode, intent', () => {
   const p = parseNote('Customer: Atlantic Beauty. Interested in 500 bottles of Bleu de Chanel Eau de Parfum, target 18.50 EUR. Barcode 5099873088333.');
   assert.equal(p.suggestedQuantity, 500);
