@@ -1,0 +1,7 @@
+# Normalise line endings so shell scripts and container files stay LF, even on
+# Windows checkouts (core.autocrlf=true would otherwise rewrite them to CRLF and
+# break `docker build` and the entrypoint).
+* text=auto
+Dockerfile text eol=lf
+.dockerignore text eol=lf
+*.sh text eol=lf

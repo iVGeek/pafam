@@ -1,9 +1,12 @@
-# Perfumes — production container image.
+# Perfumes — production container image (runs unprivileged).
 # Build:  docker build -t perfumes .
-# Run:    docker run -p 8080:8080 -v perfumes-data:/var/data perfumes
+# Run:    docker run -p 8080:8080 -v perfumes-data:/var/data \
+#           -e PTP_ADMIN_PASS=changeme perfumes
 #
 # The whole SQLite database plus uploads live under PTP_DATA_DIR (/var/data),
-# so mount a volume there to keep data across restarts.
+# so mount a volume there to keep data across restarts. The container opens as
+# root only long enough to make that volume writable by the "node" user, then
+# drops to it (docker-entrypoint.sh).
 # See 04-hosting-hardening.md for the full hosting/security runbook.
 
 FROM node:24-bookworm-slim
@@ -15,6 +18,11 @@ ENV NODE_ENV=production \
     PTP_DATA_DIR=/var/data \
     PTP_SECURE_COOKIES=1 \
     NPM_CONFIG_PRODUCTION=false
+
+# gosu lets the entrypoint drop root -> node after fixing volume ownership.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends gosu \
+ && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
@@ -28,13 +36,12 @@ RUN npm ci --omit=dev && npm cache clean --force
 # what the first boot imports when the database is empty.
 COPY . .
 
-# Data directory for the SQLite file and uploads. Run as root so a bind-mounted
-# volume at /var/data is writable on any platform; for a hardened non-root
-# deploy, uncomment the USER line and chown the volume to uid/gid 1000.
-RUN mkdir -p /var/data
-VOLUME ["/var/data"]
-# USER node
+# Fix ownership of the data dir and drop to the unprivileged "node" user.
+COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh \
+ && mkdir -p /var/data
 
+VOLUME ["/var/data"]
 EXPOSE 8080
 
 # Liveness: /api/auth/me is public and cheap. The start period is generous
@@ -42,5 +49,5 @@ EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \
   CMD node -e "fetch('http://127.0.0.1:'+(process.env.PORT||8080)+'/api/auth/me').then((r)=>process.exit(r.ok?0:1)).catch(() => process.exit(1))"
 
-# Run node directly (not via npm) so startup is quiet and signal-friendly.
+ENTRYPOINT ["docker-entrypoint.sh"]
 CMD ["node", "--no-warnings", "server/index.js"]

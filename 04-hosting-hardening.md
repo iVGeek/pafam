@@ -102,7 +102,8 @@ A `Dockerfile` and `.dockerignore` are included for container platforms
 - declares a `VOLUME` at `/var/data` and a `HEALTHCHECK` against
   `GET /api/auth/me` (40 s start period covers the first-run seed);
 - runs `node --no-warnings server/index.js` directly (no npm at runtime, so no
-  warning and clean signal handling).
+  warning and clean signal handling), and drops from root to the unprivileged
+  `node` user via `docker-entrypoint.sh`.
 
 Build and run:
 
@@ -119,10 +120,13 @@ fresh log. Mount a volume (Railway: *Volume* on the service, mount `/var/data`;
 Render: the blueprint's `disk`; Fly.io: a `[[mounts]]`) and point
 `PTP_DATA_DIR` at it.
 
-The image runs as **root** by default so a platform-mounted volume is writable.
-To run unprivileged, uncomment `USER node` in the Dockerfile **and** make the
-volume owned by uid/gid `1000` (`node`), otherwise the first write — including
-the initial seed — fails.
+The image runs **unprivileged**: it starts as root only long enough for
+`docker-entrypoint.sh` to `chown` the data directory to the `node` user, then
+uses `gosu` to drop privileges before launching the app
+(`exec gosu node node …`). This keeps the process non-root while still working
+with host/platform-mounted volumes, which are typically owned by root. If the
+orchestrator already runs the container as a non-root user, the entrypoint
+simply execs the app as-is — so no volume-ownership setup is needed either way.
 
 Platform notes:
 
