@@ -28,7 +28,9 @@ Other scripts:
 ## Deploy on Render
 
 A [`render.yaml`](render.yaml) blueprint is included. Push the repo, then in
-Render choose **New → Blueprint** and pick it.
+Render choose **New → Blueprint** and pick it. For TLS, security headers,
+secrets, backups, rate-limiting and the pre-launch checklist, follow
+[`04-hosting-hardening.md`](04-hosting-hardening.md).
 
 Important settings for a hosted instance:
 

@@ -1,15 +1,20 @@
 # Render Blueprint — https://render.com/docs/blueprint-spec
 # Deploy: push this repo, then in Render choose "New > Blueprint" and point at it.
+# Hardening notes and the full pre-launch checklist live in 04-hosting-hardening.md.
 services:
   - type: web
     name: perfumes
     runtime: node
     plan: starter          # persistent disks require a paid plan
     region: oregon
-    buildCommand: npm install
+    # npm ci installs the exact lockfile set (reproducible, supply-chain safe).
+    buildCommand: npm ci
     startCommand: npm start
     healthCheckPath: /api/auth/me
+    # Prefer manual deploys for a trading system; set true to deploy on every push.
     autoDeploy: true
+    # Give the process time to close the database cleanly on redeploy.
+    maxShutdownDelaySeconds: 30
     envVars:
       - key: NODE_ENV
         value: production
@@ -20,6 +25,7 @@ services:
       - key: PTP_SECURE_COOKIES
         value: "1"
       # Load supplier lists + demo data automatically on an empty database.
+      # Set to "false" once the instance holds real data (see 04-hosting-hardening.md §6).
       - key: PTP_AUTO_SEED
         value: "true"
       # Admin credentials. Set PTP_ADMIN_PASS as a secret in the dashboard.
@@ -31,3 +37,24 @@ services:
       name: ptp-data
       mountPath: /var/data
       sizeGB: 1
+
+  # ---------------------------------------------------------------------------
+  # Nightly off-disk-safe SQLite backup (example — uncomment and adapt).
+  # A copy on the same disk does NOT survive disk loss: ship the file to object
+  # storage afterwards (see 04-hosting-hardening.md §6).
+  #
+  # - type: cron
+  #   name: perfumes-backup
+  #   runtime: node
+  #   schedule: "0 3 * * *"          # daily 03:00 UTC
+  #   region: oregon
+  #   buildCommand: npm ci
+  #   startCommand: >-
+  #     node -e "const fs=require('fs');const p='/var/data';fs.mkdirSync(p+'/backups',{recursive:true});const d=new Date().toISOString().slice(0,10);fs.copyFileSync(p+'/ptp.db',p+'/backups/ptp-'+d+'.db');console.log('backup',d)"
+  #   envVars:
+  #     - key: PTP_DATA_DIR
+  #       value: /var/data
+  #   disk:
+  #     name: ptp-data
+  #     mountPath: /var/data
+  #     sizeGB: 1
