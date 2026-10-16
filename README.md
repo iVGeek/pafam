@@ -74,6 +74,38 @@ edits are lost. See
 [`04-hosting-hardening.md`](04-hosting-hardening.md) §3.1 for platform notes
 (Railway, Render Docker) and the volume/ownership details.
 
+## Deploy on Railway
+
+A [`railway.json`](railway.json) config-as-code file is included; it builds the
+[`Dockerfile`](Dockerfile) and deploys it with a healthcheck. Full step-by-step
+setup (volume, variables, domain, backups) is in
+[`04-hosting-hardening.md`](04-hosting-hardening.md) §3.2.
+
+Quick path:
+
+1. **New Project → Deploy from GitHub repo**, pick this repository. Railway
+   reads `railway.json` and builds the image.
+2. **Add a Volume** to the service, mounted at **`/var/data`**.
+3. **Variables** (service → Variables):
+
+   | Variable | Value |
+   |---|---|
+   | `NODE_ENV` | `production` |
+   | `PTP_DATA_DIR` | `/var/data` |
+   | `PTP_SECURE_COOKIES` | `1` |
+   | `PTP_ADMIN_USER` | `admin` |
+   | `PTP_ADMIN_PASS` | *a long random secret* |
+   | `PTP_AUTO_SEED` | `true` (first boot), then `false` |
+
+4. **Settings → Networking → Generate Domain.** Railway serves HTTPS, so the
+   `Secure` cookie and TLS work out of the box.
+5. First deploy seeds the sample data (15–25 s); the healthcheck at
+   `/api/auth/me` gates the release.
+
+The container listens on Railway's injected `$PORT` and starts unprivileged
+(the entrypoint chowns `/var/data` to the `node` user). Railway runs a single
+replica, which is what a SQLite volume requires.
+
 ## What it does
 
 - **Import** supplier `.xls`/`.xlsx` price lists with auto header-row detection

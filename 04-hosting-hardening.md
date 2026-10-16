@@ -130,12 +130,77 @@ simply execs the app as-is — so no volume-ownership setup is needed either way
 
 Platform notes:
 
-- **Railway** injects `PORT`; the image already reads it. Attach a volume at
-  `/var/data`, set `PTP_DATA_DIR=/var/data`, and add the admin password as a
-  variable. First boot seeds the samples (15–25 s); set `PTP_AUTO_SEED=false`
-  after.
+- **Railway**: fully configured via `railway.json` — see §3.2 for the complete
+  step-by-step setup (volume, variables, domain, backups).
 - **Render Docker**: switch the service to *Docker* in the dashboard and mount
   the existing disk at `/var/data`.
+
+### 3.2 Railway, step by step
+
+[`railway.json`](railway.json) is committed as config-as-code. It tells Railway
+to build the `Dockerfile` (`build.builder: DOCKERFILE`) and how to deploy
+(`deploy`): a healthcheck at `/api/auth/me` with a 100 s timeout (enough for the
+first-boot seed) and `restartPolicyType: ON_FAILURE` with 10 retries. Railway
+reads it automatically when the service is created from the repo — no dashboard
+build settings are needed.
+
+**1. Create the project.**
+New Project → *Deploy from GitHub repo* → pick this repository. Railway builds
+the `Dockerfile` remotely (`npm ci --omit=dev` runs **inside the image**, nothing
+on your machine). The first build takes 2–4 min (apt `gosu` + npm ci).
+
+**2. Attach a volume (required for persistence).**
+Service → *Volumes* → **New Volume**, **mount path `/var/data`**. This is the
+step that fixes `Empty database detected — seeding sample data…` on every
+restart. The mount path must match `PTP_DATA_DIR` (below). A Railway volume is
+pinned to one service and one replica, which is exactly the constraint SQLite
+needs.
+
+**3. Set service variables.** Service → *Variables* → add:
+
+| Variable | Value | Notes |
+|---|---|---|
+| `NODE_ENV` | `production` | enables `Secure` cookies |
+| `PTP_DATA_DIR` | `/var/data` | must equal the volume mount path |
+| `PTP_SECURE_COOKIES` | `1` | Railway serves HTTPS, so this is safe |
+| `PTP_ADMIN_USER` | `admin` | bootstrap login |
+| `PTP_ADMIN_PASS` | *long random secret* | never commit; rotate after go-live |
+| `PTP_AUTO_SEED` | `true` | set to `false` after the first successful boot |
+
+`PORT` is injected by Railway — do **not** set it; the image reads `$PORT`.
+`PTP_DATA_DIR` and `NODE_ENV` are already baked into the image but setting them
+here keeps the volume path and environment explicit and visible.
+
+**4. Generate a domain.** Service → *Settings* → *Networking* → **Generate
+Domain**. Railway terminates TLS and forwards to the container's `$PORT`, so the
+`Secure` session cookie works with no extra config. (Optionally add a custom
+domain under the same panel.)
+
+**5. Watch the first deploy.** The container starts as root, `chown`s
+`/var/data` to the `node` user, drops privileges, seeds the sample supplier
+files (15–25 s), then answers the healthcheck. Railway marks the deploy live only
+once `/api/auth/me` returns 200.
+
+**6. Lock in the seed.** Once you have confirmed the data, set
+`PTP_AUTO_SEED=false` and redeploy so a future empty volume cannot silently
+re-seed demo data over a live database.
+
+**Replicas and scaling.** Keep **one replica** — SQLite plus a mounted volume
+cannot be shared across replicas. Scale *up* (more CPU/RAM) if needed, not out.
+Give the service ≥ 512 MB RAM; the seed step is the memory peak.
+
+**Deploys after the first.** Push to the connected branch (or `railway up`) and
+Railway rebuilds and rolls out. Because the volume persists, data is untouched;
+schema changes are applied automatically on boot (`server/db.js`).
+
+**Backups.** Railway does not back up volumes for you. Snapshot `ptp.db` from
+the volume on a schedule — either a small cron service sharing the volume that
+runs the `sqlite3 .backup` recipe in §6, or a periodic copy of `PTP_DATA_DIR` to
+external storage. Do a restore drill before go-live (§6).
+
+**CLI alternative.** With the [Railway CLI](https://docs.railway.com/guides/cli):
+`railway login`, `railway link`, `railway variables --set PTP_ADMIN_PASS=…`,
+`railway up`. Volumes are created in the dashboard, not the CLI.
 
 ---
 
