@@ -339,6 +339,42 @@ CREATE TABLE IF NOT EXISTS payments (
 );
 CREATE INDEX IF NOT EXISTS idx_payments_order ON payments(order_id);
 
+-- Supplier order placements: the "order placement" tab — cost price and
+-- full-box quantities, ready to send to a supplier. One header per supplier
+-- order, many lines. Kept separate from the orders table (which is one row per
+-- deal and drives payments / realised margin).
+CREATE TABLE IF NOT EXISTS purchase_orders (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  ref TEXT UNIQUE,
+  supplier_code TEXT,
+  currency TEXT NOT NULL DEFAULT 'EUR',
+  status TEXT NOT NULL DEFAULT 'draft',   -- draft | placed | sent | confirmed | received | cancelled
+  incoterm TEXT,
+  order_date TEXT,
+  notes TEXT,
+  created_by TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_purchase_orders_supplier ON purchase_orders(supplier_code);
+
+CREATE TABLE IF NOT EXISTS purchase_order_lines (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  po_id INTEGER NOT NULL REFERENCES purchase_orders(id) ON DELETE CASCADE,
+  product_id INTEGER REFERENCES products(id),
+  offer_id INTEGER,
+  barcode TEXT,
+  description TEXT,
+  units_per_case REAL,
+  boxes REAL NOT NULL DEFAULT 0,
+  units REAL NOT NULL DEFAULT 0,
+  unit_cost REAL,
+  line_total REAL,
+  moq REAL,
+  order_multiple REAL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_purchase_order_lines_po ON purchase_order_lines(po_id);
+
 -- Shipment cost allocation (brief section 8 control 2): a shipment's cost is
 -- allocated across the offers/orders it carries using one documented driver
 -- (chargeable weight, volume or value). The allocated amounts MUST reconcile

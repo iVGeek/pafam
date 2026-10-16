@@ -87,7 +87,7 @@ const state = { route: 'dashboard', settings: {}, suppliers: [], user: null };
 const ROUTE_MIN = {
   dashboard: 'viewer', offers: 'viewer', products: 'viewer', compare: 'viewer', lowest: 'viewer', pricing: 'viewer', builder: 'viewer', lists: 'analyst',
   inventory: 'viewer', customers: 'viewer', demands: 'viewer', quotes: 'viewer', suppliers: 'viewer',
-  exceptions: 'viewer', imports: 'buyer', captures: 'analyst', alerts: 'viewer', trends: 'viewer', orders: 'viewer', shipments: 'viewer', buying: 'viewer', forecast: 'viewer', performance: 'viewer', reports: 'viewer', settings: 'admin', users: 'admin', audit: 'admin',
+  exceptions: 'viewer', imports: 'buyer', captures: 'analyst', alerts: 'viewer', trends: 'viewer', orders: 'viewer', placements: 'viewer', shipments: 'viewer', buying: 'viewer', forecast: 'viewer', performance: 'viewer', reports: 'viewer', settings: 'admin', users: 'admin', audit: 'admin',
 };
 
 function showLogin() { $('#login').classList.remove('hidden'); }
@@ -944,6 +944,180 @@ function renderListDiff(el, r) {
       <tbody>${rows(r.descriptionChanges, (c) => `<tr><td class="mono">${esc(c.barcode || '')}</td><td class="small">${esc(c.from)}</td><td class="small">${esc(c.to)}</td></tr>`)}</tbody></table></div></div>` : ''}`;
 }
 
+
+/* ================= supplier order placement ================= */
+let plLines = [];
+let plOffers = [];
+let plPickedProduct = null;
+
+function plCalc(l) {
+  const upc = Number(l.unitsPerCase) > 0 ? Number(l.unitsPerCase) : 1;
+  const boxes = Math.max(0, Math.floor(Number(l.boxes) || 0));
+  const units = boxes * upc;
+  const cost = l.unitCost != null && l.unitCost !== '' ? Number(l.unitCost) : null;
+  const total = cost != null ? Math.round(units * cost * 10000) / 10000 : 0;
+  return { upc, boxes, units, cost, total };
+}
+
+routes.placements = async () => {
+  const suppliers = (state.suppliers && state.suppliers.length) ? state.suppliers : await GET('/suppliers').catch(() => []);
+  plLines = [];
+  plOffers = [];
+  plPickedProduct = null;
+  const today = new Date().toISOString().slice(0, 10);
+
+  const renderLines = () => {
+    const cur = $('#plCur') ? $('#plCur').value : 'EUR';
+    if (!plLines.length) {
+      $('#plLines').innerHTML = '<div class="muted small">No lines yet — load the purchase plan or pick a product and add a line.</div>';
+    } else {
+      $('#plLines').innerHTML = `<div class="table-wrap"><table><thead><tr><th>Product</th><th class="num">Units/case</th><th class="num">Full boxes</th><th class="num">Units</th><th class="num">Unit cost</th><th class="num">Line total</th><th></th></tr></thead><tbody>
+        ${plLines.map((l, i) => { const c = plCalc(l); return `<tr>
+          <td>${esc((l.description || '').slice(0, 46))}${l.warn ? `<div class="muted small">${esc(l.warn)}</div>` : ''}<div class="muted small mono">${esc(l.barcode || '')}</div></td>
+          <td class="num">${num(c.upc)}</td>
+          <td class="num"><input data-i="${i}" data-f="boxes" type="number" min="0" step="1" value="${c.boxes}" style="width:72px" /></td>
+          <td class="num" data-units="${i}">${num(c.units)}</td>
+          <td class="num"><input data-i="${i}" data-f="unitCost" type="number" step="0.0001" value="${c.cost != null ? c.cost : ''}" style="width:92px" /></td>
+          <td class="num" data-total="${i}">${money(c.total, cur)}</td>
+          <td><button class="ghost sm" data-del="${i}" type="button" aria-label="Remove">&#10005;</button></td>
+        </tr>`; }).join('')}
+      </tbody></table></div>`;
+    }
+    renderTotals();
+    $$('#plLines [data-f]').forEach((inp) => inp.addEventListener('input', () => {
+      const i = Number(inp.dataset.i);
+      plLines[i][inp.dataset.f] = inp.value;
+      const c = plCalc(plLines[i]);
+      const u = $(`#plLines [data-units="${i}"]`);
+      const t = $(`#plLines [data-total="${i}"]`);
+      if (u) u.textContent = num(c.units);
+      if (t) t.textContent = money(c.total, $('#plCur').value);
+      renderTotals();
+    }));
+    $$('#plLines [data-del]').forEach((b) => b.addEventListener('click', () => {
+      plLines.splice(Number(b.dataset.del), 1);
+      renderLines();
+    }));
+  };
+
+  const renderTotals = () => {
+    const cur = $('#plCur') ? $('#plCur').value : 'EUR';
+    const boxes = plLines.reduce((s, l) => s + plCalc(l).boxes, 0);
+    const units = plLines.reduce((s, l) => s + plCalc(l).units, 0);
+    const total = plLines.reduce((s, l) => s + plCalc(l).total, 0);
+    $('#plTotals').innerHTML = `<span class="muted small">${num(plLines.length)} lines · ${num(boxes)} boxes · ${num(units)} units</span>
+      <span><strong>${money(Math.round(total * 10000) / 10000, cur)}</strong></span>`;
+  };
+
+  const loadList = async () => {
+    const data = await GET('/placements').catch(() => ({ rows: [] }));
+    const rows = data.rows || [];
+    $('#plList').innerHTML = rows.length ? `<div class="table-wrap"><table><thead><tr><th>Ref</th><th>Supplier</th><th class="num">Lines</th><th class="num">Total</th><th>Status</th><th></th></tr></thead><tbody>
+      ${rows.map((r) => `<tr><td class="mono">${esc(r.ref)}</td><td>${esc(r.supplier_code || '')}<div class="muted small">${esc(r.order_date || '')}</div></td><td class="num">${num(r.line_count)}</td><td class="num">${r.total != null ? money(r.total, r.currency) : '—'}</td><td><span class="badge info">${esc(r.status)}</span></td><td><a class="btn sm" href="/api/export/placement/${r.id}.xlsx">Export</a></td></tr>`).join('')}
+    </tbody></table></div>` : '<div class="muted small">No placements saved yet.</div>';
+  };
+
+  $('#view').innerHTML = `
+    <div class="split">
+      <div class="panel">
+        <h2>New order placement <span class="muted small">— cost price + full-box quantities</span></h2>
+        <div class="muted small" style="margin:6px 0 12px">Pick the supplier, load the lines from the purchase plan (or add products), set whole boxes, then save the placement or export it to send.</div>
+        <div class="grid" style="grid-template-columns:1.4fr 1fr 1fr 1fr;gap:10px">
+          <div class="field"><label>Supplier</label><select id="plSupplier"><option value="">— pick —</option>${suppliers.map((s) => `<option value="${esc(s.code)}">${esc(s.code)}${s.name ? ' · ' + esc(s.name) : ''}</option>`).join('')}</select></div>
+          <div class="field"><label>Currency</label><input id="plCur" value="EUR" /></div>
+          <div class="field"><label>Incoterm</label><input id="plInco" placeholder="FOB" /></div>
+          <div class="field"><label>Order date</label><input id="plDate" type="date" value="${today}" /></div>
+        </div>
+        <div class="row" style="margin-top:8px"><button id="plPlan" class="ghost" type="button">Load from purchase plan</button></div>
+        <div class="row" style="gap:10px;margin-top:14px;align-items:flex-end">
+          <div class="field" style="flex:2"><label>Add a product</label>
+            <div>
+              <input data-pp-input id="plPP" placeholder="Search a product…" />
+              <input data-pp-id type="hidden" />
+              <div data-pp-results></div>
+            </div>
+          </div>
+          <div class="field" style="flex:2"><label>Offer / supplier</label><select id="plOffer"><option value="">— pick a product first —</option></select></div>
+          <button id="plAdd" class="ghost" type="button">Add line</button>
+        </div>
+        <div id="plLines" style="margin-top:14px"></div>
+        <div id="plTotals" class="row" style="justify-content:space-between;margin-top:10px"></div>
+        <div class="field" style="margin-top:10px"><label>Notes</label><input id="plNotes" placeholder="Payment terms, reference, etc." /></div>
+        <div class="row" style="margin-top:12px;gap:10px"><button id="plSave">Save placement</button>${can('buyer') ? '' : '<span class="muted small">Buyer role needed to save</span>'}</div>
+      </div>
+      <div class="panel">
+        <h2>Saved placements</h2>
+        <div id="plList"><div class="muted small">Loading…</div></div>
+      </div>
+    </div>`;
+
+  mountProductPicker($('#view'), async (pid) => {
+    plPickedProduct = pid;
+    try {
+      const r = await GET(`/products/${pid}/compare`);
+      plOffers = (r.offers || []).filter((o) => !o.isRetail && o.perBottle != null);
+      $('#plOffer').innerHTML = plOffers.length ? plOffers.map((o) =>
+        `<option value="${o.offerId}">${esc(o.supplier)} · ${money(o.perBottle, o.currency)}/btl${o.unitsPerCase > 1 ? ' · ' + o.unitsPerCase + '/case' : ''}</option>`
+      ).join('') : '<option value="">— no priced offers —</option>';
+    } catch (e) { toast(e.message, 'err'); }
+  });
+
+  $('#plPlan').addEventListener('click', async () => {
+    const code = $('#plSupplier').value;
+    if (!code) return toast('Pick a supplier first', 'err');
+    try {
+      const plan = await GET('/placements/plan?supplier=' + encodeURIComponent(code));
+      if (!plan.lines.length) return toast('No purchase-plan lines for that supplier', 'err');
+      plLines = plan.lines.map((l) => ({
+        productId: l.productId, offerId: l.offerId, description: l.description, barcode: l.barcode,
+        unitsPerCase: l.unitsPerCase,
+        boxes: l.suggestedBoxes != null ? l.suggestedBoxes : (l.suggestedUnits || 1),
+        unitCost: l.unitCost, moq: l.moq, orderMultiple: l.orderMultiple,
+        warn: l.moq && l.unitsPerCase && (l.suggestedBoxes * l.unitsPerCase) < l.moq ? `below MOQ (${l.moq})` : '',
+      }));
+      if (plan.lines[0].currency) $('#plCur').value = plan.lines[0].currency;
+      renderLines();
+      toast('Loaded ' + plLines.length + ' line(s) from the plan', 'ok');
+    } catch (e) { toast(e.message, 'err'); }
+  });
+
+  $('#plAdd').addEventListener('click', () => {
+    const offerId = $('#plOffer').value;
+    if (!plPickedProduct || !offerId) return toast('Pick a product then an offer', 'err');
+    const o = plOffers.find((x) => String(x.offerId) === offerId);
+    if (!o) return;
+    plLines.push({ productId: plPickedProduct, offerId: o.offerId, description: o.description, barcode: null, unitsPerCase: o.unitsPerCase, boxes: 1, unitCost: o.perBottle, currency: o.currency });
+    if (o.currency) $('#plCur').value = o.currency;
+    renderLines();
+  });
+
+  $('#plCur').addEventListener('input', renderTotals);
+
+  $('#plSave').addEventListener('click', async () => {
+    if (!can('buyer')) return toast('Buyer role required to save', 'err');
+    const supplierCode = $('#plSupplier').value;
+    if (!supplierCode) return toast('Pick a supplier', 'err');
+    if (!plLines.length) return toast('Add at least one line', 'err');
+    const body = {
+      supplierCode,
+      currency: $('#plCur').value.trim() || 'EUR',
+      incoterm: $('#plInco').value.trim() || undefined,
+      orderDate: $('#plDate').value || undefined,
+      notes: $('#plNotes').value.trim() || undefined,
+      lines: plLines.map((l) => ({ productId: l.productId, offerId: l.offerId, description: l.description, unitsPerCase: l.unitsPerCase, boxes: Number(l.boxes) || 0, unitCost: l.unitCost })),
+    };
+    try {
+      const r = await POST('/placements', body);
+      toast('Placement saved (' + r.ref + ')', 'ok');
+      plLines = [];
+      renderLines();
+      loadList();
+    } catch (e) { toast(e.message, 'err'); }
+  });
+
+  renderLines();
+  loadList();
+};
 
 routes.inventory = async () => {
   const [d, res] = await Promise.all([GET('/inventory'), GET('/reservations')]);
@@ -1921,6 +2095,7 @@ const TITLES = {
   reports: ['Reports & Exports', 'Supplier performance and one-click Excel exports'],
   performance: ['Performance', 'Profitability, cash, capital and stock KPIs'],
   orders: ['Orders & Payments', 'Purchase/sales orders, payments and realised vs forecast margin'],
+  placements: ['Order Placement', 'Supplier order with cost price and full-box quantities, ready to send'],
   shipments: ['Shipment Costs', 'Allocate freight, duty and handling across the lines they belong to'],
   users: ['Users & Roles', 'Accounts and role-based access'],
   audit: ['Audit Log', 'Who did what, when'],

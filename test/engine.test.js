@@ -49,6 +49,7 @@ const sourcing = require('../server/services/sourcing');
 const demands = require('../server/services/demands');
 const template = require('../server/services/template');
 const listdiff = require('../server/services/listdiff');
+const placements = require('../server/services/placements');
 const XLSX = require('xlsx');
 
 // No cached fixture: run the real import pipeline so the DB-backed tests
@@ -1108,4 +1109,53 @@ test('cleaning: cleanUpload writes a snapshot and records it on the upload', () 
   const offers = XLSX.utils.sheet_to_json(XLSX.readFile(row.cleaned_path).Sheets.Offers, { header: 1, defval: '' });
   assert.equal(offers.length, info.rows + 1);
 });
+
+test('placements: full-box rounding never leaves a part box', () => {
+  assert.deepEqual(placements.toFullBoxes(10, 12), { unitsPerCase: 12, units: 12, boxes: 1, roundedUpFrom: 10 });
+  assert.deepEqual(placements.toFullBoxes(24, 12), { unitsPerCase: 12, units: 24, boxes: 2, roundedUpFrom: 24 });
+  assert.equal(placements.toFullBoxes(25, 12).units, 36);
+  assert.equal(placements.toFullBoxes(7, 1).boxes, 7);
+  assert.equal(placements.toFullBoxes(3, 0).boxes, 3);
+});
+
+test('placements: a line derives cost, pack size and totals from the offer', () => {
+  const offer = db.prepare('SELECT id, units_per_case, currency FROM offers WHERE units_per_case > 1 AND price > 0 LIMIT 1').get();
+  if (!offer) return;
+  const line = placements.normalizeLine({ offerId: offer.id, boxes: 2 });
+  const upc = Number(offer.units_per_case);
+  assert.equal(line.units, 2 * upc);
+  assert.equal(line.boxes, 2);
+  assert.equal(line.currency, offer.currency);
+  assert.ok(Number.isFinite(line.unit_cost) && line.unit_cost > 0);
+  assert.equal(line.line_total, pricing.round4(line.unit_cost * line.units));
+});
+
+test('placements: a saved order is stored, totalled and exportable', () => {
+  const plan = placements.planForSupplier();
+  if (!plan.lines.length || !plan.suppliers.length) return;
+  const code = plan.suppliers[0];
+  const chosen = placements.planForSupplier(code).lines.slice(0, 3);
+  const created = placements.createPlacement({
+    supplierCode: code,
+    lines: chosen.map((l) => ({ productId: l.productId, offerId: l.offerId, boxes: l.suggestedBoxes || 1 })),
+  });
+  assert.ok(created.ok && created.id, 'placement should be created');
+
+  const got = placements.getPlacement(created.id);
+  assert.equal(got.supplier_code, code);
+  assert.equal(got.lines.length, chosen.length);
+  assert.equal(got.totals.units, got.lines.reduce((s, l) => s + l.units, 0));
+  assert.ok(got.totals.total > 0);
+
+  const wb = placements.placementWorkbook(created.id);
+  assert.ok(wb && wb.buffer.length > 0);
+  const sheet = XLSX.read(wb.buffer, { type: 'buffer' }).Sheets.Placement;
+  const rows = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
+  assert.ok(rows.some((r) => String(r[0]).includes('order placement')));
+  assert.equal(rows.filter((r) => typeof r[0] === 'number').length, chosen.length);
+  assert.equal(placements.getPlacement(999999), null);
+  assert.ok(placements.listPlacements().some((p) => p.id === created.id));
+});
+
+
 

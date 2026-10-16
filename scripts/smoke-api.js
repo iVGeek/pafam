@@ -310,6 +310,27 @@ const server = app.listen(PORT, async () => {
     const ppA = await admin.req('GET', '/purchase-plan?approvedOnly=1');
     console.log('purchase-plan (approved):', ppA.status, '| items:', (ppA.body.items || []).length);
 
+    // supplier order placement (cost price + full-box quantities)
+    const planP = await admin.req('GET', '/placements/plan?supplier=ALCODIS');
+    console.log('placements/plan:', planP.status, '| lines:', (planP.body.lines || []).length, '| suppliers:', (planP.body.suppliers || []).join(','));
+    const pLines = (planP.body.lines || []).slice(0, 3);
+    const poRes = await admin.req('POST', '/placements', {
+      supplierCode: 'ALCODIS', currency: 'EUR', incoterm: 'FOB', notes: 'smoke placement',
+      lines: pLines.map((l) => ({ productId: l.productId, offerId: l.offerId, boxes: l.suggestedBoxes || 1 })),
+    });
+    console.log('placements create:', poRes.status, '| ref:', poRes.body.ref, '| lines:', (poRes.body.lines || []).length,
+      '| units:', poRes.body.totals && poRes.body.totals.units, '| total:', poRes.body.totals && poRes.body.totals.total);
+    const poList = await admin.req('GET', '/placements');
+    console.log('placements list:', poList.status, '| count:', (poList.body.rows || []).length);
+    const poXl = await admin.req('GET', `/export/placement/${poRes.body.id}.xlsx`);
+    console.log('export placement.xlsx:', poXl.status, '| chars:', poXl.len, '| type:', poXl.ctype);
+    const vPo = await viewer.req('POST', '/placements', { supplierCode: 'ALCODIS', lines: [{ offerId: 1, boxes: 1 }] });
+    console.log('viewer create placement (expect 403):', vPo.status);
+    const poBad = await admin.req('POST', '/placements', { lines: [] });
+    console.log('placement no supplier (expect 400):', poBad.status);
+    const poMiss = await admin.req('GET', '/placements/999999');
+    console.log('placement missing (expect 404):', poMiss.status);
+
     // KPI suite
     const kp = await admin.req('GET', '/kpis');
     console.log('kpis:', kp.status, '| grossProfit:', kp.body.summary && kp.body.summary.grossProfit, '| grossMargin:', kp.body.summary && kp.body.summary.grossMarginPct, '| ar:', kp.body.cash && kp.body.cash.ar, '| capitalRequired:', kp.body.cash && kp.body.cash.capitalRequired);

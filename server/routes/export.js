@@ -5,6 +5,7 @@ const router = express.Router();
 const reporting = require('../services/reporting');
 const analytics = require('../services/analytics');
 const template = require('../services/template');
+const placements = require('../services/placements');
 
 // GET /api/reports  — supplier performance + win mix + overview for the page.
 router.get('/reports', (req, res) => {
@@ -29,6 +30,12 @@ router.get('/integrations', (req, res) => {
       url: `${base}/export/cleaned/:uploadId.xlsx`,
       auth: 'session cookie (viewer+)',
       note: 'the standard-template snapshot auto-generated for each import',
+    },
+    placement: {
+      method: 'GET',
+      url: `${base}/export/placement/:id.xlsx`,
+      auth: 'session cookie (viewer+)',
+      note: 'supplier-facing order placement: cost price and full-box quantities',
     },
     webhook: {
       method: 'POST',
@@ -57,6 +64,16 @@ router.get('/export/cleaned/:id', (req, res) => {
   const id = String(req.params.id || '').replace(/\.xlsx$/i, '');
   const out = template.cleanedBuffer(isNaN(Number(id)) ? id : Number(id));
   if (!out) return res.status(404).json({ error: 'upload not found' });
+  res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+  res.setHeader('Content-Disposition', `attachment; filename="${out.filename}"`);
+  res.send(out.buffer);
+});
+
+// GET /api/export/placement/:id.xlsx — supplier-facing order placement.
+router.get('/export/placement/:id', (req, res) => {
+  const id = String(req.params.id || '').replace(/\.xlsx$/i, '');
+  const out = placements.placementWorkbook(id);
+  if (!out) return res.status(404).json({ error: 'placement not found' });
   res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
   res.setHeader('Content-Disposition', `attachment; filename="${out.filename}"`);
   res.send(out.buffer);
