@@ -1013,8 +1013,9 @@ routes.placements = async () => {
     const data = await GET('/placements').catch(() => ({ rows: [] }));
     const rows = data.rows || [];
     $('#plList').innerHTML = rows.length ? `<div class="table-wrap"><table><thead><tr><th>Ref</th><th>Supplier</th><th class="num">Lines</th><th class="num">Total</th><th>Status</th><th></th></tr></thead><tbody>
-      ${rows.map((r) => `<tr><td class="mono">${esc(r.ref)}</td><td>${esc(r.supplier_code || '')}<div class="muted small">${esc(r.order_date || '')}</div></td><td class="num">${num(r.line_count)}</td><td class="num">${r.total != null ? money(r.total, r.currency) : '—'}</td><td><span class="badge info">${esc(r.status)}</span></td><td><a class="btn sm" href="/api/export/placement/${r.id}.xlsx">Export</a></td></tr>`).join('')}
+      ${rows.map((r) => `<tr><td class="mono">${esc(r.ref)}</td><td>${esc(r.supplier_code || '')}<div class="muted small">${esc(r.order_date || '')}</div></td><td class="num">${num(r.line_count)}</td><td class="num">${r.total != null ? money(r.total, r.currency) : '—'}</td><td><span class="badge info">${esc(r.status)}</span></td><td class="row" style="gap:6px"><a class="btn sm" href="/api/export/placement/${r.id}.xlsx">Export</a><button class="ghost sm" data-pfi="${r.id}" data-ref="${esc(r.ref)}">PFI</button></td></tr>`).join('')}
     </tbody></table></div>` : '<div class="muted small">No placements saved yet.</div>';
+    $$('#plList [data-pfi]').forEach((b) => b.addEventListener('click', () => openPfi(Number(b.dataset.pfi), b.dataset.ref)));
   };
 
   $('#view').innerHTML = `
@@ -1118,6 +1119,84 @@ routes.placements = async () => {
   renderLines();
   loadList();
 };
+
+/* ---- PFI (proforma) reconciliation modal ---- */
+function openPfi(id, ref) {
+  const body = `
+    <div class="muted small">Compare the supplier's proforma (PFI) with placement <strong>${esc(ref)}</strong>. Upload the PFI as Excel — quantity, unit price and line-total variances are shown line by line. Attach the PDF for the record.</div>
+    <div class="row" style="gap:10px;align-items:flex-end;margin-top:12px">
+      <div class="field" style="flex:1"><label>PFI file (Excel)</label><input id="pfiFile" type="file" accept=".xls,.xlsx,.csv" /></div>
+      <button id="pfiGo">Compare</button>
+    </div>
+    <div id="pfiOut" style="margin-top:14px"></div>
+    <h2 style="font-size:13px;margin-top:18px">Recorded comparisons</h2>
+    <div id="pfiHistory"></div>`;
+  modal('PFI reconciliation', body, (m) => {
+    const out = m.querySelector('#pfiOut');
+    const hist = m.querySelector('#pfiHistory');
+    const loadHist = async () => {
+      const d = await GET(`/placements/${id}/pfi`).catch(() => ({ rows: [] }));
+      const rows = d.rows || [];
+      hist.innerHTML = rows.length ? `<div class="table-wrap"><table><thead><tr><th>When</th><th>File</th><th class="num">PFI total</th><th class="num">Variance</th><th>Changes</th><th>PDF</th><th></th></tr></thead><tbody>
+        ${rows.map((r) => `<tr><td class="small">${esc((r.created_at || '').slice(0, 16))}</td><td class="small">${esc(r.filename || '')}</td><td class="num">${r.pfi_total != null ? money(r.pfi_total, r.currency) : '—'}</td><td class="num">${r.variance_total != null ? money(r.variance_total, r.currency) : '—'}</td><td class="small">matched ${num(r.lines_matched)}, changed ${num(r.lines_changed)}</td><td><input type="file" accept=".pdf" data-attach="${r.id}" style="width:150px" />${r.attachment_name ? `<a class="btn sm" href="/api/pfi/${r.id}/attachment" style="margin-left:6px">PDF</a>` : ''}</td><td><button class="ghost sm" data-pfi-attach="${r.id}">Attach</button><button class="ghost sm" data-pfi-del="${r.id}">&#10005;</button></td></tr>`).join('')}</div>` : '<div class="muted small">No comparisons recorded yet.</div>';
+      $$('[data-pfi-attach]', hist).forEach((b) => b.addEventListener('click', async () => {
+        const inp = hist.querySelector(`input[data-attach="${b.dataset.pfiAttach}"]`);
+        const f = inp && inp.files[0];
+        if (!f) return toast('Choose a PDF to attach', 'err');
+        const fd = new FormData(); fd.append('file', f);
+        try { await api('POST', `/pfi/${b.dataset.pfiAttach}/attach`, fd, true); toast('PDF attached', 'ok'); loadHist(); }
+        catch (e) { toast(e.message, 'err'); }
+      }));
+      $$('[data-pfi-del]', hist).forEach((b) => b.addEventListener('click', async () => {
+        try { await DEL(`/pfi/${b.dataset.pfiDel}`); toast('Comparison removed', 'ok'); loadHist(); }
+        catch (e) { toast(e.message, 'err'); }
+      }));
+    };
+    m.querySelector('#pfiGo').addEventListener('click', async () => {
+      const f = m.querySelector('#pfiFile').files[0];
+      if (!f) return toast('Pick a PFI file', 'err');
+      const fd = new FormData(); fd.append('file', f);
+      try {
+        const r = await api('POST', `/placements/${id}/pfi`, fd, true);
+        renderPfi(out, r);
+        loadHist();
+      } catch (e) { toast(e.message, 'err'); }
+    });
+    loadHist();
+  });
+}
+
+function renderPfi(el, r) {
+  const cur = (r.placement && r.placement.currency) || 'EUR';
+  const s = r.summary || {};
+  const cards = [
+    ['Order total', money(r.orderTotal, cur)],
+    ['PFI total', money(r.pfiTotal, cur)],
+    ['Variance', (r.varianceTotal > 0 ? '+' : '') + money(r.varianceTotal, cur)],
+    ['Matched', num(s.matched) + ' / ' + num(s.orderLines)],
+    ['Price changes', num(s.priceChanges)],
+    ['Quantity changes', num(s.quantityChanges)],
+    ['Extra on PFI', num(s.extra)],
+    ['Missing from PFI', num(s.missing)],
+  ];
+  const matchRows = (r.matched || []).map((m) => `<tr>
+    <td>${esc((m.description || '').slice(0, 42))}<div class="muted small mono">${esc(m.barcode || '')}</div></td>
+    <td class="num">${num(m.orderedUnits)}</td>
+    <td class="num">${m.pfiQuantity != null ? num(m.pfiQuantity) : '—'}</td>
+    <td class="num">${m.qtyDiff != null && m.qtyDiff !== 0 ? `<span class="badge warn">${m.qtyDiff > 0 ? '+' : ''}${num(m.qtyDiff)}</span>` : '<span class="muted">0</span>'}</td>
+    <td class="num">${m.orderedUnitCost != null ? money(m.orderedUnitCost, cur) : '—'}</td>
+    <td class="num">${m.pfiUnitPrice != null ? money(m.pfiUnitPrice, cur) : '—'}</td>
+    <td class="num">${m.priceDiff != null && m.priceDiff !== 0 ? `<span class="badge ${m.priceDiff > 0 ? 'bad' : 'good'}">${m.priceDiff > 0 ? '+' : ''}${money(m.priceDiff, cur)}${m.pricePct != null ? ' (' + pct(m.pricePct) + ')' : ''}</span>` : '<span class="muted">0</span>'}</td>
+  </tr>`).join('') || '<tr><td colspan="7" class="muted">No matched lines.</td></tr>';
+  el.innerHTML = `
+    <div class="grid cards">${cards.map((c) => `<div class="card"><div class="k">${esc(c[0])}</div><div class="v">${esc(c[1])}</div></div>`).join('')}</div>
+    <div class="muted small" style="margin:10px 0">PFI "${esc((r.pfi && r.pfi.name) || '')}" → sheet "${esc((r.pfi && r.pfi.sheet) || '?')}", header row ${(r.pfi && r.pfi.headerRow) || 0}, ${num((r.pfi && r.pfi.rowCount) || 0)} rows.</div>
+    <div class="table-wrap"><table><thead><tr><th>Product</th><th class="num">Ordered</th><th class="num">PFI qty</th><th class="num">Qty &#916;</th><th class="num">Order cost</th><th class="num">PFI price</th><th class="num">Price &#916;</th></tr></thead><tbody>${matchRows}</tbody></table></div>
+    ${(r.extra || []).length ? `<div class="panel" style="margin-top:14px"><h2 style="font-size:13px">On the PFI but not ordered <span class="badge warn">${num(r.extra.length)}</span></h2>
+      <div class="table-wrap"><table><thead><tr><th>Barcode</th><th>Description</th><th class="num">Qty</th><th class="num">Unit price</th><th class="num">Line total</th></tr></thead><tbody>${r.extra.map((x) => `<tr><td class="mono">${esc(x.barcode || '')}</td><td class="small">${esc((x.description || '').slice(0, 44))}</td><td class="num">${x.quantity != null ? num(x.quantity) : '—'}</td><td class="num">${x.unitPrice != null ? money(x.unitPrice, cur) : '—'}</td><td class="num">${x.lineTotal != null ? money(x.lineTotal, cur) : '—'}</td></tr>`).join('')}</tbody></table></div></div>` : ''}
+    ${(r.missing || []).length ? `<div class="panel" style="margin-top:14px"><h2 style="font-size:13px">Ordered but missing from the PFI <span class="badge bad">${num(r.missing.length)}</span></h2>
+      <div class="table-wrap"><table><thead><tr><th>Barcode</th><th>Description</th><th class="num">Units</th><th class="num">Unit cost</th><th class="num">Line total</th></tr></thead><tbody>${r.missing.map((x) => `<tr><td class="mono">${esc(x.barcode || '')}</td><td class="small">${esc((x.description || '').slice(0, 44))}</td><td class="num">${num(x.units)}</td><td class="num">${x.unit_cost != null ? money(x.unit_cost, cur) : '—'}</td><td class="num">${x.line_total != null ? money(x.line_total, cur) : '—'}</td></tr>`).join('')}</tbody></table></div></div>` : ''}`;
+}
 
 routes.inventory = async () => {
   const [d, res] = await Promise.all([GET('/inventory'), GET('/reservations')]);

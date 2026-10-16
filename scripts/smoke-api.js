@@ -1,5 +1,6 @@
 'use strict';
 const app = require('../server/index');
+const XLSX = require('xlsx');
 
 const PORT = 4199;
 
@@ -330,6 +331,40 @@ const server = app.listen(PORT, async () => {
     console.log('placement no supplier (expect 400):', poBad.status);
     const poMiss = await admin.req('GET', '/placements/999999');
     console.log('placement missing (expect 404):', poMiss.status);
+
+    // order placement vs supplier PFI (Excel primary)
+    const pfiGtin = require('../src/lib/gtin');
+    const pfiEan = (b) => b + String(pfiGtin.checkDigit(b));
+    const pfiRows = (poRes.body.lines || []).map((l, i) => [l.barcode, l.description, i === 0 ? Math.round(l.unit_cost * 1.1 * 100) / 100 : l.unit_cost, i === 0 ? l.units - 1 : l.units]);
+    pfiRows.push([pfiEan('840000009999'), 'Extra freebie', 1.5, 5]);
+    const mkPfi = () => {
+      const ws = XLSX.utils.aoa_to_sheet([['EAN', 'Descripcion', 'Precio', 'Cantidad'], ...pfiRows]);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'PFI');
+      return XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+    };
+    const fdPfi = new FormData();
+    fdPfi.append('file', new Blob([mkPfi()]), 'pfi.xlsx');
+    const pfiRes = await admin.req('POST', `/placements/${poRes.body.id}/pfi`, fdPfi);
+    console.log('placement pfi compare:', pfiRes.status, '| matched:', pfiRes.body.summary && pfiRes.body.summary.matched,
+      '| priceChanges:', pfiRes.body.summary && pfiRes.body.summary.priceChanges,
+      '| qtyChanges:', pfiRes.body.summary && pfiRes.body.summary.quantityChanges,
+      '| extra:', pfiRes.body.summary && pfiRes.body.summary.extra,
+      '| variance:', pfiRes.body.varianceTotal);
+    const pfiList = await admin.req('GET', `/placements/${poRes.body.id}/pfi`);
+    console.log('pfi list:', pfiList.status, '| count:', (pfiList.body.rows || []).length);
+    const pfiGet = await admin.req('GET', `/pfi/${pfiRes.body.id}`);
+    console.log('pfi get:', pfiGet.status, '| filename:', pfiGet.body.record && pfiGet.body.record.filename, '| matched detail:', (pfiGet.body.detail.matched || []).length);
+    const fdPdf = new FormData();
+    fdPdf.append('file', new Blob([Buffer.from('%PDF-1.4 smoke')]), 'supplier-pfi.pdf');
+    const pfiAtt = await admin.req('POST', `/pfi/${pfiRes.body.id}/attach`, fdPdf);
+    console.log('pfi attach pdf:', pfiAtt.status, '| name:', pfiAtt.body.name);
+    const pfiDl = await admin.req('GET', `/pfi/${pfiRes.body.id}/attachment`);
+    console.log('pfi attachment download:', pfiDl.status, '| type:', pfiDl.ctype);
+    const vPfi = await viewer.req('POST', `/placements/${poRes.body.id}/pfi`, fdPfi);
+    console.log('viewer pfi compare (expect 403):', vPfi.status);
+    const pfiBad = await admin.req('POST', `/placements/${poRes.body.id}/pfi`, new FormData());
+    console.log('pfi no file (expect 400):', pfiBad.status);
 
     // KPI suite
     const kp = await admin.req('GET', '/kpis');

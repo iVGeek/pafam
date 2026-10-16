@@ -375,6 +375,30 @@ CREATE TABLE IF NOT EXISTS purchase_order_lines (
 );
 CREATE INDEX IF NOT EXISTS idx_purchase_order_lines_po ON purchase_order_lines(po_id);
 
+-- PFI (proforma invoice) reconciliation against a placement. The supplier's
+-- PFI is uploaded as Excel (primary record); a PDF can be attached for the
+-- file. The parsed comparison is snapshotted in the detail column so history
+-- survives deletion of the source file.
+CREATE TABLE IF NOT EXISTS pfi_documents (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  po_id INTEGER NOT NULL REFERENCES purchase_orders(id) ON DELETE CASCADE,
+  reference TEXT,
+  filename TEXT,
+  currency TEXT,
+  order_total REAL,
+  pfi_total REAL,
+  variance_total REAL,
+  variance_pct REAL,
+  lines_matched INTEGER,
+  lines_changed INTEGER,
+  attachment_path TEXT,
+  attachment_name TEXT,
+  detail TEXT,
+  created_by TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_pfi_documents_po ON pfi_documents(po_id);
+
 -- Shipment cost allocation (brief section 8 control 2): a shipment's cost is
 -- allocated across the offers/orders it carries using one documented driver
 -- (chargeable weight, volume or value). The allocated amounts MUST reconcile

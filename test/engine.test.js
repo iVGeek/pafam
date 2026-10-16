@@ -50,6 +50,7 @@ const demands = require('../server/services/demands');
 const template = require('../server/services/template');
 const listdiff = require('../server/services/listdiff');
 const placements = require('../server/services/placements');
+const pfi = require('../server/services/pfi');
 const XLSX = require('xlsx');
 
 // No cached fixture: run the real import pipeline so the DB-backed tests
@@ -1155,6 +1156,74 @@ test('placements: a saved order is stored, totalled and exportable', () => {
   assert.equal(rows.filter((r) => typeof r[0] === 'number').length, chosen.length);
   assert.equal(placements.getPlacement(999999), null);
   assert.ok(placements.listPlacements().some((p) => p.id === created.id));
+});
+
+test('pfi: a proforma is matched to the placed order and variances reported', () => {
+  const mkPfi = (rows) => {
+    const ws = XLSX.utils.aoa_to_sheet([['Descripcion', 'Precio', 'Cantidad'], ...rows]);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'PFI');
+    return XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+  };
+  const placement = {
+    currency: 'EUR',
+    lines: [
+      { barcode: '', description: 'Chanel N5 EDP 100ml', units: 24, unit_cost: 50, line_total: 1200 },
+      { barcode: '', description: 'Dior Sauvage EDT 100ml', units: 12, unit_cost: 40, line_total: 480 },
+    ],
+  };
+  const parsed = pfi.parsePfi(mkPfi([
+    ['Chanel N5 EDP 100ml', 55, 24],
+    ['Dior Sauvage EDT 100ml', 40, 10],
+    ['Extra freebie', 9, 3],
+  ]));
+  assert.equal(parsed.rows.length, 3);
+  assert.equal(parsed.pfiTotal, 1747);
+
+  const cmp = pfi.compareToPlacement(placement, parsed);
+  assert.equal(cmp.summary.matched, 2);
+  assert.equal(cmp.summary.priceChanges, 1);
+  assert.equal(cmp.summary.quantityChanges, 1);
+  assert.equal(cmp.summary.extra, 1);
+  assert.equal(cmp.summary.missing, 0);
+  assert.equal(cmp.orderTotal, 1680);
+  assert.equal(cmp.varianceTotal, 67);
+
+  const priceLine = cmp.matched.find((m) => m.priceDiff != null && m.priceDiff !== 0);
+  assert.equal(priceLine.priceDiff, 5);
+  assert.equal(priceLine.pricePct, 10);
+  const qtyLine = cmp.matched.find((m) => m.qtyDiff);
+  assert.equal(qtyLine.qtyDiff, 2);
+});
+
+test('pfi: a comparison is recorded, listed and can carry the reference PDF', () => {
+  const plan = placements.planForSupplier();
+  if (!plan.lines.length || !plan.suppliers.length) return;
+  const code = plan.suppliers[0];
+  const chosen = placements.planForSupplier(code).lines.slice(0, 2);
+  const created = placements.createPlacement({ supplierCode: code, lines: chosen.map((l) => ({ offerId: l.offerId, boxes: l.suggestedBoxes || 1 })) });
+  const pl = placements.getPlacement(created.id);
+
+  const ws = XLSX.utils.aoa_to_sheet([['EAN', 'Descripcion', 'Precio', 'Cantidad'],
+    ...pl.lines.map((l) => [l.barcode, l.description, l.unit_cost, l.units])]);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'PFI');
+  const parsed = pfi.parsePfi(XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }));
+  const cmp = pfi.compareToPlacement(pl, parsed);
+  assert.equal(cmp.summary.priceChanges, 0);
+  assert.equal(cmp.summary.quantityChanges, 0);
+
+  const id = pfi.savePfi(pl.id, { filename: 'pfi.xlsx', currency: pl.currency, orderTotal: cmp.orderTotal, pfiTotal: cmp.pfiTotal, varianceTotal: cmp.varianceTotal, detail: { matched: cmp.matched }, createdBy: 'test' });
+  assert.ok(id);
+  assert.equal(pfi.listPfi(pl.id).length, 1);
+  assert.ok(pfi.getPfi(id).filename === 'pfi.xlsx');
+
+  pfi.attachPdf(id, { originalname: 'supplier-pfi.pdf', buffer: Buffer.from('%PDF-1.4 fake') });
+  const att = pfi.attachment(id);
+  assert.ok(att && att.buffer.length > 0);
+
+  assert.equal(pfi.removePfi(id), true);
+  assert.equal(pfi.getPfi(id), null);
 });
 
 
