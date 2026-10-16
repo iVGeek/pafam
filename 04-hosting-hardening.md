@@ -149,6 +149,12 @@ New Project → *Deploy from GitHub repo* → pick this repository. Railway buil
 the `Dockerfile` remotely (`npm ci --omit=dev` runs **inside the image**, nothing
 on your machine). The first build takes 2–4 min (apt `gosu` + npm ci).
 
+`railway.json` already pins the deploy shape: single replica, a 30 s graceful
+shutdown (`drainingSeconds`) with zero overlap between deploys, and a
+`requiredMountPath` of `/var/data` — so the **deploy fails fast if the volume is
+missing**, instead of silently re-seeding. Nothing else needs configuring in the
+dashboard for build or runtime behaviour.
+
 **2. Attach a volume (required for persistence).**
 Service → *Volumes* → **New Volume**, **mount path `/var/data`**. This is the
 step that fixes `Empty database detected — seeding sample data…` on every
@@ -185,9 +191,11 @@ once `/api/auth/me` returns 200.
 `PTP_AUTO_SEED=false` and redeploy so a future empty volume cannot silently
 re-seed demo data over a live database.
 
-**Replicas and scaling.** Keep **one replica** — SQLite plus a mounted volume
-cannot be shared across replicas. Scale *up* (more CPU/RAM) if needed, not out.
-Give the service ≥ 512 MB RAM; the seed step is the memory peak.
+**Replicas and scaling.** `railway.json` pins `numReplicas: 1` — a SQLite
+database plus a mounted volume cannot be shared across replicas, and
+`overlapSeconds: 0` prevents an old and new container from opening the database
+at once during a deploy. Scale *up* (more CPU/RAM) if needed, not out. Give the
+service ≥ 512 MB RAM; the seed step is the memory peak.
 
 **Deploys after the first.** Push to the connected branch (or `railway up`) and
 Railway rebuilds and rolls out. Because the volume persists, data is untouched;
