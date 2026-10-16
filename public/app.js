@@ -85,7 +85,7 @@ function badgeList(flags) {
 const state = { route: 'dashboard', settings: {}, suppliers: [], user: null };
 
 const ROUTE_MIN = {
-  dashboard: 'viewer', offers: 'viewer', products: 'viewer', compare: 'viewer', lowest: 'viewer', pricing: 'viewer', builder: 'viewer',
+  dashboard: 'viewer', offers: 'viewer', products: 'viewer', compare: 'viewer', lowest: 'viewer', pricing: 'viewer', builder: 'viewer', lists: 'analyst',
   inventory: 'viewer', customers: 'viewer', demands: 'viewer', quotes: 'viewer', suppliers: 'viewer',
   exceptions: 'viewer', imports: 'buyer', captures: 'analyst', alerts: 'viewer', trends: 'viewer', orders: 'viewer', shipments: 'viewer', buying: 'viewer', forecast: 'viewer', performance: 'viewer', reports: 'viewer', settings: 'admin', users: 'admin', audit: 'admin',
 };
@@ -878,6 +878,70 @@ function renderBuilderResult(r, customers) {
     $('#obOffer').value = el.dataset.offer;
     builderPickOffer();
   }));
+}
+
+/* ================= compare two uploaded price lists ================= */
+routes.lists = async () => {
+  $('#view').innerHTML = `
+    <div class="panel">
+      <h2>Compare two price lists <span class="muted small">— diff by barcode or description</span></h2>
+      <div class="muted small" style="margin:6px 0 12px">Upload a baseline list (A) and a new list (B). Rows are matched by barcode (EAN/UPC/GTIN) where present, otherwise by description. Nothing is imported or saved.</div>
+      <div class="grid" style="grid-template-columns:1fr 1fr;gap:12px">
+        <div class="field"><label>Baseline list (A)</label><input id="ldA" type="file" accept=".xls,.xlsx,.csv" /></div>
+        <div class="field"><label>New list (B)</label><input id="ldB" type="file" accept=".xls,.xlsx,.csv" /></div>
+      </div>
+      <div class="row" style="margin-top:12px"><button id="ldGo">Compare</button></div>
+    </div>
+    <div id="ldOut" style="margin-top:16px"><div class="muted small">Pick two files and compare.</div></div>`;
+  $('#ldGo').addEventListener('click', async () => {
+    const a = $('#ldA').files[0];
+    const b = $('#ldB').files[0];
+    if (!a || !b) return toast('Choose both files', 'err');
+    const fd = new FormData();
+    fd.append('fileA', a);
+    fd.append('fileB', b);
+    $('#ldOut').innerHTML = '<div class="muted small">Comparing…</div>';
+    try {
+      const r = await api('POST', '/compare-files', fd, true);
+      renderListDiff($('#ldOut'), r);
+    } catch (e) { $('#ldOut').innerHTML = `<div class="badge bad">${esc(e.message)}</div>`; }
+  });
+};
+
+function renderListDiff(el, r) {
+  const s = r.summary;
+  const rows = (arr, cells) => arr.map(cells).join('') || '<tr><td colspan="9" class="muted">None.</td></tr>';
+  el.innerHTML = `
+    <div class="grid cards">
+      <div class="card"><div class="k">Added (in B)</div><div class="v best">${num(s.added)}</div></div>
+      <div class="card"><div class="k">Removed (gone)</div><div class="v">${num(s.removed)}</div></div>
+      <div class="card"><div class="k">Price changes</div><div class="v">${num(s.priceChanges)}</div><div class="s">${num(s.priceUp)} up · ${num(s.priceDown)} down</div></div>
+      <div class="card"><div class="k">Quantity changes</div><div class="v">${num(s.quantityChanges)}</div></div>
+      <div class="card"><div class="k">Matched</div><div class="v">${num(s.matched)}</div><div class="s">A ${num(s.aRows)} · B ${num(s.bRows)}</div></div>
+    </div>
+    <div class="muted small" style="margin:10px 0">A: ${esc(r.a.name)} → sheet "${esc(r.a.sheet || '?')}", header row ${r.a.headerRow}, ${num(r.a.rowCount)} rows. B: ${esc(r.b.name)} → sheet "${esc(r.b.sheet || '?')}", header row ${r.b.headerRow}, ${num(r.b.rowCount)} rows.${s.truncated ? ' Showing first 500 per section.' : ''}</div>
+
+    ${s.priceChanges ? `<div class="panel" style="margin-top:14px"><h2 style="font-size:13px">Price changes</h2>
+      <div class="table-wrap"><table><thead><tr><th>Barcode</th><th>Description</th><th class="num">From</th><th class="num">To</th><th class="num">Change</th><th class="num">%</th></tr></thead>
+      <tbody>${rows(r.priceChanges, (c) => `<tr><td class="mono small">${esc(c.barcode || '—')}</td><td class="small">${esc((c.description || '').slice(0, 44))}</td><td class="num">${num(c.from)}</td><td class="num">${num(c.to)}</td><td class="num ${c.diff > 0 ? 'muted' : 'best'}">${c.diff > 0 ? '+' : ''}${num(c.diff)}</td><td class="num"><span class="badge ${c.diff > 0 ? 'bad' : 'good'}">${c.pct != null ? pct(c.pct) : '—'}</span></td></tr>`)}</tbody></table></div></div>` : ''}
+
+    ${s.quantityChanges ? `<div class="panel" style="margin-top:14px"><h2 style="font-size:13px">Quantity changes</h2>
+      <div class="table-wrap"><table><thead><tr><th>Barcode</th><th>Description</th><th class="num">From</th><th class="num">To</th><th class="num">Δ</th></tr></thead>
+      <tbody>${rows(r.quantityChanges, (c) => `<tr><td class="mono">${esc(c.barcode || '')}</td><td class="small">${esc((c.description || '').slice(0, 48))}</td><td class="num">${num(c.from)}</td><td class="num">${num(c.to)}</td><td class="num ${c.diff < 0 ? 'muted' : ''}">${num(c.diff)}</td></tr>`)}</tbody></table></div></div>` : ''}
+
+    <div class="split" style="margin-top:14px">
+      <div class="panel"><h2 style="font-size:13px">Added in B <span class="badge good">${num(s.added)}</span></h2>
+        <div class="table-wrap"><table><thead><tr><th>Barcode</th><th>Description</th><th class="num">Price</th><th class="num">Qty</th></tr></thead>
+        <tbody>${rows(r.added, (c) => `<tr><td class="mono">${esc(c.barcode || '')}</td><td class="small">${esc((c.description || '').slice(0, 40))}</td><td class="num">${c.price != null ? money(c.price) : '—'}</td><td class="num">${c.quantity != null ? num(c.quantity) : '—'}</td></tr>`)}</tbody></table></div>
+      </div>
+      <div class="panel"><h2 style="font-size:13px">Removed <span class="badge bad">${num(s.removed)}</span></h2>
+        <div class="table-wrap"><table><thead><tr><th>Barcode</th><th>Description</th><th class="num">Last price</th><th class="num">Qty</th></tr></thead>
+        <tbody>${rows(r.removed, (c) => `<tr><td class="mono">${esc(c.barcode || '')}</td><td class="small">${esc((c.description || '').slice(0, 40))}</td><td class="num">${c.price != null ? money(c.price) : '—'}</td><td class="num">${c.quantity != null ? num(c.quantity) : '—'}</td></tr>`)}</tbody></table></div>
+      </div>
+    </div>
+    ${s.descriptionChanges ? `<div class="panel" style="margin-top:14px"><h2 style="font-size:13px">Description changes</h2>
+      <div class="table-wrap"><table><thead><tr><th>Barcode</th><th>From</th><th>To</th></tr></thead>
+      <tbody>${rows(r.descriptionChanges, (c) => `<tr><td class="mono">${esc(c.barcode || '')}</td><td class="small">${esc(c.from)}</td><td class="small">${esc(c.to)}</td></tr>`)}</tbody></table></div></div>` : ''}`;
 }
 
 
@@ -1842,6 +1906,7 @@ const TITLES = {
   lowest: ['Lowest Landed Cost', 'Cheapest executable supplier for an exact SKU and quantity'],
   pricing: ['Deal Calculator', 'Landed cost, margin, markup and ROI'],
   builder: ['Offer Builder', 'Cost price → selling price at a target margin'],
+  lists: ['Compare Lists', 'Diff two uploaded price lists by barcode or description'],
   inventory: ['Inventory', 'Lots, reservations and in-transit stock'],
   customers: ['Customers', 'Buyers and commercial terms'],
   demands: ['Demand Book', 'Customer requests to match against supply'],

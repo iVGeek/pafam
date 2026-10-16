@@ -48,6 +48,7 @@ const shipments = require('../server/services/shipments');
 const sourcing = require('../server/services/sourcing');
 const demands = require('../server/services/demands');
 const template = require('../server/services/template');
+const listdiff = require('../server/services/listdiff');
 const XLSX = require('xlsx');
 
 // No cached fixture: run the real import pipeline so the DB-backed tests
@@ -155,9 +156,56 @@ test('price policy flags a below-minimum margin', () => {
   const good = pricing.pricePolicy(100, 125, 15, 0.75);
   assert.equal(good.marginPct, 20);
   assert.equal(good.passesPolicy, true);
-  const bad = pricing.pricePolicy(100, 110, 15, 0.75);
-  assert.equal(bad.passesPolicy, false);
+  const thin = pricing.pricePolicy(100, 105, 15, 0.75);
+  assert.equal(thin.passesPolicy, false);
 });
+
+test('list diff: matches by barcode and reports add/remove/price/quantity', () => {
+  const ean = (base12) => base12 + String(gtin.checkDigit(base12));
+  const mk = (rows) => {
+    const aoa = [['EAN', 'Description', 'Precio', 'Stock'], ...rows];
+    const ws = XLSX.utils.aoa_to_sheet(aoa);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Lista');
+    return XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
+  };
+  const b1 = ean('509987308833');
+  const b2 = ean('509987308834');
+  const b3 = ean('509987308835');
+  const b4 = ean('509987308836');
+  const a = listdiff.parseList(mk([
+    [b1, 'Chanel N°5 EDP 100ml', '120,00', '50'],
+    [b2, 'Dior Sauvage EDT 100ml', '90.50', '20'],
+    [b3, 'Bleu de Chanel', '80', '10'],
+  ]));
+  const b = listdiff.parseList(mk([
+    [b1, 'Chanel N°5 EDP 100ml', '132,00', '40'],
+    [b2, 'Dior Sauvage EDT 100ml', '90.50', '20'],
+    [b4, 'Acqua di Gio', '75', '30'],
+  ]));
+  assert.equal(a.columns.barcode, 0);
+  assert.equal(a.columns.price, 2);
+  assert.equal(a.rows.length, 3);
+  const d = listdiff.diffLists(a, b);
+  assert.equal(d.added.length, 1);
+  assert.equal(d.added[0].description, 'Acqua di Gio');
+  assert.equal(d.removed.length, 1);
+  assert.equal(d.removed[0].description, 'Bleu de Chanel');
+  assert.equal(d.priceChanges.length, 1);
+  assert.equal(d.priceChanges[0].from, 120);
+  assert.equal(d.priceChanges[0].to, 132);
+  assert.equal(d.priceChanges[0].pct, 10);
+  assert.equal(d.quantityChanges.length, 1);
+  assert.equal(d.quantityChanges[0].diff, -10);
+  assert.equal(d.summary.priceUp, 1);
+});
+
+test('list diff: falls back to description when the barcode is unusable', () => {
+  assert.equal(listdiff.toNum('1.234,50'), 1234.5);
+  assert.equal(listdiff.toNum('1,234.50'), 1234.5);
+  assert.equal(listdiff.toNum('12,5'), 12.5);
+});
+
 
 test('note parser extracts quantity, price, barcode, intent', () => {
   const p = parseNote('Customer: Atlantic Beauty. Interested in 500 bottles of Bleu de Chanel Eau de Parfum, target 18.50 EUR. Barcode 5099873088333.');

@@ -9,7 +9,10 @@ function client(base) {
     async req(method, path, body) {
       const opts = { method, headers: {} };
       if (cookie) opts.headers['cookie'] = cookie;
-      if (body !== undefined) { opts.headers['content-type'] = 'application/json'; opts.body = JSON.stringify(body); }
+      if (body !== undefined) {
+        if (typeof FormData !== 'undefined' && body instanceof FormData) { opts.body = body; }
+        else { opts.headers['content-type'] = 'application/json'; opts.body = JSON.stringify(body); }
+      }
       const r = await fetch(base + path, opts);
       const sc = r.headers.get('set-cookie');
       if (sc) cookie = sc.split(';')[0];
@@ -232,6 +235,37 @@ const server = app.listen(PORT, async () => {
     }
     const cxBad = await admin.req('GET', '/export/cleaned/999999.xlsx');
     console.log('cleaned export missing (expect 404):', cxBad.status);
+
+    // compare two uploaded price lists (diff by barcode / description)
+    const xlsx = require('xlsx');
+    const gtinLib = require('../src/lib/gtin');
+    const ean = (b) => b + String(gtinLib.checkDigit(b));
+    const mkList = (rows) => {
+      const ws = xlsx.utils.aoa_to_sheet([['EAN', 'Description', 'Precio', 'Stock'], ...rows]);
+      const wb = xlsx.utils.book_new();
+      xlsx.utils.book_append_sheet(wb, ws, 'Lista');
+      return xlsx.write(wb, { type: 'buffer', bookType: 'xlsx' });
+    };
+    const bufA = mkList([
+      [ean('509987308833'), 'Chanel N°5 EDP 100ml', '120,00', '50'],
+      [ean('509987308834'), 'Dior Sauvage EDT 100ml', '90.50', '20'],
+    ]);
+    const bufB = mkList([
+      [ean('509987308833'), 'Chanel N°5 EDP 100ml', '132,00', '40'],
+      [ean('509987308835'), 'Acqua di Gio', '75', '30'],
+    ]);
+    const fdLists = new FormData();
+    fdLists.append('fileA', new Blob([bufA]), 'a.xlsx');
+    fdLists.append('fileB', new Blob([bufB]), 'b.xlsx');
+    const cmpLists = await admin.req('POST', '/compare-files', fdLists);
+    console.log('compare-files:', cmpLists.status,
+      '| added:', cmpLists.body.summary && cmpLists.body.summary.added,
+      '| removed:', cmpLists.body.summary && cmpLists.body.summary.removed,
+      '| priceChanges:', cmpLists.body.summary && cmpLists.body.summary.priceChanges,
+      '| qtyChanges:', cmpLists.body.summary && cmpLists.body.summary.quantityChanges,
+      '| pricePct:', cmpLists.body.priceChanges && cmpLists.body.priceChanges[0] && cmpLists.body.priceChanges[0].pct);
+    const cmpBad = await admin.req('POST', '/compare-files', new FormData());
+    console.log('compare-files no files (expect 400):', cmpBad.status);
 
     // trends series + customer quote export (masked)
     const trSeries = await admin.req('GET', `/trends?productId=${pid}`);
