@@ -179,6 +179,19 @@ const server = app.listen(PORT, async () => {
     const quotes = await admin.req('GET', '/quotes');
     console.log('quotes listing:', quotes.status, '| count:', (quotes.body || []).length, '| latest contribution:', (quotes.body || [])[0] && quotes.body[0].contribution_total);
 
+    // compare two of our own quotes by percentage movement
+    const q2 = await admin.req('POST', '/quotes', { customerId: 1, productId: pid, quantity: 40, unitPrice: 72, landedUnitCost: 30, status: 'sent' });
+    const qA = save.body.id;
+    const qB = q2.body.id;
+    const qcmp = await admin.req('GET', `/quotes/compare?a=${qA}&b=${qB}`);
+    console.log('quotes compare:', qcmp.status, '| changed:', qcmp.body.summary && qcmp.body.summary.changedFields,
+      '| maxPct:', qcmp.body.summary && qcmp.body.summary.maxAbsPctDiff,
+      '| pricePct:', qcmp.body.money && (qcmp.body.money.find((m) => m.key === 'unit_price') || {}).pctDiff);
+    const qcmpBad = await admin.req('GET', `/quotes/compare?a=${qA}&b=${qA}`);
+    console.log('quotes compare same id (expect 400):', qcmpBad.status);
+    const vQcmp = await viewer.req('GET', `/quotes/compare?a=${qA}&b=${qB}`);
+    console.log('viewer quotes compare:', vQcmp.status);
+
     // trends & alerts
     const al = await admin.req('GET', '/alerts');
     console.log('alerts listing:', al.status, '| counts:', JSON.stringify(al.body.counts), '| rows:', (al.body.rows || []).length);

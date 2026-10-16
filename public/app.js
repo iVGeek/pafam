@@ -1373,6 +1373,13 @@ routes.quotes = async () => {
         <div class="table-wrap"><table><thead><tr><th>Customer</th><th>Product</th><th>Supplier</th><th class="num">Qty</th><th class="num">Unit price</th><th class="num">Margin</th><th class="num">Contribution</th><th class="num">ROI</th><th class="num">Capital</th><th>Cus due</th><th>Status</th><th></th></tr></thead>
         <tbody>${rows.map((q) => `<tr><td>${esc(q.customer_name)}</td><td>${esc((q.display_name || '').slice(0, 30))}</td><td>${q.supplier_code ? `<span class="badge info">${esc(q.supplier_code)}</span>` : '—'}</td><td class="num">${num(q.quantity)}</td><td class="num">${money(q.unit_price, q.currency)}</td><td class="num">${q.margin_pct != null ? `<span class="badge ${q.margin_pct >= 15 ? 'good' : 'bad'}">${pct(q.margin_pct)}</span>` : '—'}</td><td class="num">${q.contribution_total != null ? money(q.contribution_total, q.currency) : '—'}</td><td class="num">${q.roi_pct != null ? pct(q.roi_pct) : '—'}</td><td class="num">${q.capital_required != null ? money(q.capital_required, q.currency) : '—'}</td><td class="small">${esc(q.customer_due_date || '')}</td><td><span class="badge info">${esc(q.status)}</span></td><td><a class="btn sm" href="/api/export/quote/${q.id}.xlsx" download title="Customer quote (no costs)">Quote</a></td></tr>`).join('') || '<tr><td colspan="12" class="muted">No deals yet.</td></tr>'}
         </tbody></table></div>
+        <h2 style="font-size:13px;margin-top:14px">Compare two quotes (% difference)</h2>
+        <div class="row" style="gap:8px;align-items:flex-end">
+          <div class="field" style="flex:1"><label>Quote A (base)</label><select id="qCmpA">${rows.map((q) => `<option value="${q.id}">#${q.id} · ${esc(q.customer_name)} · ${esc((q.display_name || '').slice(0, 22))}</option>`).join('')}</select></div>
+          <div class="field" style="flex:1"><label>Quote B</label><select id="qCmpB">${rows.map((q) => `<option value="${q.id}">#${q.id} · ${esc(q.customer_name)} · ${esc((q.display_name || '').slice(0, 22))}</option>`).join('')}</select></div>
+          <button id="qCmp" ${rows.length < 2 ? 'disabled' : ''}>Compare %</button>
+        </div>
+        <div id="qCmpOut" class="muted small" style="margin-top:8px">${rows.length < 2 ? 'At least two saved quotes are needed to compare.' : ''}</div>
       </div>
       <div class="panel"><h2>Create quote</h2>
         <div class="field" style="margin-bottom:8px"><label>Customer</label><select id="qCust">${customers.map((c) => `<option value="${c.id}">${esc(c.name)}</option>`).join('')}</select></div>
@@ -1398,7 +1405,43 @@ routes.quotes = async () => {
       toast('Quote created', 'ok');
     } catch (e) { toast(e.message, 'err'); }
   });
+
+  if (rows.length > 1) $('#qCmpB').value = rows[1].id;
+  $('#qCmp').addEventListener('click', async () => {
+    const a = Number($('#qCmpA').value);
+    const b = Number($('#qCmpB').value);
+    if (!a || !b || a === b) return toast('Pick two different quotes', 'err');
+    try { openQuoteCompare(await GET(`/quotes/compare?a=${a}&b=${b}`)); }
+    catch (e) { toast(e.message, 'err'); }
+  });
 };
+
+// Percentage difference between two saved quotes, shown side by side.
+function openQuoteCompare(r) {
+  const cell = (v, kind) => v == null ? '—' : (kind === 'money' ? money(v) : kind === 'pct' ? pct(v) : num(v));
+  const table = (list) => `<div class="table-wrap"><table><thead><tr><th>Field</th><th class="num">A</th><th class="num">B</th><th class="num">Change</th><th class="num">&Delta; %</th></tr></thead><tbody>
+    ${list.map((x) => `<tr><td>${esc(x.label)}</td><td class="num">${cell(x.a, x.kind)}</td><td class="num">${cell(x.b, x.kind)}</td>
+      <td class="num">${x.diff != null ? `<span class="${x.diff > 0 ? 'good' : 'bad'}">${x.diff > 0 ? '+' : ''}${cell(x.diff, x.kind)}</span>` : '—'}</td>
+      <td class="num">${x.pctDiff != null ? `<span class="badge ${Math.abs(x.pctDiff) < 0.01 ? 'good' : 'info'}">${x.pctDiff > 0 ? '+' : ''}${pct(x.pctDiff)}</span>` : '—'}</td></tr>`).join('')}
+    </tbody></table></div>`;
+  const s = r.summary || {};
+  const cards = [
+    ['Changed fields', num(s.changedFields)],
+    ['Changed numbers', num(s.changedNumeric)],
+    ['Largest |&Delta; %|', s.maxAbsPctDiff != null ? pct(s.maxAbsPctDiff) : '—'],
+    ['Currency', r.currencyMismatch ? 'A \u2260 B' : (r.a.currency || '—')],
+  ];
+  const textRows = r.text.filter((t) => t.changed);
+  modal('Quote comparison', `
+    <div class="row" style="gap:14px;font-size:13px"><div style="flex:1"><div class="muted small">A</div>${esc(r.a.label)}</div><div style="flex:1"><div class="muted small">B</div>${esc(r.b.label)}</div></div>
+    ${r.currencyMismatch ? '<div class="badge bad" style="margin-top:8px">Careful: the two quotes are in different currencies.</div>' : ''}
+    <div class="grid cards" style="margin-top:12px">${cards.map((c) => `<div class="card"><div class="k">${esc(c[0])}</div><div class="v">${esc(c[1])}</div></div>`).join('')}</div>
+    <h2 style="font-size:13px;margin-top:16px">Prices &amp; profit</h2>${table(r.money)}
+    <h2 style="font-size:13px;margin-top:16px">Margins, ROI &amp; terms</h2>${table([...r.percent, ...r.plain])}
+    <h2 style="font-size:13px;margin-top:16px">Changed details</h2>
+    ${textRows.length ? `<div class="table-wrap"><table><thead><tr><th>Field</th><th>A</th><th>B</th></tr></thead><tbody>${textRows.map((t) => `<tr><td>${esc(t.label)}</td><td class="small">${esc(t.a == null ? '—' : String(t.a))}</td><td class="small">${esc(t.b == null ? null : String(t.b)) || '—'}</td></tr>`).join('')}</tbody></table></div>` : '<div class="muted small">No descriptive fields changed.</div>'}`,
+    () => {});
+}
 
 routes.suppliers = async () => {
   const rows = await GET('/suppliers');

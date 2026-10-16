@@ -1226,5 +1226,35 @@ test('pfi: a comparison is recorded, listed and can carry the reference PDF', ()
   assert.equal(pfi.getPfi(id), null);
 });
 
+test('quote comparison: percentage difference between two offers we prepared', () => {
+  const quoteCompare = require('../server/services/quoteCompare');
+  const cust = db.prepare('SELECT id FROM customers LIMIT 1').get().id;
+  const prod = db.prepare('SELECT id FROM products LIMIT 1').get().id;
+  const ins = db.prepare(
+    `INSERT INTO quotes(customer_id, product_id, quantity, unit_price, currency, landed_unit_cost,
+        margin_pct, contribution_total, roi_pct, capital_required, capital_days, status)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`
+  );
+  const aId = Number(ins.run(cust, prod, 100, 20, 'USD', 10, 50, 1000, 30, 1000, 40, 'draft').lastInsertRowid);
+  const bId = ins.run(cust, prod, 120, 25, 'USD', 10, 60, 1800, 36, 1200, 45, 'sent').lastInsertRowid;
+
+  const r = quoteCompare.compareQuotes(Number(aId), Number(bId));
+  const price = r.money.find((x) => x.key === 'unit_price');
+  assert.equal(price.a, 20);
+  assert.equal(price.b, 25);
+  assert.equal(price.diff, 5);
+  assert.equal(price.pctDiff, 25);
+
+  const qty = r.plain.find((x) => x.key === 'quantity');
+  assert.equal(qty.pctDiff, 20);
+  assert.equal(r.percent.find((x) => x.key === 'margin_pct').diff, 10);
+  assert.equal(r.summary.maxAbsPctDiff, 80);
+  assert.equal(r.summary.changedNumeric, 7);
+  assert.equal(r.currencyMismatch, false);
+  assert.ok(r.text.find((t) => t.key === 'status' && t.changed));
+
+  assert.ok(quoteCompare.compareQuotes(999999, r.b.id).notFound);
+});
+
 
 

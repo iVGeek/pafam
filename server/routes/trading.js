@@ -7,6 +7,7 @@ const pricing = require('../services/pricing');
 const deal = require('../services/deal');
 const fx = require('../services/fx');
 const demandsSvc = require('../services/demands');
+const quoteCompare = require('../services/quoteCompare');
 const auth = require('../services/auth');
 
 // ---- Pricing calculator (stateless) ----
@@ -265,6 +266,18 @@ router.get('/demands/:id/history', (req, res) => {
 });
 
 // ---- Quotes ----
+// Percentage difference between two quotes we prepared (viewer+). Declared
+// before the list route so "compare" is never read as an id.
+router.get('/quotes/compare', (req, res) => {
+  const a = Number(req.query.a);
+  const b = Number(req.query.b);
+  if (!a || !b) return res.status(400).json({ error: 'query params a and b (quote ids) required' });
+  if (a === b) return res.status(400).json({ error: 'pick two different quotes' });
+  const r = quoteCompare.compareQuotes(a, b);
+  if (r.error) return res.status(r.notFound ? 404 : 400).json(r);
+  res.json(r);
+});
+
 router.get('/quotes', (req, res) => {
   const rows = db.prepare(
     `SELECT q.*, c.name AS customer_name, p.display_name
