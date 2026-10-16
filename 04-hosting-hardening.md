@@ -67,7 +67,7 @@ demands it. Suppress the framework banner with `X-Powered-By` removal (proxy).
 
 | Item | Setting | Why |
 |------|---------|-----|
-| `buildCommand` | `npm ci` | Reproducible install from `package-lock.json`; never `npm install` in prod |
+| `buildCommand` | `npm ci --omit=dev` | Reproducible install from `package-lock.json`; never `npm install` in prod |
 | `startCommand` | `npm start` | Single known entry point |
 | `plan` | `starter` or higher | **Persistent disks are not available on the free plan** |
 | `disk.mountPath` | `/var/data` | Must match `PTP_DATA_DIR` |
@@ -86,6 +86,52 @@ Environment variables:
 | `PTP_ADMIN_USER` | `admin` | Bootstrap admin login |
 | `PTP_ADMIN_PASS` | **secret** | Set in the dashboard; never in the repo |
 | `PTP_AUTO_SEED` | `true` first boot, then `false` | See §6 |
+| `NPM_CONFIG_PRODUCTION` | `false` | Overrides the platform's deprecated `production` npm config, silencing the `npm warn config production Use --omit=dev instead` message |
+
+### 3.1 Container / Docker deployments
+
+A `Dockerfile` and `.dockerignore` are included for container platforms
+(Render Docker, Railway, Fly.io, Cloud Run, Kubernetes, …). The image:
+
+- is built on `node:24-bookworm-slim` and installs with `npm ci --omit=dev`;
+- sets `NODE_ENV=production`, `PORT=8080`, `PTP_DATA_DIR=/var/data` and
+  `PTP_SECURE_COOKIES=1`, and **turns off the deprecated npm `production`
+  config** so no deprecation warning is printed;
+- keeps `samples/` (the two supplier files the first empty boot imports) and
+  excludes `node_modules`, `.git`, `data/` and logs via `.dockerignore`;
+- declares a `VOLUME` at `/var/data` and a `HEALTHCHECK` against
+  `GET /api/auth/me` (40 s start period covers the first-run seed);
+- runs `node --no-warnings server/index.js` directly (no npm at runtime, so no
+  warning and clean signal handling).
+
+Build and run:
+
+```
+docker build -t perfumes .
+docker run -p 8080:8080 -v perfumes-data:/var/data \
+  -e PTP_ADMIN_PASS=<secret> perfumes
+```
+
+**Persistent storage is the whole game.** With no volume mounted at
+`PTP_DATA_DIR`, the container re-seeds on every start and all edits are lost —
+that is exactly the `Empty database detected — seeding sample data…` line in a
+fresh log. Mount a volume (Railway: *Volume* on the service, mount `/var/data`;
+Render: the blueprint's `disk`; Fly.io: a `[[mounts]]`) and point
+`PTP_DATA_DIR` at it.
+
+The image runs as **root** by default so a platform-mounted volume is writable.
+To run unprivileged, uncomment `USER node` in the Dockerfile **and** make the
+volume owned by uid/gid `1000` (`node`), otherwise the first write — including
+the initial seed — fails.
+
+Platform notes:
+
+- **Railway** injects `PORT`; the image already reads it. Attach a volume at
+  `/var/data`, set `PTP_DATA_DIR=/var/data`, and add the admin password as a
+  variable. First boot seeds the samples (15–25 s); set `PTP_AUTO_SEED=false`
+  after.
+- **Render Docker**: switch the service to *Docker* in the dashboard and mount
+  the existing disk at `/var/data`.
 
 ---
 
@@ -196,7 +242,8 @@ one at the edge:
 - Track Node LTS. The app uses the built-in `node:sqlite`, so the Node version is
   part of the security surface; pin it in `render.yaml`/`package.json` and apply
   security releases.
-- Rebuild with `npm ci` on every deploy so the running set matches the lockfile.
+- Rebuild with `npm ci --omit=dev` on every deploy so the running set matches
+  the lockfile.
 
 ---
 
@@ -207,8 +254,9 @@ one at the edge:
 - [ ] TLS active; HTTP redirects to HTTPS; HSTS enabled.
 - [ ] Security headers (§2.1) applied at the proxy.
 - [ ] Health probe `/api/auth/me` wired to the platform + an external monitor.
-- [ ] Persistent disk mounted at `/var/data`; `PTP_DATA_DIR=/var/data`.
-- [ ] `buildCommand: npm ci`.
+- [ ] Persistent volume mounted at `/var/data`; `PTP_DATA_DIR=/var/data`.
+- [ ] Build uses `npm ci --omit=dev` (container: the included `Dockerfile`).
+- [ ] Container image healthcheck on `/api/auth/me` (baked into the `Dockerfile`).
 - [ ] First backup taken and a restore rehearsed.
 - [ ] Nightly off-disk backup + retention configured.
 - [ ] Login rate-limit in place at the edge.

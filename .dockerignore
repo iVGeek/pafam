@@ -1,0 +1,18 @@
+# Keep the image lean and free of local state and secrets.
+node_modules
+.git
+.gitignore
+.github
+
+# Local database, uploads, generated snapshots and logs must never ship.
+data
+output
+*.log
+npm-debug.log*
+
+# Local env / secrets.
+.env
+.env.*
+
+# Not needed at runtime.
+test

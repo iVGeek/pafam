@@ -56,6 +56,24 @@ Notes:
 - Set `PTP_ADMIN_PASS` before the first deploy (or change it in the UI right
   after). If unset, the seeded/admin password falls back to `admin123`.
 
+## Deploy with Docker
+
+A [`Dockerfile`](Dockerfile) and [`.dockerignore`](.dockerignore) are included
+for any container platform (Railway, Fly.io, Cloud Run, Kubernetes, Render
+Docker). The image installs with `npm ci --omit=dev`, runs as a container, and
+serves on `$PORT` (default `8080`):
+
+```sh
+docker build -t perfumes .
+docker run -p 8080:8080 -v perfumes-data:/var/data -e PTP_ADMIN_PASS=changeme perfumes
+```
+
+Mount a volume at `PTP_DATA_DIR` (`/var/data`) so the SQLite database and
+uploads survive restarts — without it the container re-seeds on every start and
+edits are lost. See
+[`04-hosting-hardening.md`](04-hosting-hardening.md) §3.1 for platform notes
+(Railway, Render Docker) and the volume/ownership details.
+
 ## What it does
 
 - **Import** supplier `.xls`/`.xlsx` price lists with auto header-row detection

@@ -8,7 +8,9 @@ services:
     plan: starter          # persistent disks require a paid plan
     region: oregon
     # npm ci installs the exact lockfile set (reproducible, supply-chain safe).
-    buildCommand: npm ci
+    # --omit=dev skips dev dependencies; NPM_CONFIG_PRODUCTION=false overrides the
+    # platform's deprecated "production" config so npm prints no warning.
+    buildCommand: npm ci --omit=dev
     startCommand: npm start
     healthCheckPath: /api/auth/me
     # Prefer manual deploys for a trading system; set true to deploy on every push.
@@ -18,6 +20,9 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
+      # Silence npm's deprecated "production" config warning during install.
+      - key: NPM_CONFIG_PRODUCTION
+        value: "false"
       # Store the SQLite database on the mounted persistent disk.
       - key: PTP_DATA_DIR
         value: /var/data
