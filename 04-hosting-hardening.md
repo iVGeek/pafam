@@ -99,8 +99,9 @@ A `Dockerfile` and `.dockerignore` are included for container platforms
   config** so no deprecation warning is printed;
 - keeps `samples/` (the two supplier files the first empty boot imports) and
   excludes `node_modules`, `.git`, `data/` and logs via `.dockerignore`;
-- declares a `VOLUME` at `/var/data` and a `HEALTHCHECK` against
-  `GET /api/auth/me` (40 s start period covers the first-run seed);
+- exposes `8080` and a `HEALTHCHECK` against `GET /api/auth/me` (40 s start
+  period covers the first-run seed). Storage is mounted by the platform, not
+  declared in the image — Railway rejects a Dockerfile `VOLUME`;
 - runs `node --no-warnings server/index.js` directly (no npm at runtime, so no
   warning and clean signal handling), and drops from root to the unprivileged
   `node` user via `docker-entrypoint.sh`.

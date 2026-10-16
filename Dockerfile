@@ -41,7 +41,10 @@ COPY docker-entrypoint.sh /usr/local/bin/docker-entrypoint.sh
 RUN chmod +x /usr/local/bin/docker-entrypoint.sh \
  && mkdir -p /var/data
 
-VOLUME ["/var/data"]
+# Persistent storage is provided by the platform, not the image: mount a volume
+# at /var/data (Railway rejects a Dockerfile VOLUME and uses Railway Volumes; on
+# other hosts a bind mount or named volume works). Without one, PTP_DATA_DIR is
+# ephemeral and the app re-seeds each start.
 EXPOSE 8080
 
 # Liveness: /api/auth/me is public and cheap. The start period is generous
