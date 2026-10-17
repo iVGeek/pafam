@@ -1,5 +1,7 @@
 'use strict';
 
+require('./env').load();
+
 const fs = require('fs');
 const path = require('path');
 

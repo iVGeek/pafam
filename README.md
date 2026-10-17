@@ -130,6 +130,19 @@ replica, which is what a SQLite volume requires.
 | `AI_API_KEY` | Provider key (leave empty for a local server) | — |
 | `AI_MODEL` | Model name | `gpt-4o-mini` |
 
+Provider examples:
+
+| Provider | `AI_BASE_URL` | `AI_MODEL` | Key |
+|---|---|---|---|
+| **GitHub Models** (free) | `https://models.github.ai/inference` | `openai/gpt-4o-mini` | GitHub PAT with the `models:read` scope |
+| OpenAI | `https://api.openai.com/v1` | `gpt-4o-mini` | OpenAI key |
+| Groq (free tier) | `https://api.groq.com/openai/v1` | `llama-3.3-70b-versatile` | Groq key |
+| Google Gemini | `https://generativelanguage.googleapis.com/v1beta/openai/` | `gemini-1.5-flash` | Google key |
+| Ollama (local) | `http://localhost:11434/v1` | `llama3.1` | *(none)* |
+
+Locally, put these in a `.env` file at the project root (it is git-ignored and
+loaded on start); on Railway/Render set them as dashboard variables.
+
 Until `AI_BASE_URL` or `AI_API_KEY` is set, the panel opens but reports **not
 configured**. See the [User Manual](05-user-manual.md) §§24–25.
 ```
