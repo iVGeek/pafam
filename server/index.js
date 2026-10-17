@@ -45,6 +45,7 @@ app.use('/api', require('./routes/placements'));
 app.use('/api', require('./routes/kpis'));
 app.use('/api', require('./routes/forecast'));
 app.use('/api', require('./routes/export'));
+app.use('/api', require('./routes/ai'));
 
 // SPA fallback
 app.get(/^(?!\/api).*/, (req, res) => {

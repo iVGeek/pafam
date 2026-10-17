@@ -47,9 +47,13 @@
     </aside>
     <main class="main">
       <div class="topbar">
-        <div>
+        <div class="tb-left">
           <h1 id="pageTitle">Dashboard</h1>
           <div class="sub" id="pageSub"></div>
+        </div>
+        <div class="searchbar">
+          <input id="globalSearch" type="search" autocomplete="off" placeholder="Search this window — name, GTIN, supplier, ref…" aria-label="Search this window" />
+          <span id="searchCount" class="small muted"></span>
         </div>
         <div class="row">
           <span class="badge muted" id="baseCur">USD</span>

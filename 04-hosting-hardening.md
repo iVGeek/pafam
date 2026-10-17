@@ -88,6 +88,13 @@ Environment variables:
 | `PTP_AUTO_SEED` | `true` first boot, then `false` | See §6 |
 | `NPM_CONFIG_PRODUCTION` | `false` | Overrides the platform's deprecated `production` npm config, silencing the `npm warn config production Use --omit=dev instead` message |
 
+**Optional — AI assistant.** To turn on the in-app assistant, set `AI_BASE_URL`,
+`AI_API_KEY` and `AI_MODEL` to any OpenAI-compatible chat endpoint (OpenAI,
+Azure OpenAI, Groq, OpenRouter, or a local vLLM/Ollama). It is draft-and-confirm:
+the model reads through fixed tools and can only *propose* quotes and supplier
+orders, which a human applies under their own role. Omit the variables and the
+panel stays "not configured". No extra port or service is required.
+
 ### 3.1 Container / Docker deployments
 
 A `Dockerfile` and `.dockerignore` are included for container platforms

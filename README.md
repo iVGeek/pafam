@@ -105,9 +105,34 @@ Quick path:
 5. First deploy seeds the sample data (15–25 s); the healthcheck at
    `/api/auth/me` gates the release.
 
+Optional: add `AI_BASE_URL`, `AI_API_KEY` and `AI_MODEL` to enable the AI
+assistant (any OpenAI-compatible endpoint).
+
 The container listens on Railway's injected `$PORT` and starts unprivileged
 (the entrypoint chowns `/var/data` to the `node` user). Railway runs a single
 replica, which is what a SQLite volume requires.
+
+## Search and the AI assistant
+
+- **In-window search.** One box in the top bar filters whatever screen is open
+  (table rows and cards, matched on any text), with a shown/total count; the
+  large tables also get their own filter row. No configuration needed.
+- **AI assistant.** A chat panel (bottom-right) answers questions over live data
+  and *prepares* quotes and supplier orders as drafts you confirm with **Apply**.
+  It is **draft-and-confirm**: the model never writes to the database, and Apply
+  runs the normal, role-checked API as you (so saving still needs the *buyer*
+  role and is audited). It talks to any OpenAI-compatible endpoint (OpenAI,
+  Azure OpenAI, Groq, OpenRouter, or a local vLLM/Ollama):
+
+| Env var | Meaning | Default |
+|---|---|---|
+| `AI_BASE_URL` | API base URL | `https://api.openai.com/v1` |
+| `AI_API_KEY` | Provider key (leave empty for a local server) | — |
+| `AI_MODEL` | Model name | `gpt-4o-mini` |
+
+Until `AI_BASE_URL` or `AI_API_KEY` is set, the panel opens but reports **not
+configured**. See the [User Manual](05-user-manual.md) §§24–25.
+```
 
 ## What it does
 
@@ -193,6 +218,11 @@ replica, which is what a SQLite volume requires.
   that looks like a lead automatically opens a **follow-up task** with a due
   date, and promoting the note to a demand closes the task, so nothing rots in
   the inbox. Overdue tasks are flagged, never dropped.
+- **Find it fast**: an **in-window search** box in the top bar filters whatever
+  screen is open (tables and cards), and the big tables carry their own filter.
+- **Ask for it**: an optional **AI assistant** (any OpenAI-compatible endpoint)
+  answers questions over live data and prepares quotes and supplier orders as
+  **drafts a human applies** — it reads through fixed tools and never writes.
 - **Access control**: session login with roles (`viewer < analyst < buyer <
   admin`); sensitive write endpoints are rank-guarded.
 
@@ -217,7 +247,7 @@ server/
   index.js              Express app + static UI + SPA fallback
   seed.js               reset + import + demo data (thin wrapper)
   seedData.js           reusable seed routine (used by seed + auto-seed on boot)
-  routes/               meta, imports, offers, products, trading, reservations, tasks, shipments, auth, captures, sourcing, alerts, orders, recommend, purchase-plan, kpis, forecast, export
+  routes/               meta, imports, offers, products, trading, reservations, tasks, shipments, auth, captures, sourcing, alerts, orders, recommend, purchase-plan, kpis, forecast, export, ai
   services/
     importer.js         import pipeline (GTIN, packs, snapshots, exceptions, price_history)
     template.js         auto-clean to the standard supplier template (after every import)
@@ -242,6 +272,8 @@ server/
     analytics.js        dashboard, opportunities, wins, KPI suite
     suppliers.js        per-supplier commercial defaults
     fx.js               currency conversion
+    ai.js               AI assistant: OpenAI-compatible tool-calling loop (reads + draft proposals only)
+    aiKnowledge.js      the assistant's system prompt (the whole system in words)
     auth.js             scrypt password hashing, sessions, role middleware
 src/
   lib/gtin.js           GS1 validation & canonicalisation

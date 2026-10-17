@@ -41,7 +41,9 @@ records.
 21. [Admin: suppliers, settings, users, audit](#21-admin-suppliers-settings-users-audit)
 22. [Roles at a glance](#22-roles-at-a-glance)
 23. [Where each client request lives](#23-where-each-client-request-lives)
-24. [Troubleshooting](#24-troubleshooting)
+24. [Finding things fast: the in-window search](#24-finding-things-fast-the-in-window-search)
+25. [The AI assistant](#25-the-ai-assistant)
+26. [Troubleshooting](#26-troubleshooting)
 
 ---
 
@@ -503,7 +505,76 @@ server enforces the same rules, so you cannot change data you are not allowed to
 
 ---
 
-## 24. Troubleshooting
+## 24. Finding things fast: the in-window search
+
+There is one search box in the top bar. It filters **whatever window is open**,
+live, as you type — table rows and cards are matched on any text they contain
+(description, barcode, supplier, status, reference, date). A small counter next
+to the box shows how many rows are showing out of the total.
+
+- Clear the box (or press **Esc**) to bring everything back.
+- The box resets when you move to another screen, so a filter never follows you
+  around by surprise.
+- On the **large tables** (eight rows or more) there is also a small
+  **Filter these rows…** box directly above that one table, for when you want to
+  narrow a single table without touching the rest of the window.
+
+## 25. The AI assistant
+
+The **Ask AI** button sits at the bottom-right of every screen. It opens a chat
+panel that can answer questions about your live data and **prepare** work for you.
+
+**What it can do**
+
+- Answer questions over real data — "what is the cheapest landed cost for this
+  product at 5,000 units?", "which suppliers price this barcode?", "what are our
+  open demands?".
+- Prepare a **quote / offer** from a cost price and a target margin, showing both
+  margin conventions side by side — e.g. *"prepare a quote of <product> at 35%
+  margin, cost 12.50 for <customer>”*.
+- Prepare a **supplier order (placement)** from a supplier and lines, with cost
+  prices and full-box quantities.
+
+### Draft and confirm — nothing is saved on its own
+
+Every action comes back as a **draft card** with the figures it used and an
+**Apply** button. The assistant only reads; **it cannot write to the system**.
+When you click **Apply**, the record is created through the normal screens, as
+*you*, under your own role — so saving a quote or placement still needs the
+**buyer** role, and everything is audited exactly as if you had entered it by
+hand. If a draft needs more information (for example a quote needs a customer),
+the card says so and Apply will refuse until you supply it.
+
+### Example prompts
+
+- "Which supplier has the cheapest landed cost for Versace Eros, 500 bottles?"
+- "Prepare a quote of [product] for customer Acme, 120 units, cost 9.80, 40% margin."
+- "Draft a purchase order to supplier [code] for 24 of [product]."
+- "What open demands do we have?"
+- "What is our base currency and destination market?"
+
+### For administrators: turning the assistant on
+
+The assistant talks to any **OpenAI-compatible** chat endpoint. Set these in the
+server environment (the same place as the other `PTP_*` settings) and restart:
+
+| Variable | Meaning | Default |
+|---|---|---|
+| `AI_BASE_URL` | API base, e.g. `https://api.openai.com/v1` (OpenAI, Azure OpenAI, Groq, OpenRouter, or a local vLLM/Ollama) | `https://api.openai.com/v1` |
+| `AI_API_KEY` | The provider key (leave empty for a local server that needs none) | — |
+| `AI_MODEL` | Model name, e.g. `gpt-4o-mini` | `gpt-4o-mini` |
+
+Until `AI_BASE_URL` or `AI_API_KEY` is set the panel opens but shows **not
+configured**. The assistant has no direct database access: it reads through a
+fixed set of tools (catalogue search, price/landed-cost lookups, suppliers,
+customers, demands, settings) and can only *propose* drafts. Note that the
+conversation text and the tool results it requests (product names, prices,
+supplier names) are sent to whichever provider you configure, so choose one that
+matches your data-sharing policy.
+
+---
+
+## 26. Troubleshooting
 
 - **"Please sign in" / bounced to the login screen** — your session expired.
   Sign in again.

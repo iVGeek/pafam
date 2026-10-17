@@ -1256,5 +1256,87 @@ test('quote comparison: percentage difference between two offers we prepared', (
   assert.ok(quoteCompare.compareQuotes(999999, r.b.id).notFound);
 });
 
+/* ------------------------------- AI assistant ------------------------------ */
+
+const ai = require('../server/services/ai');
+
+test('AI: off until configured, and refuses to chat', async () => {
+  delete process.env.AI_API_KEY;
+  delete process.env.AI_BASE_URL;
+  delete process.env.PTP_AI_MOCK;
+  assert.equal(ai.status().enabled, false);
+  await assert.rejects(() => ai.chat({ messages: [] }), /not configured/);
+});
+
+test('AI tools: search and read the catalogue', () => {
+  const p = db.prepare('SELECT id, display_name FROM products LIMIT 1').get();
+  assert.ok(p, 'a seeded product exists');
+  const found = ai.runTool('search_products', { query: p.display_name, limit: 5 }).result;
+  assert.ok(found.products.some((x) => x.id === p.id));
+
+  const prices = ai.runTool('product_prices', { productId: p.id }).result;
+  assert.equal(prices.found, true);
+  assert.equal(prices.product.id, p.id);
+});
+
+test('AI tool: lowest_cost resolves a product to a landed cost', () => {
+  const withOffer = db.prepare('SELECT product_id FROM offers WHERE product_id IS NOT NULL LIMIT 1').get();
+  assert.ok(withOffer, 'a product with offers exists');
+  const out = ai.runTool('lowest_cost', { productId: withOffer.product_id, quantity: 100 }).result;
+  assert.equal(out.found, true);
+  assert.equal(out.product.id, withOffer.product_id);
+});
+
+test('AI draft_offer shows both margin conventions', () => {
+  const p = db.prepare('SELECT id FROM products LIMIT 1').get();
+  const m = ai.runTool('draft_offer', { productId: p.id, costPerBottle: 100, targetPct: 40, basis: 'margin_on_selling' }).proposal;
+  assert.equal(m.type, 'quote');
+  assert.equal(m.apply.url, '/quotes');
+  assert.equal(m.apply.body.unitPrice, 166.6667);
+  assert.equal(m.alternatives.markupOnCost, 140);
+
+  const k = ai.runTool('draft_offer', { productId: p.id, costPerBottle: 100, targetPct: 40, basis: 'markup_on_cost' }).proposal;
+  assert.equal(k.apply.body.unitPrice, 140);
+
+  const bad = ai.runTool('draft_offer', { productId: p.id, costPerBottle: 0 }).result;
+  assert.ok(bad.error);
+});
+
+test('AI draft_placement proposes a supplier order', () => {
+  const s = db.prepare('SELECT code FROM suppliers LIMIT 1').get();
+  const p = db.prepare('SELECT id FROM products LIMIT 1').get();
+  const out = ai.runTool('draft_placement', { supplierCode: s.code, lines: [{ productId: p.id, quantity: 12, unitCost: 5 }] });
+  assert.equal(out.proposal.type, 'placement');
+  assert.equal(out.proposal.apply.url, '/placements');
+  assert.equal(out.proposal.apply.body.lines[0].quantity, 12);
+  assert.equal(out.result.proposal, undefined);
+});
+
+test('AI chat loop runs a tool then answers, surfacing the proposal', async () => {
+  process.env.AI_API_KEY = 'test-key';
+  const p = db.prepare('SELECT id FROM products LIMIT 1').get();
+  let calls = 0;
+  ai.setTransport(async () => {
+    calls += 1;
+    if (calls === 1) {
+      return { choices: [{ message: { role: 'assistant', content: null, tool_calls: [
+        { id: 'c1', type: 'function', function: { name: 'draft_offer', arguments: JSON.stringify({ productId: p.id, costPerBottle: 10, targetPct: 50 }) } },
+      ] } }] };
+    }
+    return { choices: [{ message: { role: 'assistant', content: 'Here is a draft quote for you to apply.' } }] };
+  });
+  try {
+    const out = await ai.chat({ messages: [{ role: 'user', content: 'prepare an offer' }] });
+    assert.equal(calls, 2);
+    assert.match(out.reply, /draft quote/);
+    assert.equal(out.proposals.length, 1);
+    assert.equal(out.proposals[0].type, 'quote');
+  } finally {
+    ai.setTransport(null);
+    delete process.env.AI_API_KEY;
+  }
+});
+
+
 
 

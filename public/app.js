@@ -93,6 +93,103 @@ const ROUTE_MIN = {
 function showLogin() { $('#login').classList.remove('hidden'); }
 function hideLogin() { $('#login').classList.add('hidden'); }
 
+/* ======================= in-window search ======================= */
+// One global box in the top bar filters whatever window is open; the big
+// tables also get their own filter. Both work on the rendered DOM, so every
+// module is covered without touching each route.
+let viewSearch = '';
+
+function isPlaceholderRow(row) {
+  return row.cells && row.cells.length === 1 && row.cells[0].colSpan > 1;
+}
+
+function filterTableRows(table, query) {
+  const ql = (query || '').trim().toLowerCase();
+  const body = table.tBodies && table.tBodies[0];
+  if (!body) return { shown: 0, total: 0 };
+  let shown = 0, total = 0;
+  Array.from(body.rows).forEach((r) => {
+    if (isPlaceholderRow(r)) { r.classList.toggle('hidden', ql.length > 0); return; }
+    total += 1;
+    const hit = !ql || r.textContent.toLowerCase().includes(ql);
+    if (hit) shown += 1;
+    r.classList.toggle('hidden', !hit);
+  });
+  return { shown, total };
+}
+
+function applyGlobalSearch() {
+  const root = $('#view');
+  const ql = viewSearch.trim().toLowerCase();
+  let shown = 0, total = 0;
+  $$('table', root).forEach((t) => {
+    const res = filterTableRows(t, ql);
+    shown += res.shown; total += res.total;
+  });
+  $$('.card', root).forEach((c) => {
+    total += 1;
+    const hit = c.textContent.toLowerCase().includes(ql);
+    if (hit) shown += 1;
+    c.classList.toggle('hidden', !hit);
+  });
+  return { shown, total };
+}
+
+function installTableFilters() {
+  $$('#view table').forEach((t) => {
+    if (t.dataset.filtered === '1') return;
+    const body = t.tBodies && t.tBodies[0];
+    const rows = body ? Array.from(body.rows).filter((r) => !isPlaceholderRow(r)) : [];
+    if (rows.length < 8) return; // only the big tables earn a filter
+    const wrap = t.closest('.table-wrap') || t;
+    if (!wrap.parentNode) return;
+    const bar = document.createElement('div');
+    bar.className = 'tblFilter';
+    bar.innerHTML = '<input type="search" placeholder="Filter these rows…" autocomplete="off" aria-label="Filter these rows" /><span class="small muted"></span>';
+    const input = bar.querySelector('input');
+    const count = bar.querySelector('span');
+    input.addEventListener('input', () => {
+      const res = filterTableRows(t, input.value);
+      count.textContent = input.value ? `${res.shown}/${res.total}` : '';
+    });
+    wrap.parentNode.insertBefore(bar, wrap);
+    t.dataset.filtered = '1';
+  });
+}
+
+function refreshSearchUI() {
+  const root = $('#view');
+  if (!root) return;
+  const active = viewSearch.trim().length > 0;
+  $$('.tblFilter', root).forEach((b) => b.classList.toggle('hidden', active));
+  const count = $('#searchCount');
+  if (!active) {
+    $$('table tbody tr, .card', root).forEach((el) => el.classList.remove('hidden'));
+    $$('.tblFilter span', root).forEach((s) => { s.textContent = ''; });
+    if (count) count.textContent = '';
+    return;
+  }
+  const res = applyGlobalSearch();
+  if (count) count.textContent = res.total ? `${res.shown}/${res.total}` : 'no matches';
+}
+
+function wireView() {
+  const root = $('#view');
+  if (!root) return;
+  installTableFilters();
+  const box = $('#globalSearch');
+  if (box) box.value = viewSearch;
+  refreshSearchUI();
+}
+
+const globalSearchBox = $('#globalSearch');
+if (globalSearchBox) {
+  globalSearchBox.addEventListener('input', () => { viewSearch = globalSearchBox.value; refreshSearchUI(); });
+  globalSearchBox.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') { globalSearchBox.value = ''; viewSearch = ''; refreshSearchUI(); }
+  });
+}
+
 async function loadSettings() {
   try {
     state.settings = await GET('/settings');
@@ -2245,6 +2342,7 @@ async function render() {
   $('#view').innerHTML = '<div class="muted">Loading…</div>';
   try {
     await routes[route]();
+    wireView();
   } catch (e) {
     $('#view').innerHTML = `<div class="panel"><span class="badge bad">Error</span> ${esc(e.message)}</div>`;
   }
@@ -2252,13 +2350,14 @@ async function render() {
 
 function go(route) {
   state.route = route;
+  viewSearch = '';
   if (location.hash.slice(1) !== route) location.hash = route;
   render();
 }
 
 window.addEventListener('hashchange', () => {
   const r = location.hash.slice(1) || 'dashboard';
-  if (r !== state.route && routes[r]) { state.route = r; render(); }
+  if (r !== state.route && routes[r]) { state.route = r; viewSearch = ''; render(); }
 });
 
 $$('#nav a').forEach((a) => a.addEventListener('click', () => go(a.dataset.route)));
@@ -2274,6 +2373,7 @@ async function doLogin() {
     hideLogin();
     await loadSettings();
     updateUserUI();
+    initAssistant();
     go('dashboard');
   } catch (e) { $('#loginErr').textContent = e.message; }
 }
@@ -2303,6 +2403,130 @@ $('#pwBtn').addEventListener('click', () => {
   });
 });
 
+/* ============================ AI assistant ============================ */
+// A chat panel that reads the system through server-side tools and prepares
+// drafts (quotes, placements). It never saves on its own: a proposal card has
+// an Apply button that runs the normal, role-checked API under the user.
+const chat = { messages: [], enabled: null, model: '' };
+
+function proposalCard(p, idx) {
+  const rows = (p.fields || []).map((f) => `<div class="cf"><span class="k">${esc(f.label)}</span><span class="v">${esc(String(f.value))}</span></div>`).join('');
+  const applyBtn = can('buyer')
+    ? `<button class="sm" data-apply="${idx}">${esc((p.apply && p.apply.label) || 'Apply')}</button>`
+    : '<span class="badge warn">buyer role required to save</span>';
+  return `<div class="chat-proposal">
+    <div class="cp-title">${esc(p.title || 'Draft')}</div>
+    ${p.summary ? `<div class="small muted">${esc(p.summary)}</div>` : ''}
+    <div class="cp-fields">${rows}</div>
+    ${p.note ? `<div class="small" style="color:var(--warn);margin-top:6px">${esc(p.note)}</div>` : ''}
+    <div class="row" style="margin-top:10px">${applyBtn}</div>
+  </div>`;
+}
+
+function chatBubble(m, idx) {
+  if (m.role === 'proposal') return proposalCard(m.proposal, idx);
+  if (m.role === 'user') return `<div class="chat-msg user">${esc(m.content)}</div>`;
+  return `<div class="chat-msg bot">${esc(m.content)}</div>`;
+}
+
+function renderChat() {
+  const body = $('#chatBody');
+  if (!body) return;
+  const note = chat.enabled === false
+    ? `<div class="chat-note">The assistant is not configured. On the server set <span class="mono">AI_BASE_URL</span>, <span class="mono">AI_API_KEY</span> and <span class="mono">AI_MODEL</span>, then restart.</div>`
+    : '';
+  const msgs = chat.messages.map((m, i) => chatBubble(m, i)).join('');
+  body.innerHTML = note + (msgs || `<div class="chat-empty">Ask me to find prices, name the cheapest supplier, or prepare a quote or supplier order — e.g. “prepare a quote of <product> at 35% margin, cost 12.50”.</div>`);
+  body.scrollTop = body.scrollHeight;
+  $$('#chatBody [data-apply]').forEach((b) => b.addEventListener('click', () => applyProposal(Number(b.dataset.apply))));
+}
+
+async function applyProposal(idx) {
+  const m = chat.messages[idx];
+  if (!m || !m.proposal || !m.proposal.apply) return;
+  const a = m.proposal.apply;
+  const btn = $$('#chatBody [data-apply]').find((b) => Number(b.dataset.apply) === idx);
+  if (btn) btn.disabled = true;
+  try {
+    const out = await api(m.proposal.apply.method || 'POST', m.proposal.apply.url, m.proposal.apply.body);
+    chat.messages.push({ role: 'assistant', content: `Done — ${String(m.proposal.apply.label || 'record').toLowerCase()} saved${out && out.id ? ' (id ' + out.id + ')' : ''}.` });
+    toast(m.proposal.type === 'placement' ? 'Placement created' : 'Quote created', 'ok');
+    renderChat();
+    render();
+  } catch (e) {
+    toast(e.message, 'err');
+  }
+}
+
+async function sendChat() {
+  const input = $('#chatInput');
+  const text = (input.value || '').trim();
+  if (!text) return;
+  input.value = '';
+  chat.messages.push({ role: 'user', content: text });
+  if (chat.enabled === false) {
+    chat.messages.push({ role: 'assistant', content: 'The assistant is not configured on the server yet. Ask an admin to set AI_BASE_URL, AI_API_KEY and AI_MODEL, then restart.' });
+    renderChat();
+    return;
+  }
+  renderChat();
+  const sendBtn = $('#chatSend');
+  if (sendBtn) { sendBtn.disabled = true; sendBtn.textContent = '…'; }
+  try {
+    const payload = chat.messages
+      .filter((m) => m.role === 'user' || m.role === 'assistant')
+      .map((m) => ({ role: m.role, content: m.content }));
+    const out = await POST('/ai/chat', { messages: payload });
+    if (out.reply) chat.messages.push({ role: 'assistant', content: out.reply });
+    (out.proposals || []).forEach((p) => chat.messages.push({ role: 'proposal', proposal: p }));
+    if (!out.reply && !(out.proposals || []).length) chat.messages.push({ role: 'assistant', content: '(no answer)' });
+  } catch (e) {
+    chat.messages.push({ role: 'assistant', content: 'Error: ' + e.message });
+  } finally {
+    if (sendBtn) { sendBtn.disabled = false; sendBtn.textContent = 'Send'; }
+    renderChat();
+  }
+}
+
+async function initAssistant() {
+  if ($('#chatLauncher')) return;
+  const btn = document.createElement('button');
+  btn.id = 'chatLauncher';
+  btn.className = 'chat-launcher';
+  btn.title = 'Ask the assistant';
+  btn.textContent = 'Ask AI';
+  const panel = document.createElement('div');
+  panel.id = 'chatPanel';
+  panel.className = 'chat-panel hidden';
+  panel.innerHTML = `
+    <div class="chat-head">
+      <div><strong>Assistant</strong> <span class="small muted" id="chatModel"></span></div>
+      <button class="ghost sm" id="chatClose">&#10005;</button>
+    </div>
+    <div class="chat-body" id="chatBody"></div>
+    <div class="chat-foot">
+      <textarea id="chatInput" rows="1" placeholder="Ask or instruct…" aria-label="Message the assistant"></textarea>
+      <button id="chatSend">Send</button>
+    </div>`;
+  document.body.appendChild(btn);
+  document.body.appendChild(panel);
+  btn.addEventListener('click', () => {
+    panel.classList.toggle('hidden');
+    if (!panel.classList.contains('hidden')) $('#chatInput').focus();
+  });
+  $('#chatClose').addEventListener('click', () => panel.classList.add('hidden'));
+  $('#chatSend').addEventListener('click', sendChat);
+  $('#chatInput').addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat(); } });
+  try {
+    const s = await GET('/ai/status');
+    chat.enabled = !!s.enabled;
+    chat.model = s.model || '';
+    const el = $('#chatModel');
+    if (el) el.textContent = s.enabled ? (s.model || '') : 'not configured';
+  } catch (e) { chat.enabled = false; }
+  renderChat();
+}
+
 (async function boot() {
   try {
     const me = await GET('/auth/me');
@@ -2311,6 +2535,7 @@ $('#pwBtn').addEventListener('click', () => {
   if (!state.user) { showLogin(); return; }
   await loadSettings();
   updateUserUI();
+  initAssistant();
   const r = location.hash.slice(1) || 'dashboard';
   state.route = (routes[r] && can(ROUTE_MIN[r] || 'viewer')) ? r : 'dashboard';
   render();
