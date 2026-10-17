@@ -15,6 +15,9 @@ npm start            # http://localhost:4173
 
 Then open http://localhost:4173
 
+New to the system? The step-by-step, screenshot-illustrated
+[**User Manual**](05-user-manual.md) walks through every screen.
+
 Other scripts:
 
 | Command | Purpose |
