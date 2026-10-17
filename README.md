@@ -137,11 +137,14 @@ Provider examples:
 | **GitHub Models** (free) | `https://models.github.ai/inference` | `openai/gpt-4o-mini` | GitHub PAT with the `models:read` scope |
 | OpenAI | `https://api.openai.com/v1` | `gpt-4o-mini` | OpenAI key |
 | Groq (free tier) | `https://api.groq.com/openai/v1` | `llama-3.3-70b-versatile` | Groq key |
+| OpenRouter (free models) | `https://openrouter.ai/api/v1` | `nvidia/nemotron-3-super-120b-a12b:free` | OpenRouter key |
 | Google Gemini | `https://generativelanguage.googleapis.com/v1beta/openai/` | `gemini-1.5-flash` | Google key |
 | Ollama (local) | `http://localhost:11434/v1` | `llama3.1` | *(none)* |
 
 Locally, put these in a `.env` file at the project root (it is git-ignored and
-loaded on start); on Railway/Render set them as dashboard variables.
+loaded on start); on Railway/Render set them as dashboard variables. Free model
+lists rotate — check the provider's `GET {AI_BASE_URL}/models` for current names
+(the model must support tool/function calling).
 
 Until `AI_BASE_URL` or `AI_API_KEY` is set, the panel opens but reports **not
 configured**. See the [User Manual](05-user-manual.md) §§24–25.
