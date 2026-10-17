@@ -24,7 +24,13 @@ function enabled() {
 }
 
 function status() {
-  return { enabled: enabled(), model: model(), provider: baseUrl() };
+  return {
+    enabled: enabled(),
+    model: model(),
+    provider: baseUrl(),
+    hasKey: Boolean(apiKey()),
+    baseUrlSet: Boolean(process.env.AI_BASE_URL),
+  };
 }
 
 /* --------------------------------- read tools ------------------------------ */
