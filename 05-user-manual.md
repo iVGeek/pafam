@@ -438,7 +438,12 @@ Profitability, cash, capital and stock KPIs.
 
 ![Reports & Exports](docs/manual/img/25-reports.png)
 
-Supplier performance and one-click Excel exports.
+Supplier performance and one-click exports — **every report downloads as both
+Excel (`.xlsx`) and PDF**. The same dual download sits on the documents too:
+customer quotes (`/api/export/quote/<id>.xlsx|.pdf`), supplier placements and
+the cleaned supplier imports. Each screen with a table also has an **Excel /
+PDF** bar that exports exactly what you are looking at (the current search is
+honoured).
 
 ---
 
@@ -523,17 +528,27 @@ to the box shows how many rows are showing out of the total.
 
 The **Ask AI** button sits at the bottom-right of every screen. It opens a chat
 panel that can answer questions about your live data and **prepare** work for you.
+Answers stream in as the model writes them (typing dots, then the text); a small
+line shows which tool is running while it works. The conversation is kept in your
+browser (localStorage) across reloads — **Clear** wipes it.
 
 **What it can do**
 
 - Answer questions over real data — "what is the cheapest landed cost for this
   product at 5,000 units?", "which suppliers price this barcode?", "what are our
   open demands?".
+- Read the **whole system**: the dashboard KPIs, alerts, exceptions, the capture
+  inbox, tasks, orders and payments, stock on hand, the consolidated purchase
+  plan, price movers, price history, quote comparisons and the demand forecast.
+- Tell you **where to export** anything — every report and document downloads as
+  Excel and PDF (see §20).
 - Prepare a **quote / offer** from a cost price and a target margin, showing both
   margin conventions side by side — e.g. *"prepare a quote of <product> at 35%
   margin, cost 12.50 for <customer>”*.
 - Prepare a **supplier order (placement)** from a supplier and lines, with cost
   prices and full-box quantities.
+- Prepare a **customer demand**, a **customer order** (inheriting a quote's
+  figures) and a **follow-up task**.
 
 ### Draft and confirm — nothing is saved on its own
 
@@ -550,6 +565,10 @@ the card says so and Apply will refuse until you supply it.
 - "Which supplier has the cheapest landed cost for Versace Eros, 500 bottles?"
 - "Prepare a quote of [product] for customer Acme, 120 units, cost 9.80, 40% margin."
 - "Draft a purchase order to supplier [code] for 24 of [product]."
+- "What needs attention today?" (alerts, exceptions, open tasks)
+- "What does the purchase plan say for supplier [code]?"
+- "Add a demand: Acme wants 240 of [product], target 30."
+- "How do I export the margin report as PDF?"
 - "What open demands do we have?"
 - "What is our base currency and destination market?"
 
@@ -567,10 +586,12 @@ server environment (the same place as the other `PTP_*` settings) and restart:
 Until `AI_BASE_URL` or `AI_API_KEY` is set the panel opens but shows **not
 configured**. The assistant has no direct database access: it reads through a
 fixed set of tools (catalogue search, price/landed-cost lookups, suppliers,
-customers, demands, settings) and can only *propose* drafts. Note that the
-conversation text and the tool results it requests (product names, prices,
-supplier names) are sent to whichever provider you configure, so choose one that
-matches your data-sharing policy.
+customers, demands, settings, dashboard, alerts, exceptions, captures, tasks,
+inventory, orders, purchase plan, trends, forecasts, quote comparison, export
+links) and can only *propose* drafts. Note that the conversation text and the
+tool results it requests (product names, prices, supplier names) are sent to
+whichever provider you configure, so choose one that matches your data-sharing
+policy.
 
 ---
 

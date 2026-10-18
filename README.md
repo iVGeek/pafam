@@ -118,11 +118,18 @@ replica, which is what a SQLite volume requires.
   (table rows and cards, matched on any text), with a shown/total count; the
   large tables also get their own filter row. No configuration needed.
 - **AI assistant.** A chat panel (bottom-right) answers questions over live data
-  and *prepares* quotes and supplier orders as drafts you confirm with **Apply**.
-  It is **draft-and-confirm**: the model never writes to the database, and Apply
-  runs the normal, role-checked API as you (so saving still needs the *buyer*
-  role and is audited). It talks to any OpenAI-compatible endpoint (OpenAI,
-  Azure OpenAI, Groq, OpenRouter, or a local vLLM/Ollama):
+  and *prepares* quotes, supplier orders, customer demands, customer orders and
+  follow-up tasks as drafts you confirm with **Apply**. Replies stream in token
+  by token (SSE) with a typing indicator, rendered markdown, a live line naming
+  the tool being used, and a transcript kept in localStorage. It is
+  **draft-and-confirm**: the model never writes to the database, and Apply runs
+  the normal, role-checked API as you (so saving still needs the *buyer* role
+  and is audited). Beyond the catalogue it reads the dashboard, alerts,
+  exceptions, captures, tasks, inventory, orders, the purchase plan, price
+  trends, forecasts and quote comparisons — and it can tell you where to
+  download any report or document as **Excel or PDF**. It talks to any
+  OpenAI-compatible endpoint (OpenAI, Azure OpenAI, Groq, OpenRouter, or a
+  local vLLM/Ollama):
 
 | Env var | Meaning | Default |
 |---|---|---|
@@ -148,7 +155,6 @@ lists rotate — check the provider's `GET {AI_BASE_URL}/models` for current nam
 
 Until `AI_BASE_URL` or `AI_API_KEY` is set, the panel opens but reports **not
 configured**. See the [User Manual](05-user-manual.md) §§24–25.
-```
 
 ## What it does
 
@@ -221,9 +227,13 @@ configured**. See the [User Manual](05-user-manual.md) §§24–25.
   quality) and a deliberately conservative **demand forecast** — a moving
   average of delivered quantity that refuses to extrapolate when there are not
   enough delivery months, saying so instead of inventing a number.
-- **Report & export**: one-click `.xlsx` for opportunities, lowest landed cost,
-  deals, orders and alerts, plus a **cost-masked customer quotation** that never
-  reveals supplier names or buying costs.
+- **Report & export**: every report and document downloads as **both Excel
+  (`.xlsx`) and PDF** — opportunities, lowest landed cost, deals, orders, alerts,
+  the **cost-masked customer quotation** (which never reveals supplier names or
+  buying costs), supplier placements and cleaned supplier imports. Any screen's
+  current table (with the live search applied) can be exported the same way via
+  `POST /api/export/table?format=xlsx|pdf`, and the UI's **Excel / PDF** bar does
+  it in one click.
 - **Integrate**: a cash-basis **GL journal** export (double-entry from payments)
   and a **stock snapshot** export for a WMS/stocktake, and a machine-readable
   `/api/integrations` contract covering every export and the inbound **capture
@@ -237,8 +247,11 @@ configured**. See the [User Manual](05-user-manual.md) §§24–25.
 - **Find it fast**: an **in-window search** box in the top bar filters whatever
   screen is open (tables and cards), and the big tables carry their own filter.
 - **Ask for it**: an optional **AI assistant** (any OpenAI-compatible endpoint)
-  answers questions over live data and prepares quotes and supplier orders as
-  **drafts a human applies** — it reads through fixed tools and never writes.
+  answers questions over live data with a **streaming chat** (typing indicator,
+  rendered markdown, per-tool activity, transcript kept in the browser) and
+  prepares quotes, supplier orders, demands, customer orders and follow-up
+  tasks as **drafts a human applies** — it reads through fixed tools and never
+  writes.
 - **Access control**: session login with roles (`viewer < analyst < buyer <
   admin`); sensitive write endpoints are rank-guarded.
 
@@ -285,10 +298,11 @@ server/
     trends.js           price trends and windowed movement
     alerts.js           alert generation, dedupe and read state
     reporting.js        SheetJS workbooks (incl. cost-masked quote, GL, stock)
+    pdf.js              pdf-lib renderer for every report and document (grid + sheet)
     analytics.js        dashboard, opportunities, wins, KPI suite
     suppliers.js        per-supplier commercial defaults
     fx.js               currency conversion
-    ai.js               AI assistant: OpenAI-compatible tool-calling loop (reads + draft proposals only)
+    ai.js               AI assistant: OpenAI-compatible tool-calling loop, SSE streaming, reads + draft proposals only
     aiKnowledge.js      the assistant's system prompt (the whole system in words)
     auth.js             scrypt password hashing, sessions, role middleware
 src/

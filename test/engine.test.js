@@ -1337,6 +1337,115 @@ test('AI chat loop runs a tool then answers, surfacing the proposal', async () =
   }
 });
 
+test('AI chat emits tool and delta events when a listener is attached', async () => {
+  process.env.AI_API_KEY = 'test-key';
+  let calls = 0;
+  ai.setTransport(async (_payload, onDelta) => {
+    calls += 1;
+    if (calls === 1) {
+      return { choices: [{ message: { role: 'assistant', content: null, tool_calls: [
+        { id: 'c1', type: 'function', function: { name: 'dashboard_overview', arguments: '{}' } },
+      ] } }] };
+    }
+    if (typeof onDelta === 'function') { onDelta('Hello '); onDelta('there.'); }
+    return { choices: [{ message: { role: 'assistant', content: 'Hello there.' } }] };
+  });
+  try {
+    const events = [];
+    const out = await ai.chat({ messages: [{ role: 'user', content: 'status?' }], onEvent: (e) => events.push(e) });
+    assert.equal(out.reply, 'Hello there.');
+    assert.ok(events.some((e) => e.type === 'tool' && e.name === 'dashboard_overview'));
+    assert.deepEqual(events.filter((e) => e.type === 'delta').map((e) => e.text), ['Hello ', 'there.']);
+  } finally {
+    ai.setTransport(null);
+    delete process.env.AI_API_KEY;
+  }
+});
+
+test('AI expanded tools read the wider system', () => {
+  const dash = ai.runTool('dashboard_overview', {}).result;
+  assert.ok(dash.overview, 'overview present');
+  assert.ok(dash.alerts, 'alert counts present');
+
+  const alertOut = ai.runTool('list_alerts', { limit: 5 }).result;
+  assert.ok(alertOut.counts && typeof alertOut.counts.total === 'number');
+  assert.ok(Array.isArray(alertOut.alerts));
+
+  const ordersOut = ai.runTool('list_orders', { limit: 5 }).result;
+  assert.ok(Array.isArray(ordersOut.orders));
+
+  const inv = ai.runTool('list_inventory', { limit: 5 }).result;
+  assert.ok(Array.isArray(inv.lots));
+  assert.ok(inv.totals && typeof inv.totals.onHand === 'number');
+
+  const exc = ai.runTool('list_exceptions', { limit: 5 }).result;
+  assert.ok(Array.isArray(exc.exceptions));
+
+  const caps = ai.runTool('list_captures', { limit: 5 }).result;
+  assert.ok(Array.isArray(caps.captures));
+
+  const tasksOut = ai.runTool('list_tasks', { limit: 5 }).result;
+  assert.ok(tasksOut.summary, 'task summary present');
+
+  const plan = ai.runTool('purchase_plan', {}).result;
+  assert.ok(Array.isArray(plan.suppliers) || plan.lineCount !== undefined);
+
+  const movers = ai.runTool('price_movers', { limit: 5 }).result;
+  assert.ok(Array.isArray(movers.movers));
+
+  const fc = ai.runTool('demand_forecast', {}).result;
+  assert.ok(fc, 'forecast returned');
+
+  const missing = ai.runTool('product_history', { productId: 999999 }).result;
+  assert.equal(missing.found, false);
+});
+
+test('AI export_info names the Excel and PDF endpoints', () => {
+  const all = ai.runTool('export_info', {}).result;
+  assert.ok(Array.isArray(all.reports) && all.reports.length >= 5);
+  const first = all.reports[0];
+  assert.match(first.xlsx, /\.xlsx$/);
+  assert.match(first.pdf, /\.pdf$/);
+  assert.ok(all.documents.some((d) => d.name.includes('quote')));
+  assert.ok(all.documents.some((d) => d.name.includes('placement')));
+
+  const one = ai.runTool('export_info', { kind: first.kind }).result;
+  assert.equal(one.found, true);
+  assert.equal(one.kind, first.kind);
+
+  const bad = ai.runTool('export_info', { kind: 'nope-not-real' }).result;
+  assert.equal(bad.found, false);
+});
+
+test('AI draft_demand, draft_order and draft_task prepare proposals', () => {
+  const c = db.prepare('SELECT id FROM customers LIMIT 1').get();
+  const p = db.prepare('SELECT id FROM products LIMIT 1').get();
+  assert.ok(c && p, 'fixture has a customer and a product');
+
+  const d = ai.runTool('draft_demand', { customerId: c.id, productId: p.id, quantity: 24, targetPrice: 30 }).proposal;
+  assert.equal(d.type, 'demand');
+  assert.equal(d.apply.url, '/demands');
+  assert.equal(d.apply.body.quantity, 24);
+  assert.equal(d.apply.body.customerId, c.id);
+
+  const o = ai.runTool('draft_order', { customerId: c.id, productId: p.id, quantity: 12, unitPrice: 40 }).proposal;
+  assert.equal(o.type, 'order');
+  assert.equal(o.apply.url, '/orders');
+  assert.equal(o.apply.body.quantity, 12);
+  assert.equal(o.apply.body.unitPrice, 40);
+
+  const t = ai.runTool('draft_task', { title: 'Call the supplier', priority: 'high' }).proposal;
+  assert.equal(t.type, 'task');
+  assert.equal(t.apply.url, '/tasks');
+  assert.equal(t.apply.body.title, 'Call the supplier');
+  assert.equal(t.apply.body.priority, 'high');
+
+  const badDemand = ai.runTool('draft_demand', { customerId: 999999, productId: p.id, quantity: 5 }).result;
+  assert.ok(badDemand.error);
+  const badTask = ai.runTool('draft_task', {}).result;
+  assert.ok(badTask.error);
+});
+
 
 
 

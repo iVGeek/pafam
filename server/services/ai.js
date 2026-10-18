@@ -10,6 +10,14 @@ const { db, getSetting } = require('../db');
 const pricing = require('./pricing');
 const { compareProduct } = require('./comparison');
 const { sourceLowest } = require('./sourcing');
+const analytics = require('./analytics');
+const alerts = require('./alerts');
+const orders = require('./orders');
+const tasks = require('./tasks');
+const purchasePlan = require('./purchasePlan');
+const trends = require('./trends');
+const forecast = require('./forecast');
+const quoteCompare = require('./quoteCompare');
 const { SYSTEM_PROMPT } = require('./aiKnowledge');
 
 const MAX_STEPS = 6;
@@ -131,6 +139,148 @@ function toolGetSettings() {
   return { settings: out };
 }
 
+/* ------------------------- wider system read tools ------------------------- */
+
+function toolDashboard() {
+  const ov = analytics.overview();
+  return {
+    overview: ov,
+    winsByType: analytics.winsByType(),
+    alerts: alerts.counts(),
+  };
+}
+
+function toolListAlerts({ unreadOnly, limit } = {}) {
+  const n = Math.min(Math.max(Number(limit) || 25, 1), 200);
+  return {
+    counts: alerts.counts(),
+    alerts: alerts.listAlerts({ unreadOnly: !!unreadOnly, limit: n }),
+  };
+}
+
+function toolListOrders({ status, limit } = {}) {
+  const n = Math.min(Math.max(Number(limit) || 50, 1), 300);
+  let rows = orders.listOrders(n);
+  if (status) rows = rows.filter((o) => String(o.status) === String(status));
+  return { count: rows.length, orders: rows };
+}
+
+function toolGetOrder({ orderId } = {}) {
+  const o = orders.getOrder(Number(orderId));
+  return o ? { found: true, order: o } : { found: false, error: 'order not found (' + orderId + ')' };
+}
+
+function toolListInventory({ productId, limit } = {}) {
+  const n = Math.min(Math.max(Number(limit) || 50, 1), 300);
+  const where = [];
+  const params = [];
+  if (productId) { where.push('i.product_id = ?'); params.push(Number(productId)); }
+  const sql = `SELECT i.id, i.product_id, p.display_name, p.canonical_gtin, i.on_hand,
+         i.reserved, i.in_transit, i.quarantined, i.unit_cost, i.currency,
+         i.lot_reference, i.warehouse, i.expiry_date
+    FROM inventory_lots i JOIN products p ON p.id = i.product_id
+    ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY i.id DESC LIMIT ?`;
+  const rows = db.prepare(sql).all(...params, n);
+  const totals = db.prepare(
+    `SELECT COALESCE(SUM(i.on_hand), 0) AS onHand,
+            COALESCE(SUM(i.reserved), 0) AS reserved,
+            COALESCE(SUM(i.in_transit), 0) AS inTransit
+       FROM inventory_lots i ${where.length ? 'WHERE ' + where.join(' AND ') : ''}`
+  ).get(...params);
+  return { lots: rows, totals };
+}
+
+function toolListExceptions({ resolved, supplier, limit } = {}) {
+  const n = Math.min(Math.max(Number(limit) || 50, 1), 300);
+  const where = ['e.resolved = ?'];
+  const params = [resolved ? 1 : 0];
+  if (supplier) { where.push('o.supplier_code = ?'); params.push(String(supplier)); }
+  const rows = db.prepare(
+    `SELECT e.id, e.type, e.detail, e.resolved, e.created_at, o.supplier_code, o.description, o.gtin_source
+       FROM exceptions e LEFT JOIN offers o ON o.id = e.offer_id
+      WHERE ${where.join(' AND ')} ORDER BY e.created_at DESC LIMIT ?`
+  ).all(...params, n);
+  return { count: rows.length, exceptions: rows };
+}
+
+function toolListCaptures({ status, limit } = {}) {
+  const n = Math.min(Math.max(Number(limit) || 25, 1), 100);
+  const where = [];
+  const params = [];
+  if (status) { where.push('status = ?'); params.push(String(status)); }
+  const rows = db.prepare(
+    `SELECT id, source, title, raw_text, captured_at, status, demand_id
+       FROM captures ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY captured_at DESC LIMIT ?`
+  ).all(...params, n);
+  return { count: rows.length, captures: rows.map((r) => ({ ...r, raw_text: (r.raw_text || '').slice(0, 400) })) };
+}
+
+function toolListTasks({ status, openOnly, owner, limit } = {}) {
+  const n = Math.min(Math.max(Number(limit) || 25, 1), 100);
+  return {
+    summary: tasks.summary(),
+    tasks: tasks.list({ status, openOnly: openOnly !== false, owner, limit: n }),
+  };
+}
+
+function toolPurchasePlan({ supplierCode, approvedOnly } = {}) {
+  const plan = purchasePlan.consolidateDemands({ approvedOnly: !!approvedOnly });
+  if (!supplierCode) {
+    return {
+      suppliers: plan.suppliers,
+      totals: plan.totals,
+      lineCount: (plan.lines || []).length,
+      lines: (plan.lines || []).slice(0, 40),
+    };
+  }
+  const lines = (plan.lines || []).filter((l) => l.supplierCode === supplierCode);
+  return { supplierCode, lineCount: lines.length, lines };
+}
+
+function toolPriceMovers({ limit } = {}) {
+  return { movers: trends.priceMovers(Math.min(Math.max(Number(limit) || 25, 1), 100)) };
+}
+
+function toolProductHistory({ productId, limit } = {}) {
+  const product = db.prepare('SELECT id, display_name, canonical_gtin FROM products WHERE id = ?').get(Number(productId));
+  if (!product) return { found: false, error: 'product not found (' + productId + ')' };
+  const series = trends.productSeries(Number(productId));
+  const n = Math.min(Math.max(Number(limit) || 20, 1), 100);
+  return { found: true, product, series: (series || []).slice(0, n) };
+}
+
+function toolCompareQuotes({ a, b } = {}) {
+  const r = quoteCompare.compareQuotes(Number(a), Number(b));
+  if (r.error) return { error: r.error, notFound: !!r.notFound };
+  return r;
+}
+
+function toolForecast({ productId } = {}) {
+  const base = forecast.forecastBaseline({});
+  if (!productId) return base;
+  const f = base && base.products ? base.products.find((p) => p.productId === Number(productId)) : null;
+  return f ? { found: true, forecast: f } : { found: false, error: 'no forecast for that product', baseline: base };
+}
+
+// Point the assistant at the export endpoints: every report and document in
+// the system downloads as both .xlsx and .pdf behind the session cookie.
+function toolExportInfo({ kind } = {}) {
+  const kinds = Object.keys(require('./reporting').BUILDERS);
+  if (kind) {
+    if (!kinds.includes(String(kind))) return { found: false, error: 'unknown report kind', available: kinds };
+    return { found: true, kind, xlsx: '/api/export/' + kind + '.xlsx', pdf: '/api/export/' + kind + '.pdf' };
+  }
+  return {
+    reports: kinds.map((k) => ({ kind: k, xlsx: '/api/export/' + k + '.xlsx', pdf: '/api/export/' + k + '.pdf' })),
+    documents: [
+      { name: 'Customer quote (cost-masked)', xlsx: '/api/export/quote/{id}.xlsx', pdf: '/api/export/quote/{id}.pdf' },
+      { name: 'Supplier order placement', xlsx: '/api/export/placement/{id}.xlsx', pdf: '/api/export/placement/{id}.pdf' },
+      { name: 'Cleaned supplier import', xlsx: '/api/export/cleaned/{uploadId}.xlsx', pdf: '/api/export/cleaned/{uploadId}.pdf' },
+    ],
+    anyScreen: { method: 'POST', url: '/api/export/table?format=xlsx|pdf', note: 'renders the table you are looking at' },
+  };
+}
+
 /* ------------------------------ draft builders ----------------------------- */
 
 // "prepare an offer of X at rate R / target %" -> a QUOTE draft. Cost price and
@@ -237,6 +387,118 @@ function toolDraftPlacement({ supplierCode, lines } = {}) {
   };
 }
 
+// "record that X wants N bottles of Y" -> a DEMAND draft (buyer applies it).
+function toolDraftDemand({ customerId, productId, quantity, targetPrice, currency, neededBy, notes } = {}) {
+  const customer = customerId ? db.prepare('SELECT id, name FROM customers WHERE id = ?').get(Number(customerId)) : null;
+  if (!customer) return { error: 'customerId is required (use list_customers to find one)' };
+  const product = productId ? db.prepare('SELECT id, display_name, canonical_gtin FROM products WHERE id = ?').get(Number(productId)) : null;
+  if (!product) return { error: 'productId is required (use search_products to find one)' };
+  const qty = Math.max(1, Math.round(Number(quantity) || 0));
+  if (!qty) return { error: 'quantity must be at least 1' };
+  const cur = currency || getSetting('base_currency', 'USD');
+
+  return {
+    proposal: {
+      type: 'demand',
+      title: 'Demand — ' + product.display_name + ' for ' + customer.name,
+      summary: `${qty} x ${product.display_name}` + (targetPrice ? ` targeting ${targetPrice} ${cur}` : ''),
+      fields: [
+        { label: 'Customer', value: customer.name },
+        { label: 'Product', value: product.display_name + (product.canonical_gtin ? ' - ' + product.canonical_gtin : '') },
+        { label: 'Quantity', value: qty },
+        { label: 'Target price', value: targetPrice != null ? `${targetPrice} ${cur}` : '(none)' },
+        { label: 'Needed by', value: neededBy || '(no date)' },
+        { label: 'Notes', value: notes || '(none)' },
+      ],
+      apply: {
+        label: 'Add demand',
+        method: 'POST',
+        url: '/demands',
+        body: { customerId: customer.id, productId: product.id, quantity: qty, targetPrice, currency: cur, neededBy, notes },
+      },
+    },
+  };
+}
+
+// A confirmed quote becomes a customer order. Prefer quoteId: the order then
+// inherits quantity, prices and dates from the quote, exactly as Orders does.
+function toolDraftOrder({ quoteId, customerId, productId, quantity, unitPrice, unitCost, currency, supplierCode, notes } = {}) {
+  let q = null;
+  if (quoteId) {
+    q = db.prepare('SELECT * FROM quotes WHERE id = ?').get(Number(quoteId));
+    if (!q) return { error: 'quote not found (' + quoteId + ')' };
+  }
+  const custId = customerId != null ? Number(customerId) : (q ? q.customer_id : null);
+  const prodId = productId != null ? Number(productId) : (q ? q.product_id : null);
+  if (!custId || !prodId) return { error: 'quoteId, or customerId + productId, is required' };
+  const qty = quantity != null ? Number(quantity) : (q ? q.quantity : null);
+  if (!qty) return { error: 'quantity required' };
+  const price = unitPrice != null ? Number(unitPrice) : (q ? (q.selling_unit_price != null ? q.selling_unit_price : q.unit_price) : null);
+  const cost = unitCost != null ? Number(unitCost) : (q ? q.landed_unit_cost : null);
+  const cur = currency || (q && q.currency) || getSetting('base_currency', 'USD');
+
+  const customer = db.prepare('SELECT id, name FROM customers WHERE id = ?').get(Number(custId));
+  const product = db.prepare('SELECT id, display_name FROM products WHERE id = ?').get(Number(prodId));
+
+  return {
+    proposal: {
+      type: 'order',
+      title: 'Customer order — ' + (product ? product.display_name : 'product #' + prodId) + (customer ? ' for ' + customer.name : ''),
+      summary: `${qty} x ${product ? product.display_name : prodId} @ ${price != null ? price : '-'} ${cur}` + (q ? ` (from quote Q-${String(q.id).padStart(4, '0')})` : ''),
+      fields: [
+        { label: 'Customer', value: customer ? customer.name : custId },
+        { label: 'Product', value: product ? product.display_name : prodId },
+        { label: 'Quantity', value: qty },
+        { label: 'Selling price', value: price != null ? `${price} ${cur}` : '-' },
+        { label: 'Landed cost', value: cost != null ? `${cost} ${cur}` : '-' },
+        { label: 'From quote', value: q ? 'Q-' + String(q.id).padStart(4, '0') : '(none)' },
+      ],
+      apply: {
+        label: 'Create order',
+        method: 'POST',
+        url: '/orders',
+        body: {
+          quoteId: q ? q.id : undefined,
+          customerId: custId,
+          productId: prodId,
+          quantity: qty,
+          unitPrice: price,
+          unitCost: cost,
+          currency: cur,
+          supplierCode: supplierCode || (q && q.supplier_code) || undefined,
+          notes,
+        },
+      },
+    },
+  };
+}
+
+// A follow-up task: the assistant may organise work, never do it.
+function toolDraftTask({ title, detail, dueDate, owner, priority, customerId, demandId } = {}) {
+  const t = String(title || '').trim();
+  if (!t) return { error: 'title is required' };
+  return {
+    proposal: {
+      type: 'task',
+      title: 'Follow-up task',
+      summary: t,
+      fields: [
+        { label: 'Title', value: t },
+        { label: 'Detail', value: detail || '(none)' },
+        { label: 'Due', value: dueDate || '(default)' },
+        { label: 'Owner', value: owner || '(unassigned)' },
+        { label: 'Priority', value: priority || 'normal' },
+      ],
+      apply: {
+        label: 'Create task',
+        method: 'POST',
+        url: '/tasks',
+        body: { title: t, detail, dueDate, owner, priority, customerId, demandId },
+      },
+    },
+  };
+}
+
 /* ------------------------------- tool registry ----------------------------- */
 
 const EXECUTORS = {
@@ -247,8 +509,25 @@ const EXECUTORS = {
   list_customers: toolListCustomers,
   list_demands: toolListDemands,
   get_settings: toolGetSettings,
+  dashboard_overview: toolDashboard,
+  list_alerts: toolListAlerts,
+  list_orders: toolListOrders,
+  get_order: toolGetOrder,
+  list_inventory: toolListInventory,
+  list_exceptions: toolListExceptions,
+  list_captures: toolListCaptures,
+  list_tasks: toolListTasks,
+  purchase_plan: toolPurchasePlan,
+  price_movers: toolPriceMovers,
+  product_history: toolProductHistory,
+  compare_quotes: toolCompareQuotes,
+  demand_forecast: toolForecast,
+  export_info: toolExportInfo,
   draft_offer: toolDraftOffer,
   draft_placement: toolDraftPlacement,
+  draft_demand: toolDraftDemand,
+  draft_order: toolDraftOrder,
+  draft_task: toolDraftTask,
 };
 
 const TOOLS = [
@@ -341,6 +620,179 @@ const TOOLS = [
       },
     },
   },
+  {
+    type: 'function',
+    function: {
+      name: 'dashboard_overview',
+      description: 'Whole-system snapshot: KPIs, offer/supplier/customer counts, wins by type and current alert counts.',
+      parameters: { type: 'object', properties: {} },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'list_alerts',
+      description: 'Current alerts (price anomalies, stale offers, low stock). Set unreadOnly to hide acknowledged ones.',
+      parameters: { type: 'object', properties: { unreadOnly: { type: 'boolean' }, limit: { type: 'integer' } } },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'list_orders',
+      description: 'Realised customer orders, newest first. Optionally filter by status (draft | confirmed | shipped | delivered | cancelled).',
+      parameters: { type: 'object', properties: { status: { type: 'string' }, limit: { type: 'integer' } } },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'get_order',
+      description: 'One realised order with its payments, by id.',
+      parameters: { type: 'object', properties: { orderId: { type: 'integer' } }, required: ['orderId'] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'list_inventory',
+      description: 'Stock on hand by lot, with reserved quantities and totals. Optionally filter to one product.',
+      parameters: { type: 'object', properties: { productId: { type: 'integer' }, limit: { type: 'integer' } } },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'list_exceptions',
+      description: 'Import exceptions (blank/invalid barcode, duplicate, mismatch, no price). Set resolved=true for the resolved pile.',
+      parameters: { type: 'object', properties: { resolved: { type: 'boolean' }, supplier: { type: 'string' }, limit: { type: 'integer' } } },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'list_captures',
+      description: 'Captured notes/inbox (Plaud, Remarkable, manual, webhook). Optionally filter by status (new | promoted | ignored).',
+      parameters: { type: 'object', properties: { status: { type: 'string' }, limit: { type: 'integer' } } },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'list_tasks',
+      description: 'Follow-up tasks with the open/closed summary. Filter by status, owner, or set openOnly=false to include closed.',
+      parameters: { type: 'object', properties: { status: { type: 'string' }, openOnly: { type: 'boolean' }, owner: { type: 'string' }, limit: { type: 'integer' } } },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'purchase_plan',
+      description: 'Consolidated buy plan: open/wishlist/quoted demands grouped per supplier with recommended quantities. Filter to one supplier if given.',
+      parameters: { type: 'object', properties: { supplierCode: { type: 'string' }, approvedOnly: { type: 'boolean' } } },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'price_movers',
+      description: 'Products whose supplier prices moved the most recently (up or down) — good for "what changed" questions.',
+      parameters: { type: 'object', properties: { limit: { type: 'integer' } } },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'product_history',
+      description: 'Price/offer history series for one product.',
+      parameters: { type: 'object', properties: { productId: { type: 'integer' }, limit: { type: 'integer' } }, required: ['productId'] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'compare_quotes',
+      description: 'Head-to-head comparison of two customer quotes (cost, margin, terms).',
+      parameters: { type: 'object', properties: { a: { type: 'integer' }, b: { type: 'integer' } }, required: ['a', 'b'] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'demand_forecast',
+      description: 'Baseline demand forecast. Without productId returns the whole product table; with it returns one product.',
+      parameters: { type: 'object', properties: { productId: { type: 'integer' } } },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'export_info',
+      description: 'Where to download any report or document as Excel (.xlsx) and PDF. Ask it for one kind, or call with no argument for the full catalogue.',
+      parameters: { type: 'object', properties: { kind: { type: 'string', description: 'report kind, e.g. pricing | margin | demand' } } },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'draft_demand',
+      description: 'Prepare (do not save) a customer demand row. Returns a proposal a buyer applies.',
+      parameters: {
+        type: 'object',
+        properties: {
+          customerId: { type: 'integer' },
+          productId: { type: 'integer' },
+          quantity: { type: 'integer' },
+          targetPrice: { type: 'number' },
+          currency: { type: 'string' },
+          neededBy: { type: 'string', description: 'ISO date YYYY-MM-DD' },
+          notes: { type: 'string' },
+        },
+        required: ['customerId', 'productId', 'quantity'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'draft_order',
+      description: 'Prepare (do not save) a customer order. Prefer quoteId so quantity, prices and dates are inherited from the quote. Returns a proposal a buyer applies.',
+      parameters: {
+        type: 'object',
+        properties: {
+          quoteId: { type: 'integer' },
+          customerId: { type: 'integer' },
+          productId: { type: 'integer' },
+          quantity: { type: 'integer' },
+          unitPrice: { type: 'number' },
+          unitCost: { type: 'number' },
+          currency: { type: 'string' },
+          supplierCode: { type: 'string' },
+          notes: { type: 'string' },
+        },
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'draft_task',
+      description: 'Prepare (do not save) a follow-up task. Returns a proposal a user applies.',
+      parameters: {
+        type: 'object',
+        properties: {
+          title: { type: 'string' },
+          detail: { type: 'string' },
+          dueDate: { type: 'string', description: 'ISO date YYYY-MM-DD' },
+          owner: { type: 'string' },
+          priority: { type: 'string', enum: ['low', 'normal', 'high'] },
+          customerId: { type: 'integer' },
+          demandId: { type: 'integer' },
+        },
+        required: ['title'],
+      },
+    },
+  },
 ];
 
 function runTool(name, args) {
@@ -359,35 +811,88 @@ function runTool(name, args) {
 
 /* --------------------------------- transport ------------------------------- */
 
-// Swappable so tests can drive the loop without a network. Real one below.
-async function callModel(payload) {
+// Swappable so tests can drive the loop without a network. When onDelta is a
+// function the real transport streams tokens (SSE from the provider) and calls
+// onDelta(text) per content fragment, then returns the assembled message.
+async function callModel(payload, onDelta) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), Number(process.env.AI_TIMEOUT_MS) || 45000);
+  const streaming = typeof onDelta === 'function';
   let res;
   try {
     res = await fetch(baseUrl() + '/chat/completions', {
       method: 'POST',
       headers: Object.assign({ 'content-type': 'application/json' }, apiKey() ? { authorization: 'Bearer ' + apiKey() } : {}),
-      body: JSON.stringify(payload),
+      body: JSON.stringify(streaming ? Object.assign({}, payload, { stream: true }) : payload),
       signal: controller.signal,
     });
+    if (!res.ok) {
+      const text = await res.text();
+      let data = null;
+      try { data = JSON.parse(text); } catch (_) { data = null; }
+      const detail = (data && data.error && data.error.message) || text || ('HTTP ' + res.status);
+      const err = new Error('AI provider error: ' + detail);
+      err.status = 502;
+      throw err;
+    }
+    if (!streaming) {
+      const text = await res.text();
+      let data = null;
+      try { data = JSON.parse(text); } catch (_) { data = null; }
+      return data;
+    }
+    // SSE: "data: {...}" lines, terminated by "data: [DONE]". Content tokens
+    // arrive as delta.content; tool calls arrive as delta.tool_calls fragments
+    // keyed by index (id/name whole, arguments cumulative).
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = '';
+    let content = '';
+    const toolCalls = [];
+    const takeLine = (line) => {
+      if (!line.startsWith('data:')) return;
+      const data = line.slice(5).trim();
+      if (!data || data === '[DONE]') return;
+      let j;
+      try { j = JSON.parse(data); } catch (_) { return; }
+      const d = j && j.choices && j.choices[0] && j.choices[0].delta;
+      if (!d) return;
+      if (d.content) { content += d.content; onDelta(d.content); }
+      (d.tool_calls || []).forEach((tc) => {
+        const i = tc.index || 0;
+        if (!toolCalls[i]) toolCalls[i] = { id: '', type: 'function', function: { name: '', arguments: '' } };
+        if (tc.id) toolCalls[i].id = tc.id;
+        if (tc.function && tc.function.name) toolCalls[i].function.name = tc.function.name;
+        if (tc.function && tc.function.arguments) toolCalls[i].function.arguments += tc.function.arguments;
+      });
+    };
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      let nl;
+      while ((nl = buf.indexOf('\n')) >= 0) {
+        takeLine(buf.slice(0, nl).replace(/\r$/, ''));
+        buf = buf.slice(nl + 1);
+      }
+    }
+    if (buf) takeLine(buf.replace(/\r$/, ''));
+    const msg = { role: 'assistant', content };
+    if (toolCalls.length) msg.tool_calls = toolCalls;
+    return { choices: [{ message: msg }] };
   } catch (e) {
-    clearTimeout(timeout);
-    const err = new Error(e.name === 'AbortError' ? 'The AI provider timed out.' : 'Could not reach the AI provider: ' + e.message);
-    err.status = e.name === 'AbortError' ? 504 : 502;
-    throw err;
-  }
-  clearTimeout(timeout);
-  const text = await res.text();
-  let data = null;
-  try { data = JSON.parse(text); } catch (_) { data = null; }
-  if (!res.ok) {
-    const detail = (data && data.error && data.error.message) || text || ('HTTP ' + res.status);
-    const err = new Error('AI provider error: ' + detail);
+    if (e.name === 'AbortError') {
+      const err = new Error('The AI provider timed out.');
+      err.status = 504;
+      throw err;
+    }
+    if (e.status) throw e;
+    const err = new Error('Could not reach the AI provider: ' + e.message);
     err.status = 502;
     throw err;
+  } finally {
+    clearTimeout(timeout);
   }
-  return data;
 }
 
 let transport = callModel;
@@ -403,7 +908,7 @@ function sanitize(messages) {
     .map((m) => ({ role: m.role, content: m.content.slice(0, 4000) }));
 }
 
-async function chat({ messages } = {}) {
+async function chat({ messages, onEvent } = {}) {
   if (!enabled()) {
     const err = new Error('The assistant is not configured. Set AI_BASE_URL, AI_API_KEY and AI_MODEL on the server.');
     err.status = 503;
@@ -411,9 +916,12 @@ async function chat({ messages } = {}) {
   }
   const convo = [{ role: 'system', content: SYSTEM_PROMPT }].concat(sanitize(messages));
   const proposals = [];
+  const emit = (event) => { if (typeof onEvent === 'function') { try { onEvent(event); } catch (_) { /* listener must not break the turn */ } } };
+  const stream = typeof onEvent === 'function';
 
   for (let step = 0; step < MAX_STEPS; step += 1) {
-    const resp = await transport({ model: model(), messages: convo, tools: TOOLS, tool_choice: 'auto' });
+    const onDelta = stream ? (text) => emit({ type: 'delta', text }) : undefined;
+    const resp = await transport({ model: model(), messages: convo, tools: TOOLS, tool_choice: 'auto' }, onDelta);
     const msg = resp && resp.choices && resp.choices[0] && resp.choices[0].message;
     if (!msg) throw Object.assign(new Error('The AI provider returned an empty response.'), { status: 502 });
     convo.push(msg);
@@ -424,6 +932,7 @@ async function chat({ messages } = {}) {
     }
     for (const call of calls) {
       const name = call.function && call.function.name;
+      emit({ type: 'tool', name: name || 'tool' });
       let args = {};
       try { args = call.function && call.function.arguments ? JSON.parse(call.function.arguments) : {}; } catch (_) { args = {}; }
       const out = runTool(name, args);

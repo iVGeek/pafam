@@ -77,6 +77,16 @@ a { color: var(--accent); text-decoration: none; }
 .tblFilter { display: flex; align-items: center; gap: 8px; margin: 8px 0 4px; }
 .tblFilter input[type=search] { width: min(300px, 60vw); }
 
+/* Excel / PDF export bar shown at the top of every screen that has a table */
+.viewExportBar {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  padding: 8px 12px; margin-bottom: 12px;
+  background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
+}
+.viewExportBar .spacer { flex: 1; }
+.viewExportBarHint { opacity: .75; }
+.viewExportBar .btn:disabled { opacity: .5; cursor: wait; }
+
 .grid { display: grid; gap: 14px; }
 .cards { grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }
 .card {
@@ -113,6 +123,8 @@ button.ghost { background: transparent; color: var(--text); border-color: var(--
 button.ghost:hover { background: var(--panel-2); border-color: var(--muted); }
 button:disabled { opacity: .45; cursor: not-allowed; }
 button.sm { padding: 5px 9px; font-size: 12px; }
+button.danger { background: var(--warn, #b45309); border-color: transparent; color: #fff; }
+button.danger:hover { filter: brightness(1.1); }
 a.btn {
   display: inline-block; cursor: pointer; background: var(--accent); border: 1px solid var(--accent);
   color: var(--accent-ink); font-weight: 600; border-radius: 8px; padding: 8px 10px; font-size: 13px;
@@ -208,6 +220,23 @@ svg.spark polyline { fill: none; stroke: var(--accent); stroke-width: 2; stroke-
 .cp-fields .k { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .05em; white-space: nowrap; }
 .chat-foot { display: flex; gap: 8px; padding: 10px 12px; border-top: 1px solid var(--border); }
 .chat-foot textarea { flex: 1; resize: none; max-height: 120px; }
+
+/* Streaming reply: typing dots before the first token, a live caret while the
+   answer is arriving, and a quiet line naming the tool the assistant is using. */
+.chat-typing { display: inline-flex; gap: 4px; padding: 4px 2px; }
+.chat-typing i { width: 6px; height: 6px; border-radius: 50%; background: var(--muted); animation: chatBounce 1.2s infinite; }
+.chat-typing i:nth-child(2) { animation-delay: .15s; }
+.chat-typing i:nth-child(3) { animation-delay: .3s; }
+@keyframes chatBounce { 0%, 60%, 100% { transform: none; opacity: .45; } 30% { transform: translateY(-3px); opacity: 1; } }
+.chat-caret { display: inline-block; width: 7px; height: 13px; margin-left: 2px; vertical-align: text-bottom; background: var(--accent); animation: chatBlink 1s steps(2) infinite; }
+@keyframes chatBlink { 50% { opacity: 0; } }
+.chat-tool { font-size: 11px; color: var(--muted); font-style: italic; margin-bottom: 2px; }
+.chat-msg.bot { white-space: normal; }
+.chat-md { white-space: normal; }
+.chat-md ul, .chat-md ol { margin: 4px 0 4px 18px; padding: 0; }
+.chat-md li { margin: 2px 0; }
+.chat-md code { background: var(--panel); border: 1px solid var(--border); border-radius: 4px; padding: 0 4px; font-size: 12px; }
+.chat-md a { color: var(--accent); }
 
 ::selection { background: var(--accent); color: var(--accent-ink); }
 ::-webkit-scrollbar { width: 10px; height: 10px; }

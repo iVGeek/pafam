@@ -388,8 +388,22 @@ function cleanedBuffer(uploadId) {
   return { buffer: workbookBuffer(rows), filename: `${upload.supplier_code}-upload-${upload.id}.xlsx` };
 }
 
+// The same rows the .xlsx is built from, returned as a grid so the PDF export
+// can render them from one source of truth.
+function cleanedGrid(uploadId) {
+  const upload = db.prepare('SELECT * FROM uploads WHERE id = ?').get(uploadId);
+  if (!upload) return null;
+  const rows = offersForUpload(uploadId).map(mapOffer);
+  return {
+    header: TEMPLATE_COLUMNS,
+    rows,
+    supplier: upload.supplier_code,
+    filename: `${upload.supplier_code}-upload-${upload.id}`,
+  };
+}
+
 module.exports = {
-  TEMPLATE_COLUMNS, ENUMS, cleanUpload, cleanedBuffer, offersForUpload, mapOffer,
+  TEMPLATE_COLUMNS, ENUMS, cleanUpload, cleanedBuffer, cleanedGrid, offersForUpload, mapOffer,
   parseConcentration, parseGender, parseBrand, parseFragrance, parseRetailPack, parseSize,
   normUs, normConfidence, workbookBuffer,
 };

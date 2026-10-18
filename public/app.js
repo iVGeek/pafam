@@ -173,9 +173,106 @@ function refreshSearchUI() {
   if (count) count.textContent = res.total ? `${res.shown}/${res.total}` : 'no matches';
 }
 
+/* ======================= export this view ======================= */
+// Every screen exports itself. The client reads the visible tables (so the
+// export honours the search filter) and posts them to /api/export/table,
+// which returns the same document as Excel or PDF.
+function viewGrid() {
+  const root = $('#view');
+  const title = ($('#pageTitle') && $('#pageTitle').textContent.trim()) || 'Export';
+  const visibleRows = (t) => {
+    const body = t.tBodies && t.tBodies[0];
+    if (!body) return [];
+    return Array.from(body.rows).filter((r) => !r.classList.contains('hidden') && !isPlaceholderRow(r));
+  };
+  const tables = $$('table', root).filter((t) => visibleRows(t).length > 0);
+  let maxCols = 1;
+  let headers = [];
+  const rows = [];
+  tables.forEach((t, i) => {
+    const headRow = t.tHead && t.tHead.rows[0];
+    const th = headRow ? Array.from(headRow.cells).map((c) => c.textContent.trim()) : [];
+    const body = visibleRows(t);
+    let firstHeader = false;
+    if (!headers.length && th.length) { headers = th; firstHeader = true; }
+    if (tables.length > 1) {
+      const panel = t.closest('.panel');
+      const h = panel && panel.querySelector('h2');
+      const caption = ((h ? h.textContent : '') || `Table ${i + 1}`).trim();
+      rows.push([caption]);
+      // the first table's header is already the document header row
+      if (th.length && !firstHeader) rows.push(th);
+    }
+    body.forEach((r) => rows.push(Array.from(r.cells).map((c) => c.textContent.replace(/\s+/g, ' ').trim())));
+    maxCols = Math.max(maxCols, th.length, ...body.map((r) => r.cells.length));
+    rows.push([]);
+  });
+  while (rows.length && !rows[rows.length - 1].length) rows.pop();
+  const columns = headers.slice();
+  while (columns.length < maxCols) columns.push('');
+  const padded = rows.map((r) => {
+    const c = r.slice();
+    while (c.length < maxCols) c.push('');
+    return c;
+  });
+  return { title, columns, rows: padded };
+}
+
+async function exportView(format) {
+  const grid = viewGrid();
+  if (!grid.rows.length) { toast('Nothing to export on this screen', 'warn'); return; }
+  const btns = $$('.viewExportBar [data-vx]');
+  btns.forEach((b) => { b.disabled = true; });
+  try {
+    const r = await fetch('/api/export/table?format=' + (format === 'pdf' ? 'pdf' : 'xlsx'), {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(grid),
+    });
+    if (!r.ok) {
+      const t = await r.text();
+      let msg = 'HTTP ' + r.status;
+      try { msg = (JSON.parse(t) || {}).error || msg; } catch { /* keep */ }
+      throw new Error(msg);
+    }
+    const blob = await r.blob();
+    const a = document.createElement('a');
+    const slug = grid.title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 40) || 'export';
+    a.download = slug + (format === 'pdf' ? '.pdf' : '.xlsx');
+    a.href = URL.createObjectURL(blob);
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+    toast(`Exported ${a.download} (${num(grid.rows.length)} rows)`, 'ok');
+  } catch (e) {
+    toast('Export failed: ' + e.message, 'err');
+  } finally {
+    btns.forEach((b) => { b.disabled = false; });
+  }
+}
+
+function installExportBar() {
+  const root = $('#view');
+  if (!root || $('.viewExportBar', root)) return;
+  const grid = viewGrid();
+  if (!grid.rows.length) return;
+  const bar = document.createElement('div');
+  bar.className = 'viewExportBar';
+  bar.innerHTML = `
+    <span class="small muted">${num(grid.rows.length)} rows on this screen</span>
+    <span class="small muted viewExportBarHint">export honours the current search</span>
+    <span class="spacer"></span>
+    <button class="btn sm" data-vx="xlsx" title="Download this screen as Excel">Excel</button>
+    <button class="btn sm" data-vx="pdf" title="Download this screen as PDF">PDF</button>`;
+  root.insertBefore(bar, root.firstChild);
+  $$('.viewExportBar [data-vx]', bar).forEach((b) => b.addEventListener('click', () => exportView(b.dataset.vx)));
+}
+
 function wireView() {
   const root = $('#view');
   if (!root) return;
+  installExportBar();
   installTableFilters();
   const box = $('#globalSearch');
   if (box) box.value = viewSearch;
@@ -300,7 +397,7 @@ routes.imports = async () => {
       <div class="panel">
         <h2>Uploads</h2>
         <div class="table-wrap"><table><thead><tr><th>File</th><th>Supplier</th><th>Sheet</th><th class="num">Rows</th><th class="num">Matched</th><th class="num">Blank</th><th class="num">Invalid</th><th>Cleaned</th><th>Date</th></tr></thead><tbody>
-        ${uploads.map((u) => `<tr><td class="mono">${esc(u.filename)}</td><td>${esc(u.supplier_code)}</td><td class="small">${esc(u.sheet || '')}</td><td class="num">${u.rows_total}</td><td class="num">${u.rows_imported}</td><td class="num">${u.rows_blank_barcode}</td><td class="num">${u.rows_invalid_barcode}</td><td class="small"><a class="btn quiet" style="padding:2px 8px" href="/api/export/cleaned/${u.id}.xlsx" title="Standard-template snapshot${u.cleaned_at ? ` · ${u.cleaned_rows} rows · ${dt(u.cleaned_at)}` : ' (rebuilt on demand)'}">Template${u.cleaned_at ? '' : ' •'}</a></td><td class="small">${dt(u.uploaded_at)}</td></tr>`).join('') || '<tr><td colspan="9" class="muted">No uploads yet.</td></tr>'}
+        ${uploads.map((u) => `<tr><td class="mono">${esc(u.filename)}</td><td>${esc(u.supplier_code)}</td><td class="small">${esc(u.sheet || '')}</td><td class="num">${u.rows_total}</td><td class="num">${u.rows_imported}</td><td class="num">${u.rows_blank_barcode}</td><td class="num">${u.rows_invalid_barcode}</td><td class="small"><span class="row" style="gap:4px"><a class="btn quiet" style="padding:2px 8px" href="/api/export/cleaned/${u.id}.xlsx" title="Standard-template snapshot (Excel)${u.cleaned_at ? ` · ${u.cleaned_rows} rows · ${dt(u.cleaned_at)}` : ' (rebuilt on demand)'}">Template${u.cleaned_at ? '' : ' •'}</a><a class="btn quiet" style="padding:2px 8px" href="/api/export/cleaned/${u.id}.pdf" title="Standard-template snapshot (PDF)">PDF</a></span></td><td class="small">${dt(u.uploaded_at)}</td></tr>`).join('') || '<tr><td colspan="9" class="muted">No uploads yet.</td></tr>'}
         </tbody></table></div>
       </div>
       <div>
@@ -357,7 +454,7 @@ routes.imports = async () => {
             <div class="item"><div class="k">invalid</div><div class="v">${r.invalidBarcode}</div></div>
             <div class="item"><div class="k">duplicates</div><div class="v">${r.duplicates}</div></div>
           </div>
-          ${r.cleaned && !r.cleaned.error ? `<div class="small muted" style="margin-top:8px">Cleaned to the standard template: ${r.cleaned.rows} rows — <a href="/api/export/cleaned/${r.uploadId}.xlsx">download</a></div>` : ''}`;
+          ${r.cleaned && !r.cleaned.error ? `<div class="small muted" style="margin-top:8px">Cleaned to the standard template: ${r.cleaned.rows} rows — <a href="/api/export/cleaned/${r.uploadId}.xlsx">Excel</a> · <a href="/api/export/cleaned/${r.uploadId}.pdf">PDF</a></div>` : ''}`;
       }
       toast('Import complete', 'ok');
       await loadSettings();
@@ -1110,7 +1207,7 @@ routes.placements = async () => {
     const data = await GET('/placements').catch(() => ({ rows: [] }));
     const rows = data.rows || [];
     $('#plList').innerHTML = rows.length ? `<div class="table-wrap"><table><thead><tr><th>Ref</th><th>Supplier</th><th class="num">Lines</th><th class="num">Total</th><th>Status</th><th></th></tr></thead><tbody>
-      ${rows.map((r) => `<tr><td class="mono">${esc(r.ref)}</td><td>${esc(r.supplier_code || '')}<div class="muted small">${esc(r.order_date || '')}</div></td><td class="num">${num(r.line_count)}</td><td class="num">${r.total != null ? money(r.total, r.currency) : '—'}</td><td><span class="badge info">${esc(r.status)}</span></td><td class="row" style="gap:6px"><a class="btn sm" href="/api/export/placement/${r.id}.xlsx">Export</a><button class="ghost sm" data-pfi="${r.id}" data-ref="${esc(r.ref)}">PFI</button></td></tr>`).join('')}
+      ${rows.map((r) => `<tr><td class="mono">${esc(r.ref)}</td><td>${esc(r.supplier_code || '')}<div class="muted small">${esc(r.order_date || '')}</div></td><td class="num">${num(r.line_count)}</td><td class="num">${r.total != null ? money(r.total, r.currency) : '—'}</td><td><span class="badge info">${esc(r.status)}</span></td><td class="row" style="gap:6px"><a class="btn sm" href="/api/export/placement/${r.id}.xlsx" title="Supplier order (Excel)">Excel</a><a class="btn sm quiet" href="/api/export/placement/${r.id}.pdf" title="Supplier order (PDF)">PDF</a><button class="ghost sm" data-pfi="${r.id}" data-ref="${esc(r.ref)}">PFI</button></td></tr>`).join('')}
     </tbody></table></div>` : '<div class="muted small">No placements saved yet.</div>';
     $$('#plList [data-pfi]').forEach((b) => b.addEventListener('click', () => openPfi(Number(b.dataset.pfi), b.dataset.ref)));
   };
@@ -1468,7 +1565,7 @@ routes.quotes = async () => {
     <div class="split">
       <div class="panel"><h2>Deals &amp; quotes</h2>
         <div class="table-wrap"><table><thead><tr><th>Customer</th><th>Product</th><th>Supplier</th><th class="num">Qty</th><th class="num">Unit price</th><th class="num">Margin</th><th class="num">Contribution</th><th class="num">ROI</th><th class="num">Capital</th><th>Cus due</th><th>Status</th><th></th></tr></thead>
-        <tbody>${rows.map((q) => `<tr><td>${esc(q.customer_name)}</td><td>${esc((q.display_name || '').slice(0, 30))}</td><td>${q.supplier_code ? `<span class="badge info">${esc(q.supplier_code)}</span>` : '—'}</td><td class="num">${num(q.quantity)}</td><td class="num">${money(q.unit_price, q.currency)}</td><td class="num">${q.margin_pct != null ? `<span class="badge ${q.margin_pct >= 15 ? 'good' : 'bad'}">${pct(q.margin_pct)}</span>` : '—'}</td><td class="num">${q.contribution_total != null ? money(q.contribution_total, q.currency) : '—'}</td><td class="num">${q.roi_pct != null ? pct(q.roi_pct) : '—'}</td><td class="num">${q.capital_required != null ? money(q.capital_required, q.currency) : '—'}</td><td class="small">${esc(q.customer_due_date || '')}</td><td><span class="badge info">${esc(q.status)}</span></td><td><a class="btn sm" href="/api/export/quote/${q.id}.xlsx" download title="Customer quote (no costs)">Quote</a></td></tr>`).join('') || '<tr><td colspan="12" class="muted">No deals yet.</td></tr>'}
+        <tbody>${rows.map((q) => `<tr><td>${esc(q.customer_name)}</td><td>${esc((q.display_name || '').slice(0, 30))}</td><td>${q.supplier_code ? `<span class="badge info">${esc(q.supplier_code)}</span>` : '—'}</td><td class="num">${num(q.quantity)}</td><td class="num">${money(q.unit_price, q.currency)}</td><td class="num">${q.margin_pct != null ? `<span class="badge ${q.margin_pct >= 15 ? 'good' : 'bad'}">${pct(q.margin_pct)}</span>` : '—'}</td><td class="num">${q.contribution_total != null ? money(q.contribution_total, q.currency) : '—'}</td><td class="num">${q.roi_pct != null ? pct(q.roi_pct) : '—'}</td><td class="num">${q.capital_required != null ? money(q.capital_required, q.currency) : '—'}</td><td class="small">${esc(q.customer_due_date || '')}</td><td><span class="badge info">${esc(q.status)}</span></td><td><a class="btn sm" href="/api/export/quote/${q.id}.xlsx" download title="Customer quote (no costs)">Quote</a><a class="btn sm quiet" href="/api/export/quote/${q.id}.pdf" download title="Customer quote as PDF (no costs)">PDF</a></td></tr>`).join('') || '<tr><td colspan="12" class="muted">No deals yet.</td></tr>'}
         </tbody></table></div>
         <h2 style="font-size:13px;margin-top:14px">Compare two quotes (% difference)</h2>
         <div class="row" style="gap:8px;align-items:flex-end">
@@ -2012,9 +2109,9 @@ routes.reports = async () => {
       <div class="card"><div class="k">Open exceptions</div><div class="v">${num(o.openExceptions)}</div><div class="s">need review</div></div>
     </div>
     <div class="split" style="margin-top:16px">
-      <div class="panel"><h2>Excel exports</h2>
+      <div class="panel"><h2>Report exports (Excel + PDF)</h2>
         <div class="table-wrap"><table><thead><tr><th>Report</th><th>Contents</th><th></th></tr></thead><tbody>
-          ${exports.map(([k, t, s]) => `<tr><td>${esc(t)}</td><td class="muted small">${esc(s)}</td><td><a class="btn sm" href="/api/export/${k}.xlsx" download>Download .xlsx</a></td></tr>`).join('')}
+          ${exports.map(([k, t, s]) => `<tr><td>${esc(t)}</td><td class="muted small">${esc(s)}</td><td><span class="row" style="gap:6px"><a class="btn sm" href="/api/export/${k}.xlsx" download>Excel</a><a class="btn sm quiet" href="/api/export/${k}.pdf" download>PDF</a></span></td></tr>`).join('')}
         </tbody></table></div>
       </div>
       <div class="panel"><h2>Cheapest-supplier wins</h2>
@@ -2311,7 +2408,7 @@ const TITLES = {
   trends: ['Price Trends', 'Observed supplier price history with date gaps shown'],
   buying: ['Buying', 'Match live demand to the cheapest executable supplier'],
   forecast: ['Demand Forecast', 'Moving-average baseline, honest about thin history'],
-  reports: ['Reports & Exports', 'Supplier performance and one-click Excel exports'],
+  reports: ['Reports & Exports', 'Supplier performance and one-click Excel / PDF exports'],
   performance: ['Performance', 'Profitability, cash, capital and stock KPIs'],
   orders: ['Orders & Payments', 'Purchase/sales orders, payments and realised vs forecast margin'],
   placements: ['Order Placement', 'Supplier order with cost price and full-box quantities, ready to send'],
@@ -2405,9 +2502,86 @@ $('#pwBtn').addEventListener('click', () => {
 
 /* ============================ AI assistant ============================ */
 // A chat panel that reads the system through server-side tools and prepares
-// drafts (quotes, placements). It never saves on its own: a proposal card has
-// an Apply button that runs the normal, role-checked API under the user.
-const chat = { messages: [], enabled: null, model: '' };
+// drafts (quotes, placements, demands, orders, tasks). It never saves on its
+// own: a proposal card has an Apply button that runs the normal, role-checked
+// API under the user. Replies stream in over SSE; the transcript is kept in
+// localStorage so a reload does not lose the conversation.
+const chat = { messages: [], enabled: null, model: '', streaming: false, controller: null };
+const CHAT_KEY = 'perfumes.chat.v1';
+const TOOL_LABELS = {
+  search_products: 'looking up products',
+  product_prices: 'checking supplier prices',
+  lowest_cost: 'calculating landed cost',
+  list_suppliers: 'reading suppliers',
+  list_customers: 'reading customers',
+  list_demands: 'reading the demand book',
+  get_settings: 'reading settings',
+  dashboard_overview: 'reading the dashboard',
+  list_alerts: 'checking alerts',
+  list_orders: 'checking orders',
+  get_order: 'reading that order',
+  list_inventory: 'checking stock',
+  list_exceptions: 'checking exceptions',
+  list_captures: 'checking the capture inbox',
+  list_tasks: 'checking tasks',
+  purchase_plan: 'consolidating the purchase plan',
+  price_movers: 'checking price movers',
+  product_history: 'reading price history',
+  compare_quotes: 'comparing quotes',
+  demand_forecast: 'running the forecast',
+  export_info: 'checking export options',
+  draft_offer: 'preparing an offer draft',
+  draft_placement: 'preparing a placement draft',
+  draft_demand: 'preparing a demand draft',
+  draft_order: 'preparing an order draft',
+  draft_task: 'preparing a task draft',
+};
+
+function loadChatHistory() {
+  try {
+    const raw = localStorage.getItem(CHAT_KEY);
+    if (!raw) return;
+    const arr = JSON.parse(raw);
+    if (Array.isArray(arr)) chat.messages = arr.filter((m) => m && (m.role === 'user' || m.role === 'assistant' || m.role === 'proposal'));
+  } catch (_) { /* corrupt history is not worth an error */ }
+}
+
+function saveChatHistory() {
+  try {
+    const slim = chat.messages
+      .filter((m) => m.role === 'user' || (m.role === 'assistant' && m.content) || m.role === 'proposal')
+      .slice(-60)
+      .map((m) => (m.role === 'proposal' ? { role: 'proposal', proposal: m.proposal } : { role: m.role, content: m.content }));
+    localStorage.setItem(CHAT_KEY, JSON.stringify(slim));
+  } catch (_) { /* storage full or blocked: keep chatting without history */ }
+}
+
+// Minimal, safe markdown: text is escaped first, then only these constructs
+// are turned into tags — bold, inline code, http(s) links, bullet/numbered
+// lists. Enough for the assistant's style; no raw HTML ever passes through.
+function md(s) {
+  let h = esc(s);
+  h = h.replace(/`([^`]+)`/g, '<code>$1</code>');
+  h = h.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+  h = h.replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+  const lines = h.split('\n');
+  let out = '';
+  let inUl = false;
+  let inOl = false;
+  const closeLists = () => {
+    if (inUl) { out += '</ul>'; inUl = false; }
+    if (inOl) { out += '</ol>'; inOl = false; }
+  };
+  for (const line of lines) {
+    const ul = line.match(/^\s*[-*]\s+(.*)$/);
+    const ol = line.match(/^\s*\d+[.)]\s+(.*)$/);
+    if (ul) { if (!inUl) { closeLists(); out += '<ul>'; inUl = true; } out += '<li>' + ul[1] + '</li>'; }
+    else if (ol) { if (!inOl) { closeLists(); out += '<ol>'; inOl = true; } out += '<li>' + ol[1] + '</li>'; }
+    else { closeLists(); out += line + '<br>'; }
+  }
+  closeLists();
+  return out;
+}
 
 function proposalCard(p, idx) {
   const rows = (p.fields || []).map((f) => `<div class="cf"><span class="k">${esc(f.label)}</span><span class="v">${esc(String(f.value))}</span></div>`).join('');
@@ -2426,7 +2600,13 @@ function proposalCard(p, idx) {
 function chatBubble(m, idx) {
   if (m.role === 'proposal') return proposalCard(m.proposal, idx);
   if (m.role === 'user') return `<div class="chat-msg user">${esc(m.content)}</div>`;
-  return `<div class="chat-msg bot">${esc(m.content)}</div>`;
+  if (m.streaming && !m.content) {
+    const tool = m.tool ? `<span class="chat-tool">${esc(TOOL_LABELS[m.tool] || m.tool)}</span>` : '';
+    return `<div class="chat-msg bot">${tool}<span class="chat-typing"><i></i><i></i><i></i></span></div>`;
+  }
+  const tool = m.tool ? `<div class="chat-tool">${esc(TOOL_LABELS[m.tool] || m.tool)}</div>` : '';
+  const caret = m.streaming ? '<span class="chat-caret"></span>' : '';
+  return `<div class="chat-msg bot">${tool}<div class="chat-md">${md(m.content)}</div>${caret}</div>`;
 }
 
 function renderChat() {
@@ -2436,9 +2616,28 @@ function renderChat() {
     ? `<div class="chat-note">The assistant is not configured. On the server set <span class="mono">AI_BASE_URL</span>, <span class="mono">AI_API_KEY</span> and <span class="mono">AI_MODEL</span>, then restart.</div>`
     : '';
   const msgs = chat.messages.map((m, i) => chatBubble(m, i)).join('');
-  body.innerHTML = note + (msgs || `<div class="chat-empty">Ask me to find prices, name the cheapest supplier, or prepare a quote or supplier order — e.g. “prepare a quote of <product> at 35% margin, cost 12.50”.</div>`);
+  body.innerHTML = note + (msgs || `<div class="chat-empty">Ask me to find prices, name the cheapest supplier, or prepare a quote or supplier order — e.g. “prepare a quote of &lt;product&gt; at 35% margin, cost 12.50”. You can also ask what needs attention today, or how to export a report.</div>`);
   body.scrollTop = body.scrollHeight;
   $$('#chatBody [data-apply]').forEach((b) => b.addEventListener('click', () => applyProposal(Number(b.dataset.apply))));
+}
+
+// Re-render only the streaming bubble so token updates stay cheap.
+let chatRaf = 0;
+function renderChatStream() {
+  if (chatRaf) return;
+  chatRaf = requestAnimationFrame(() => {
+    chatRaf = 0;
+    const body = $('#chatBody');
+    if (!body) return;
+    const last = chat.messages[chat.messages.length - 1];
+    if (!last || last.role !== 'assistant' || !last.streaming) { renderChat(); return; }
+    const bubbles = body.querySelectorAll('.chat-msg.bot');
+    const el = bubbles[bubbles.length - 1];
+    if (!el) { renderChat(); return; }
+    const tool = last.tool ? `<div class="chat-tool">${esc(TOOL_LABELS[last.tool] || last.tool)}</div>` : '';
+    el.innerHTML = `${tool}<div class="chat-md">${md(last.content)}</div><span class="chat-caret"></span>`;
+    body.scrollTop = body.scrollHeight;
+  });
 }
 
 async function applyProposal(idx) {
@@ -2449,43 +2648,123 @@ async function applyProposal(idx) {
   if (btn) btn.disabled = true;
   try {
     const out = await api(m.proposal.apply.method || 'POST', m.proposal.apply.url, m.proposal.apply.body);
-    chat.messages.push({ role: 'assistant', content: `Done — ${String(m.proposal.apply.label || 'record').toLowerCase()} saved${out && out.id ? ' (id ' + out.id + ')' : ''}.` });
-    toast(m.proposal.type === 'placement' ? 'Placement created' : 'Quote created', 'ok');
+    const label = m.proposal.apply.label || 'record';
+    chat.messages.push({ role: 'assistant', content: `Done — ${String(label).toLowerCase()} saved${out && out.id ? ' (id ' + out.id + ')' : ''}.` });
+    toast(label + ' saved', 'ok');
+    saveChatHistory();
     renderChat();
     render();
   } catch (e) {
     toast(e.message, 'err');
+    if (btn) btn.disabled = false;
   }
 }
 
+// POST the turn and consume the SSE reply: tool = a tool is running,
+// delta = a text fragment, done = reply + proposals, error = failure.
+// Falls back to the plain /ai/chat turn if the stream endpoint is missing.
 async function sendChat() {
   const input = $('#chatInput');
   const text = (input.value || '').trim();
-  if (!text) return;
+  if (!text || chat.streaming) return;
   input.value = '';
   chat.messages.push({ role: 'user', content: text });
   if (chat.enabled === false) {
     chat.messages.push({ role: 'assistant', content: 'The assistant is not configured on the server yet. Ask an admin to set AI_BASE_URL, AI_API_KEY and AI_MODEL, then restart.' });
+    saveChatHistory();
     renderChat();
     return;
   }
+  const turn = { role: 'assistant', content: '', streaming: true, tool: null };
+  chat.messages.push(turn);
+  chat.streaming = true;
+  setChatSending(true);
   renderChat();
-  const sendBtn = $('#chatSend');
-  if (sendBtn) { sendBtn.disabled = true; sendBtn.textContent = '…'; }
+
+  const payload = chat.messages
+    .filter((m) => (m.role === 'user' || m.role === 'assistant') && m.content)
+    .map((m) => ({ role: m.role, content: m.content }));
+
+  chat.controller = new AbortController();
+  let sawDone = false;
   try {
-    const payload = chat.messages
-      .filter((m) => m.role === 'user' || m.role === 'assistant')
-      .map((m) => ({ role: m.role, content: m.content }));
-    const out = await POST('/ai/chat', { messages: payload });
-    if (out.reply) chat.messages.push({ role: 'assistant', content: out.reply });
-    (out.proposals || []).forEach((p) => chat.messages.push({ role: 'proposal', proposal: p }));
-    if (!out.reply && !(out.proposals || []).length) chat.messages.push({ role: 'assistant', content: '(no answer)' });
+    const r = await fetch('/api/ai/chat/stream', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ messages: payload }),
+      signal: chat.controller.signal,
+    });
+    if (!r.ok || !r.body) throw new Error('The assistant stream failed (HTTP ' + r.status + ').');
+    const reader = r.body.getReader();
+    const dec = new TextDecoder();
+    let buf = '';
+    const frame = (event, data) => {
+      if (event === 'tool') { turn.tool = data.name; renderChatStream(); }
+      else if (event === 'delta') { turn.content += data.text || ''; renderChatStream(); }
+      else if (event === 'done') {
+        sawDone = true;
+        if (!turn.content && data.reply) turn.content = data.reply;
+        (data.proposals || []).forEach((p) => chat.messages.push({ role: 'proposal', proposal: p }));
+        if (data.model) chat.model = data.model;
+      } else if (event === 'error') {
+        throw new Error(data.message || 'The assistant failed.');
+      }
+    };
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += dec.decode(value, { stream: true });
+      let i;
+      while ((i = buf.indexOf('\n\n')) >= 0) {
+        const raw = buf.slice(0, i);
+        buf = buf.slice(i + 2);
+        let event = 'message';
+        let data = '';
+        for (const line of raw.split('\n')) {
+          if (line.startsWith('event:')) event = line.slice(6).trim();
+          else if (line.startsWith('data:')) data += line.slice(5).trim();
+        }
+        if (!data) continue;
+        let j;
+        try { j = JSON.parse(data); } catch (_) { continue; }
+        frame(event, j);
+      }
+    }
+    if (!sawDone && !turn.content) throw new Error('The assistant stream ended unexpectedly.');
   } catch (e) {
-    chat.messages.push({ role: 'assistant', content: 'Error: ' + e.message });
+    if (e.name === 'AbortError') {
+      if (!turn.content) turn.content = '(stopped)';
+    } else {
+      // Stream unavailable (older server, proxy): fall back to the plain turn.
+      try {
+        const out = await POST('/ai/chat', { messages: payload });
+        turn.content = out.reply || '';
+        (out.proposals || []).forEach((p) => chat.messages.push({ role: 'proposal', proposal: p }));
+        if (!turn.content && !(out.proposals || []).length) turn.content = '(no answer)';
+      } catch (e2) {
+        turn.content = 'Error: ' + e2.message;
+      }
+    }
   } finally {
-    if (sendBtn) { sendBtn.disabled = false; sendBtn.textContent = 'Send'; }
+    turn.streaming = false;
+    turn.tool = null;
+    chat.streaming = false;
+    chat.controller = null;
+    setChatSending(false);
+    saveChatHistory();
     renderChat();
   }
+}
+
+function setChatSending(on) {
+  const btn = $('#chatSend');
+  if (!btn) return;
+  btn.textContent = on ? 'Stop' : 'Send';
+  btn.classList.toggle('danger', on);
+}
+
+function stopChat() {
+  if (chat.controller) chat.controller.abort();
 }
 
 async function initAssistant() {
@@ -2501,7 +2780,10 @@ async function initAssistant() {
   panel.innerHTML = `
     <div class="chat-head">
       <div><strong>Assistant</strong> <span class="small muted" id="chatModel"></span></div>
-      <button class="ghost sm" id="chatClose">&#10005;</button>
+      <div class="row" style="gap:6px">
+        <button class="ghost sm" id="chatClear" title="Clear this conversation">Clear</button>
+        <button class="ghost sm" id="chatClose" aria-label="Close">&#10005;</button>
+      </div>
     </div>
     <div class="chat-body" id="chatBody"></div>
     <div class="chat-foot">
@@ -2515,8 +2797,14 @@ async function initAssistant() {
     if (!panel.classList.contains('hidden')) $('#chatInput').focus();
   });
   $('#chatClose').addEventListener('click', () => panel.classList.add('hidden'));
-  $('#chatSend').addEventListener('click', sendChat);
-  $('#chatInput').addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat(); } });
+  $('#chatClear').addEventListener('click', () => {
+    chat.messages = [];
+    try { localStorage.removeItem(CHAT_KEY); } catch (_) { /* ignore */ }
+    renderChat();
+  });
+  $('#chatSend').addEventListener('click', () => { if (chat.streaming) stopChat(); else sendChat(); });
+  $('#chatInput').addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); if (!chat.streaming) sendChat(); } });
+  loadChatHistory();
   try {
     const s = await GET('/ai/status');
     chat.enabled = !!s.enabled;

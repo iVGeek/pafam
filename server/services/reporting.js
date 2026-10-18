@@ -279,8 +279,10 @@ function build(kind) {
 }
 
 // Customer-facing quotation: sell-side only. Deliberately omits supplier
-// names, buying costs, margins and any internal reference (§4.7 / §16).
-function quoteWorkbook(quoteId) {
+// names, buying costs, margins and any internal reference (A4.7 / A16).
+// One source of truth: the label/value rows below drive both the .xlsx and
+// the PDF, so the two formats can never disagree.
+function quoteRows(quoteId) {
   const q = db.prepare(
     `SELECT q.*, c.name AS customer_name, c.region, c.payment_terms AS customer_payment_terms,
             p.display_name, p.canonical_gtin, p.brand, p.fragrance, p.size_ml
@@ -292,31 +294,47 @@ function quoteWorkbook(quoteId) {
   if (!q) return null;
   const unitPrice = q.selling_unit_price != null ? q.selling_unit_price : q.unit_price;
   const total = pricing.round2((Number(unitPrice) || 0) * (Number(q.quantity) || 0));
-  const rows = [
-    ['Customer quotation', ''],
-    ['Quote reference', 'Q-' + String(q.id).padStart(4, '0')],
-    ['Date', new Date().toISOString().slice(0, 10)],
-    ['Customer', q.customer_name || ''],
-    ['Region', q.region || ''],
-    ['', ''],
-    ['Product', q.display_name || ''],
-    ['Barcode', q.canonical_gtin || ''],
-    ['Brand', q.brand || ''],
-    ['Size (ml)', q.size_ml || ''],
-    ['', ''],
-    ['Quantity', q.quantity],
-    ['Unit price', pricing.round4(unitPrice)],
-    ['Currency', q.currency || 'USD'],
-    ['Total', total],
-    ['Validity', q.validity_date || ''],
-    ['Payment terms', q.terms || q.customer_payment_terms || ''],
-    ['Delivery', q.customer_due_date ? 'By ' + q.customer_due_date : ''],
-  ];
-  const ws = XLSX.utils.aoa_to_sheet(rows);
+  return {
+    quote: q,
+    rows: [
+      ['Customer quotation', ''],
+      ['Quote reference', 'Q-' + String(q.id).padStart(4, '0')],
+      ['Date', new Date().toISOString().slice(0, 10)],
+      ['Customer', q.customer_name || ''],
+      ['Region', q.region || ''],
+      ['', ''],
+      ['Product', q.display_name || ''],
+      ['Barcode', q.canonical_gtin || ''],
+      ['Brand', q.brand || ''],
+      ['Size (ml)', q.size_ml || ''],
+      ['', ''],
+      ['Quantity', q.quantity],
+      ['Unit price', pricing.round4(unitPrice)],
+      ['Currency', q.currency || 'USD'],
+      ['Total', total],
+      ['Validity', q.validity_date || ''],
+      ['Payment terms', q.terms || q.customer_payment_terms || ''],
+      ['Delivery', q.customer_due_date ? 'By ' + q.customer_due_date : ''],
+    ],
+    filename: `ptp-quote-${quoteId}`,
+  };
+}
+
+function quoteWorkbook(quoteId) {
+  const data = quoteRows(quoteId);
+  if (!data) return null;
+  const ws = XLSX.utils.aoa_to_sheet(data.rows);
   ws['!cols'] = [{ wch: 22 }, { wch: 34 }];
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Quote');
   return XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' });
 }
 
-module.exports = { build, quoteWorkbook, BUILDERS };
+// The descriptor behind a report export, so .xlsx and .pdf share one source.
+function sheetFor(kind) {
+  const builder = BUILDERS[kind];
+  if (!builder) return null;
+  return builder();
+}
+
+module.exports = { build, sheetFor, quoteRows, quoteWorkbook, BUILDERS };

@@ -188,37 +188,82 @@ function planForSupplier(supplierCode) {
   return { supplierCode: supplierCode || null, suppliers, lines };
 }
 
-// Supplier-facing workbook: cost prices and full-box quantities, ready to send.
-function placementWorkbook(id) {
+// The data behind a placement export. One source of truth: the .xlsx and the
+// PDF are both built from this, so they cannot disagree.
+function placementData(id) {
   const p = getPlacement(id);
   if (!p) return null;
+  return {
+    placement: p,
+    ref: p.ref,
+    title: 'Supplier order placement',
+    meta: [
+      ['Supplier', p.supplier_name || p.supplier_code || ''],
+      ['Order date', p.order_date || ''],
+      ['Currency', p.currency || ''],
+      ['Incoterm', p.incoterm || ''],
+      ['Status', p.status || ''],
+      ['Notes', p.notes || ''],
+    ],
+    columns: [
+      { title: '#', key: 'idx', wch: 5 },
+      { title: 'Barcode', key: 'barcode', wch: 16 },
+      { title: 'Description', key: 'description', wch: 46 },
+      { title: 'Units / case', key: 'units_per_case', wch: 11 },
+      { title: 'Boxes', key: 'boxes', wch: 8 },
+      { title: 'Units', key: 'units', wch: 9 },
+      { title: 'Unit cost', key: 'unit_cost', wch: 12 },
+      { title: 'Line total', key: 'line_total', wch: 13 },
+    ],
+    rows: p.lines.map((l, i) => ({
+      idx: i + 1,
+      barcode: l.barcode || '',
+      description: l.description || '',
+      units_per_case: l.units_per_case || '',
+      boxes: l.boxes || 0,
+      units: l.units || 0,
+      unit_cost: l.unit_cost != null ? round4(l.unit_cost) : '',
+      line_total: l.line_total != null ? round4(l.line_total) : '',
+    })),
+    totals: [
+      ['Total units', p.totals.units],
+      ['Total', p.totals.total],
+    ],
+  };
+}
+
+// Supplier-facing workbook: cost prices and full-box quantities, ready to send.
+function placementWorkbook(id) {
+  const d = placementData(id);
+  if (!d) return null;
   const header = [
-    ['Supplier order placement', p.ref],
-    ['Supplier', p.supplier_name || p.supplier_code || ''],
-    ['Order date', p.order_date || ''],
-    ['Currency', p.currency || ''],
-    ['Incoterm', p.incoterm || ''],
-    ['Status', p.status || ''],
-    ['Notes', p.notes || ''],
+    ['Supplier order placement', d.ref],
+    ...d.meta,
     [],
-    ['#', 'Barcode', 'Description', 'Units / case', 'Boxes', 'Units', 'Unit cost', 'Line total'],
+    d.columns.map((c) => c.title),
   ];
-  const body = p.lines.map((l, i) => [
-    i + 1, l.barcode || '', l.description || '', l.units_per_case || '',
-    l.boxes || 0, l.units || 0,
-    l.unit_cost != null ? round4(l.unit_cost) : '',
-    l.line_total != null ? round4(l.line_total) : '',
-  ]);
+  const body = d.rows.map((r) => d.columns.map((c) => r[c.key]));
   const tail = [
     [],
-    ['', '', '', '', '', 'Total units', '', p.totals.units],
-    ['', '', '', '', 'Total', '', '', p.totals.total],
+    ['', '', '', '', 'Total units', '', '', d.totals[0][1]],
+    ['', '', '', '', 'Total', '', '', d.totals[1][1]],
   ];
   const ws = XLSX.utils.aoa_to_sheet([...header, ...body, ...tail]);
   ws['!cols'] = [{ wch: 5 }, { wch: 16 }, { wch: 46 }, { wch: 11 }, { wch: 8 }, { wch: 9 }, { wch: 12 }, { wch: 13 }];
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, 'Placement');
-  return { buffer: XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }), filename: `placement-${p.ref || id}.xlsx` };
+  return { buffer: XLSX.write(wb, { type: 'buffer', bookType: 'xlsx' }), filename: `placement-${d.ref || id}.xlsx` };
 }
 
-module.exports = { toFullBoxes, normalizeLine, createPlacement, getPlacement, listPlacements, planForSupplier, placementWorkbook, computeTotals };
+// Supplier-facing PDF: same data, print-ready.
+function placementPdf(id) {
+  const d = placementData(id);
+  if (!d) return null;
+  const pdf = require('./pdf');
+  return pdf.sheetPdf(
+    { title: `${d.title} ${d.ref || ''}`.trim(), meta: d.meta, columns: d.columns, rows: d.rows },
+    { orientation: 'landscape', notes: d.totals.map((t) => `${t[0]}: ${t[1]}`) }
+  ).then((buffer) => ({ buffer, filename: `placement-${d.ref || id}.pdf` }));
+}
+
+module.exports = { toFullBoxes, normalizeLine, createPlacement, getPlacement, listPlacements, planForSupplier, placementData, placementWorkbook, placementPdf, computeTotals };
