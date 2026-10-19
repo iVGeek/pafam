@@ -13,6 +13,7 @@
     "seed": "node --no-warnings server/seed.js",
     "import": "node src/index.js",
     "gen:samples": "node --no-warnings scripts/generate-samples.js",
+    "gen:templates": "node --no-warnings scripts/generate-client-templates.js",
     "test": "node --test"
   },
   "dependencies": {
