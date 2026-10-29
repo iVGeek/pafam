@@ -1266,6 +1266,16 @@ async function chat({ messages, onEvent } = {}) {
     throw err;
   }
   const convo = [{ role: 'system', content: SYSTEM_PROMPT }].concat(sanitize(messages));
+  // "yes" after an offered draft must not be re-analysed: steer the model to act.
+  const lastUser = [...messages].reverse().find((m) => m && m.role === 'user' && typeof m.content === 'string');
+  const hadAssistant = messages.some((m) => m && m.role === 'assistant');
+  if (hadAssistant && lastUser && /^\s*(yes|yep|yeah|ok|okay|sure|go ahead|do it|please do|proceed|confirm(ed)?)\b/i.test(lastUser.content)
+      && lastUser.content.trim().length <= 30) {
+    convo.push({
+      role: 'system',
+      content: 'The user confirmed your previous offer. Call the relevant draft tool now using the data already discussed (draft tools resolve product names themselves), then describe the prepared draft. Do not repeat the analysis and do not ask again.',
+    });
+  }
   const proposals = [];
   const proposalKeys = new Set();
   let usedModel = model();
@@ -1292,7 +1302,16 @@ async function chat({ messages, onEvent } = {}) {
 
     const calls = msg.tool_calls || [];
     if (!calls.length) {
-      return { reply: msg.content || '', proposals, model: usedModel };
+      let reply = msg.content || '';
+      // A retried tool call can succeed after an early error; small models then
+      // report the error and ignore the card. If a draft exists, say so.
+      if (proposals.length && /\b(couldn't|could not|unable|failed|failure|error|issue)\b/i.test(reply)) {
+        const one = proposals.length === 1;
+        reply = 'I prepared ' + proposals.length + ' draft' + (one ? '' : 's') + ': ' +
+          proposals.map((p) => p.title + (p.summary ? ' (' + p.summary + ')' : '')).join('; ') +
+          '. Review the card' + (one ? '' : 's') + ' below and click Apply.';
+      }
+      return { reply, proposals, model: usedModel };
     }
     for (const call of calls) {
       const name = call.function && call.function.name;

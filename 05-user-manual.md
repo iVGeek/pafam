@@ -595,6 +595,9 @@ answered. If every configured model is stale the assistant recovers by itself
 from the provider catalogue (free models that support tool calls), so a retired
 model no longer stops it. When nothing works, the chat reports the real reason
 (retired / paid-only / rate-limited / invalid key) instead of a generic error.
+A small paid model (for example `openai/gpt-4o-mini`) costs well under a cent
+per question and avoids the free-tier daily limit; the free models can stay in
+`AI_MODELS` as last-resort fallbacks.
 
 Until `AI_BASE_URL` or `AI_API_KEY` is set the panel opens but shows **not
 configured**. The assistant has no direct database access: it reads through a

@@ -161,15 +161,18 @@ Provider examples:
 | **GitHub Models** (free) | `https://models.github.ai/inference` | `openai/gpt-4o-mini` | GitHub PAT with the `models:read` scope |
 | OpenAI | `https://api.openai.com/v1` | `gpt-4o-mini` | OpenAI key |
 | Groq (free tier) | `https://api.groq.com/openai/v1` | `llama-3.3-70b-versatile` | Groq key |
-| OpenRouter (free models) | `https://openrouter.ai/api/v1` | `nvidia/nemotron-3.5-lightning:free` | OpenRouter key |
+| OpenRouter (cheap paid) | `https://openrouter.ai/api/v1` | `openai/gpt-4o-mini` | OpenRouter key |
+| OpenRouter (free) | `https://openrouter.ai/api/v1` | `nvidia/nemotron-3.5-lightning:free` | OpenRouter key |
 | Google Gemini | `https://generativelanguage.googleapis.com/v1beta/openai/` | `gemini-1.5-flash` | Google key |
 | Ollama (local) | `http://localhost:11434/v1` | `llama3.1` | *(none)* |
 
-Locally, put these in a `.env` file at the project root (it is git-ignored and
-loaded on start); on Railway/Render set them as dashboard variables. Free model
-lists rotate — `npm run check:ai` lists current free models that support
-tool/function calling (that capability is mandatory; without it the assistant
-cannot read the business).
+A small paid model such as `openai/gpt-4o-mini` costs well under a cent per
+question and does not hit the free-tier daily limit; keep free `:free` models
+later in `AI_MODELS` as fallbacks. Locally, put these in a `.env` file at the
+project root (it is git-ignored and loaded on start); on Railway/Render set them
+as dashboard variables. Free model lists rotate — `npm run check:ai` lists
+current free models that support tool/function calling (that capability is
+mandatory; without it the assistant cannot read the business).
 
 Until `AI_BASE_URL` or `AI_API_KEY` is set, the panel opens but reports **not
 configured**. See the [User Manual](05-user-manual.md) §§24–25.

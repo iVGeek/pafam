@@ -335,6 +335,48 @@ test('repeated identical draft calls produce one card, not duplicates', async ()
   assert.strictEqual(out.proposals.length, 1);
 });
 
+test('a bare "yes" is steered to act on the offered draft', async () => {
+  setEnv({ AI_MODELS: 'test:model' });
+  let seen = null;
+  ai.setTransport(async (payload) => {
+    seen = payload.messages;
+    return { choices: [{ message: { role: 'assistant', content: 'Prepared.' } }], _model: 'test:model' };
+  });
+  await ai.chat({
+    messages: [
+      { role: 'user', content: 'cheapest supplier for X?' },
+      { role: 'assistant', content: 'Alcodis. Want me to prepare a draft placement?' },
+      { role: 'user', content: 'yes' },
+    ],
+  });
+  assert.ok(seen.some((m) => m.role === 'system' && /confirmed your previous offer/i.test(m.content)));
+});
+
+test('a successful retry is described even if the model narrates the earlier error', async () => {
+  setEnv({ AI_MODELS: 'test:model' });
+  let turn = 0;
+  ai.setTransport(async () => {
+    turn += 1;
+    if (turn === 1) {
+      return {
+        choices: [{
+          message: {
+            role: 'assistant',
+            content: '',
+            tool_calls: [{ id: 'a', type: 'function', function: { name: 'draft_task', arguments: '{"title":"follow up"}' } }],
+          },
+        }],
+        _model: 'test:model',
+      };
+    }
+    return { choices: [{ message: { role: 'assistant', content: 'It seems there was an issue preparing the draft.' } }], _model: 'test:model' };
+  });
+  const out = await ai.chat({ messages: [{ role: 'user', content: 'draft a task' }] });
+  assert.strictEqual(out.proposals.length, 1);
+  assert.match(out.reply, /I prepared 1 draft/);
+  assert.doesNotMatch(out.reply, /issue/);
+});
+
 test('diagnose reports missing configured models and suggests free alternatives', async () => {
   setEnv({ AI_MODELS: 'gone:free, alive:free', AI_BASE_URL: 'https://openrouter.ai/api/v1' });
   ai.setFetch(async (url) => {
