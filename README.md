@@ -137,16 +137,21 @@ replica, which is what a SQLite volume requires.
 | `AI_API_KEY` | Provider key (leave empty for a local server) | — |
 | `AI_MODEL` | Primary model name | `gpt-4o-mini` |
 | `AI_MODELS` | Ordered fallback chain (comma separated); wins over `AI_MODEL` | — |
+| `AI_AUTO_DISCOVER` | If every configured model is retired/paid/throttled, pick a free tool-capable model from the provider catalogue automatically (`0` disables) | `1` |
+| `AI_AUTO_DISCOVER_MAX` | How many catalogue models to try when self-healing | `2` |
 | `AI_TIMEOUT_MS` | Per-attempt timeout | `45000` |
 
 When the primary model is retired, turned paid or throttled, the assistant
 silently moves to the next model in `AI_MODELS` and the chat header shows which
-one answered (`+N fallback`). If every model fails, the error says exactly why
-(retired / paid-only / rate-limited / bad key) instead of a generic provider
-error. **Free catalogues churn** — run `npm run check:ai` any time the
-assistant stops working; `npm run check:ai -- --write` repairs `.env` with a
-working free model. `GET /api/ai/diagnose` returns the same report as JSON
-(signed-in users only, no key material).
+one answered (`+N fallback`). If **every** configured model is stale, it asks
+the provider for the current catalogue, switches to a working free model that
+supports tool calls, and keeps using it until the process restarts — so a
+retired free model no longer breaks the assistant. If nothing works, the error
+says exactly why (retired / paid-only / rate-limited / bad key) instead of a
+generic provider error. **Free catalogues churn** — run `npm run check:ai` any
+time the assistant stops working; `npm run check:ai -- --write` repairs `.env`
+with a working free model. `GET /api/ai/diagnose` returns the same report as
+JSON (signed-in users only, no key material).
 
 Provider examples:
 

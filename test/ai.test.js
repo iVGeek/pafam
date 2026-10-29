@@ -19,7 +19,7 @@ const assert = require('node:assert');
 const ai = require('../server/services/ai');
 
 const SAVED = {};
-for (const k of ['AI_MODEL', 'AI_MODELS', 'AI_BASE_URL', 'AI_API_KEY', 'PTP_AI_MOCK', 'AI_TIMEOUT_MS']) SAVED[k] = process.env[k];
+for (const k of ['AI_MODEL', 'AI_MODELS', 'AI_BASE_URL', 'AI_API_KEY', 'PTP_AI_MOCK', 'AI_TIMEOUT_MS', 'AI_AUTO_DISCOVER', 'AI_AUTO_DISCOVER_MAX']) SAVED[k] = process.env[k];
 
 function setEnv(vars) {
   for (const k of Object.keys(SAVED)) delete process.env[k];
@@ -37,6 +37,7 @@ function sse(chunks) {
 
 afterEach(() => {
   ai.setFetch(null);
+  ai._resetDiscovery();
   for (const k of Object.keys(SAVED)) {
     if (SAVED[k] === undefined) delete process.env[k];
     else process.env[k] = SAVED[k];
@@ -131,6 +132,85 @@ test('provider errors are classified for humans', () => {
   assert.strictEqual(ai._describeProvider(429, 'rate limited', 'x').retry, true);
   assert.strictEqual(ai._describeProvider(400, 'bad tools payload', 'x').retry, false);
   assert.match(ai._describeProvider(402, 'no credit', 'x').message, /credit/);
+});
+
+test('a stale chain self-heals from the provider catalogue and remembers the model', async () => {
+  setEnv({ AI_MODELS: 'retired:free', AI_BASE_URL: 'https://openrouter.ai/api/v1' });
+  const seen = [];
+  ai.setFetch(async (url, opts) => {
+    if (url.endsWith('/models')) {
+      return json(200, {
+        data: [
+          { id: 'fresh:free', pricing: { prompt: '0', completion: '0' }, supported_parameters: ['tools'] },
+          { id: 'no-tools:free', pricing: { prompt: '0', completion: '0' }, supported_parameters: [] },
+        ],
+      });
+    }
+    const body = JSON.parse(opts.body);
+    seen.push(body.model);
+    if (body.model === 'retired:free') return json(404, { error: { message: 'This model is unavailable for free' } });
+    return json(200, { choices: [{ message: { role: 'assistant', content: 'rescued' } }] });
+  });
+
+  const first = await ai.chat({ messages: [{ role: 'user', content: 'hi' }] });
+  assert.strictEqual(first.reply, 'rescued');
+  assert.strictEqual(first.model, 'fresh:free');
+  assert.strictEqual(ai.status().discoveredModel, 'fresh:free');
+
+  const second = await ai.chat({ messages: [{ role: 'user', content: 'again' }] });
+  assert.strictEqual(second.reply, 'rescued');
+  // Second turn starts with the discovered model: no dead-model attempt.
+  assert.deepStrictEqual(seen, ['retired:free', 'fresh:free', 'fresh:free']);
+});
+
+test('auto-discovery can be disabled (AI_AUTO_DISCOVER=0)', async () => {
+  setEnv({ AI_MODELS: 'gone:free', AI_BASE_URL: 'https://openrouter.ai/api/v1', AI_AUTO_DISCOVER: '0' });
+  ai.setFetch(async (url) => {
+    if (url.endsWith('/models')) throw new Error('catalogue must not be fetched');
+    return json(404, { error: { message: 'This model is unavailable for free' } });
+  });
+  await assert.rejects(() => ai.chat({ messages: [{ role: 'user', content: 'hi' }] }), (e) => {
+    assert.strictEqual(e.code, 'model_unavailable');
+    return true;
+  });
+});
+
+test('the SSE route streams delta + done instead of closing the response early', async () => {
+  setEnv({ AI_MODELS: 'test:model' });
+  ai.setTransport(async (_payload, onDelta) => {
+    if (typeof onDelta === 'function') { onDelta('Hel'); onDelta('lo'); }
+    return { choices: [{ message: { role: 'assistant', content: 'Hello' } }], _model: 'test:model' };
+  });
+  const http = require('http');
+  const auth = require('../server/services/auth');
+  try { auth.createUser({ username: 'admin', password: 'admin123', role: 'admin' }); } catch (e) { if (e.status !== 409) throw e; }
+  const app = require('../server');
+  const server = http.createServer(app);
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const base = 'http://127.0.0.1:' + server.address().port;
+  try {
+    const login = await fetch(base + '/api/auth/login', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ username: 'admin', password: 'admin123' }),
+    });
+    assert.strictEqual(login.status, 200);
+    const cookie = login.headers.get('set-cookie');
+    const res = await fetch(base + '/api/ai/chat/stream', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie },
+      body: JSON.stringify({ messages: [{ role: 'user', content: 'hi' }] }),
+    });
+    assert.strictEqual(res.status, 200);
+    const text = await res.text();
+    assert.match(text, /event: delta/);
+    assert.match(text, /"text":"Hel"/);
+    assert.match(text, /event: done/);
+    assert.match(text, /"reply":"Hello"/);
+    assert.match(text, /"model":"test:model"/);
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+  }
 });
 
 test('diagnose reports missing configured models and suggests free alternatives', async () => {

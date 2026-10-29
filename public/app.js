@@ -2744,6 +2744,7 @@ async function sendChat() {
         const out = await POST('/ai/chat', { messages: payload });
         turn.content = out.reply || '';
         (out.proposals || []).forEach((p) => chat.messages.push({ role: 'proposal', proposal: p }));
+        if (out.model) { chat.model = out.model; setChatModelLabel(); }
         if (!turn.content && !(out.proposals || []).length) turn.content = '(no answer)';
       } catch (e2) {
         turn.content = '**Assistant unavailable.** ' + e2.message;

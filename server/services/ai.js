@@ -48,8 +48,9 @@ function headers() {
 function status() {
   return {
     enabled: enabled(),
-    model: model(),
+    model: discoveredModel || model(),
     models: models(),
+    discoveredModel,
     provider: baseUrl(),
     hasKey: Boolean(apiKey()),
     baseUrlSet: Boolean(process.env.AI_BASE_URL),
@@ -945,54 +946,103 @@ async function readResponse(res, onDelta) {
   }
 }
 
+let discoveredModel = null;
+
+function candidateOrder() {
+  const order = [];
+  if (discoveredModel) order.push(discoveredModel);
+  for (const id of models()) if (!order.includes(id)) order.push(id);
+  return order;
+}
+
+function autoDiscoverEnabled() { return process.env.AI_AUTO_DISCOVER !== '0'; }
+
+async function discoverModels(exclude) {
+  if (!autoDiscoverEnabled()) return [];
+  let catalog = null;
+  try {
+    const r = await getJson(baseUrl() + '/models', 6000);
+    if (r.ok && r.data && Array.isArray(r.data.data)) catalog = r.data.data;
+  } catch (_) { return []; }
+  if (!catalog) return [];
+  const max = Math.max(0, Number(process.env.AI_AUTO_DISCOVER_MAX) || 2);
+  return catalog
+    .filter((m) => m && /:free$/.test(m.id))
+    .filter((m) => m.pricing && Number(m.pricing.prompt) === 0 && Number(m.pricing.completion) === 0)
+    .filter((m) => (m.supported_parameters || []).includes('tools'))
+    .map((m) => m.id)
+    .filter((id) => !exclude.includes(id))
+    .slice(0, max);
+}
+
+// One model attempt: resolves to { out } on success or { failure } when the
+// next candidate should be tried. Throws only for errors retrying cannot fix.
+async function attempt(id, payload, onDelta) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), Number(process.env.AI_TIMEOUT_MS) || 45000);
+  try {
+    const body = Object.assign({}, payload, { model: id });
+    if (typeof onDelta === 'function') body.stream = true;
+    const res = await httpFetch(baseUrl() + '/chat/completions', {
+      method: 'POST',
+      headers: headers(),
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+    if (!res.ok) {
+      const text = await res.text();
+      let data = null;
+      try { data = JSON.parse(text); } catch (_) { data = null; }
+      const detail = (data && data.error && (data.error.message || data.error.code)) || text || ('HTTP ' + res.status);
+      const info = describeProvider(res.status, detail, id);
+      if (!info.retry) {
+        const err = new Error(info.message);
+        err.status = 502;
+        err.code = info.code;
+        err.retry = false;
+        err.failures = [{ model: id, code: info.code, reason: info.reason }];
+        throw err;
+      }
+      return { failure: { model: id, code: info.code, reason: info.reason } };
+    }
+    const out = await readResponse(res, onDelta);
+    if (out && typeof out === 'object') {
+      out._model = id;
+      if (!out.model) out.model = id;
+    }
+    return { out };
+  } catch (e) {
+    if (e && e.retry === false) throw e;
+    if (e && e.name === 'AbortError') {
+      return { failure: { model: id, code: 'timeout', reason: 'timed out after ' + Math.round((Number(process.env.AI_TIMEOUT_MS) || 45000) / 1000) + 's' } };
+    }
+    return { failure: { model: id, code: 'network', reason: 'could not connect: ' + e.message } };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 async function callModel(payload, onDelta) {
-  const list = models();
   const failures = [];
-  for (const id of list) {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), Number(process.env.AI_TIMEOUT_MS) || 45000);
-    try {
-      const body = Object.assign({}, payload, { model: id });
-      if (typeof onDelta === 'function') body.stream = true;
-      const res = await httpFetch(baseUrl() + '/chat/completions', {
-        method: 'POST',
-        headers: headers(),
-        body: JSON.stringify(body),
-        signal: controller.signal,
-      });
-      if (!res.ok) {
-        const text = await res.text();
-        let data = null;
-        try { data = JSON.parse(text); } catch (_) { data = null; }
-        const detail = (data && data.error && (data.error.message || data.error.code)) || text || ('HTTP ' + res.status);
-        const info = describeProvider(res.status, detail, id);
-        if (!info.retry) {
-          const err = new Error(info.message);
-          err.status = 502;
-          err.code = info.code;
-          err.retry = false;
-          err.failures = [{ model: id, code: info.code, reason: info.reason }];
-          throw err;
-        }
-        failures.push({ model: id, code: info.code, reason: info.reason });
-        continue;
+  for (const id of candidateOrder()) {
+    const r = await attempt(id, payload, onDelta);
+    if (r.out) return r.out;
+    failures.push(r.failure);
+  }
+
+  // The configured slugs can all be stale (retired, paid-only, throttled).
+  // Ask the provider what exists right now, keep the first free tool-capable
+  // model that answers, and reuse it for the rest of this process.
+  const churn = failures.some((f) => f.code === 'model_unavailable' || f.code === 'model_restricted' || f.code === 'rate_limit');
+  if (churn) {
+    for (const id of await discoverModels(failures.map((f) => f.model))) {
+      const r = await attempt(id, payload, onDelta);
+      if (r.out) {
+        discoveredModel = id;
+        console.warn('[ai] configured models unavailable; switched to discovered model ' + id);
+        return r.out;
       }
-      const out = await readResponse(res, onDelta);
-      if (out && typeof out === 'object') {
-        out._model = id;
-        if (!out.model) out.model = id;
-      }
-      return out;
-    } catch (e) {
-      if (e && e.retry === false) throw e;
-      if (e && e.name === 'AbortError') {
-        failures.push({ model: id, code: 'timeout', reason: 'timed out after ' + Math.round((Number(process.env.AI_TIMEOUT_MS) || 45000) / 1000) + 's' });
-        continue;
-      }
-      failures.push({ model: id, code: 'network', reason: 'could not connect: ' + e.message });
-      continue;
-    } finally {
-      clearTimeout(timeout);
+      failures.push(r.failure);
     }
   }
   throw allFailed(failures);
@@ -1002,6 +1052,7 @@ let transport = callModel;
 function setTransport(fn) { transport = fn || callModel; }
 
 function setFetch(fn) { httpFetch = fn || ((url, opts) => fetch(url, opts)); }
+function resetDiscovery() { discoveredModel = null; }
 
 /* ------------------------------- diagnostics ------------------------------- */
 
@@ -1152,6 +1203,7 @@ module.exports = {
   runTool,
   setTransport,
   setFetch,
+  _resetDiscovery: resetDiscovery,
   tools: TOOLS,
   _executors: EXECUTORS,
   _describeProvider: describeProvider,

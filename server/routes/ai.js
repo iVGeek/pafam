@@ -36,23 +36,27 @@ router.post('/ai/chat/stream', async (req, res) => {
     Connection: 'keep-alive',
     'X-Accel-Buffering': 'no',
   });
-  const send = (event, data) => { res.write('event: ' + event + '\n' + 'data: ' + JSON.stringify(data) + '\n\n'); };
+  const send = (event, data) => {
+    if (closed || res.writableEnded) return;
+    res.write('event: ' + event + '\n' + 'data: ' + JSON.stringify(data) + '\n\n');
+  };
   let closed = false;
-  req.on('close', () => { closed = true; });
+  // res 'close' = the client went away. req 'close' fires when the request
+  // body has been read (much earlier), which would swallow every event.
+  res.on('close', () => { closed = true; });
   try {
     const out = await ai.chat({
       messages,
       onEvent: (e) => {
-        if (closed) return;
         if (e.type === 'delta') send('delta', { text: e.text });
         else if (e.type === 'tool') send('tool', { name: e.name });
       },
     });
-    if (!closed) send('done', { reply: out.reply, proposals: out.proposals, model: out.model });
+    send('done', { reply: out.reply, proposals: out.proposals, model: out.model });
   } catch (e) {
-    if (!closed) send('error', { message: e.message, status: e.status || 500, code: e.code || null, failures: e.failures || null });
+    send('error', { message: e.message, status: e.status || 500, code: e.code || null, failures: e.failures || null });
   }
-  res.end();
+  if (!res.writableEnded) res.end();
 });
 
 module.exports = router;
