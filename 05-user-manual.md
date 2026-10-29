@@ -583,7 +583,8 @@ server environment (the same place as the other `PTP_*` settings) and restart:
 | `AI_API_KEY` | The provider key (leave empty for a local server that needs none) | — |
 | `AI_MODEL` | Primary model name, e.g. `gpt-4o-mini` | `gpt-4o-mini` |
 | `AI_MODELS` | Optional comma-separated fallback chain; if the primary is retired or throttled the next one answers | — |
-| `AI_AUTO_DISCOVER` | When every configured model is dead, switch automatically to a working free model from the provider catalogue (`0` disables) | `1` |
+| `AI_AUTO_DISCOVER` | When every configured model is dead, switch automatically to a working model from the provider catalogue — free first, then the cheapest paid one (`0` disables) | `1` |
+| `AI_DISCOVER_MAX_PRICE` | Highest prompt price, USD per 1M tokens, for a paid self-heal model | `1` |
 | `AI_MAX_STEPS` | Maximum tool rounds per turn (multi-variant drafts need several) | `12` |
 
 Free model catalogues change without notice (a model can become paid-only or be
@@ -592,8 +593,9 @@ it checks the key, verifies every configured model still exists and supports
 tool calling, and lists current free alternatives. `npm run check:ai -- --write`
 repairs `.env` with a working free model. The chat header shows which model
 answered. If every configured model is stale the assistant recovers by itself
-from the provider catalogue (free models that support tool calls), so a retired
-model no longer stops it. When nothing works, the chat reports the real reason
+from the provider catalogue (free models first, then the cheapest paid one
+under `AI_DISCOVER_MAX_PRICE`), so a retired model or an exhausted free tier
+no longer stops it. When nothing works, the chat reports the real reason
 (retired / paid-only / rate-limited / invalid key) instead of a generic error.
 A small paid model (for example `openai/gpt-4o-mini`) costs well under a cent
 per question and avoids the free-tier daily limit; the free models can stay in

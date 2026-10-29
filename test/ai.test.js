@@ -20,7 +20,7 @@ const ai = require('../server/services/ai');
 const { db } = require('../server/db');
 
 const SAVED = {};
-for (const k of ['AI_MODEL', 'AI_MODELS', 'AI_BASE_URL', 'AI_API_KEY', 'PTP_AI_MOCK', 'AI_TIMEOUT_MS', 'AI_AUTO_DISCOVER', 'AI_AUTO_DISCOVER_MAX', 'AI_MAX_STEPS']) SAVED[k] = process.env[k];
+for (const k of ['AI_MODEL', 'AI_MODELS', 'AI_BASE_URL', 'AI_API_KEY', 'PTP_AI_MOCK', 'AI_TIMEOUT_MS', 'AI_AUTO_DISCOVER', 'AI_AUTO_DISCOVER_MAX', 'AI_DISCOVER_MAX_PRICE', 'AI_MAX_STEPS']) SAVED[k] = process.env[k];
 
 function setEnv(vars) {
   for (const k of Object.keys(SAVED)) delete process.env[k];
@@ -375,6 +375,33 @@ test('a successful retry is described even if the model narrates the earlier err
   assert.strictEqual(out.proposals.length, 1);
   assert.match(out.reply, /I prepared 1 draft/);
   assert.doesNotMatch(out.reply, /issue/);
+});
+
+test('an exhausted free tier self-heals to a cheap paid model', async () => {
+  setEnv({ AI_MODELS: 'retired:free', AI_BASE_URL: 'https://openrouter.ai/api/v1' });
+  const seen = [];
+  ai.setFetch(async (url, opts) => {
+    if (url.endsWith('/models')) {
+      return json(200, {
+        data: [
+          { id: 'busy:free', pricing: { prompt: '0', completion: '0' }, supported_parameters: ['tools'], context_length: 1000 },
+          { id: 'cheap:paid', pricing: { prompt: '0.00000015', completion: '0.0000006' }, supported_parameters: ['tools'], context_length: 1000 },
+          { id: 'pricey:paid', pricing: { prompt: '0.00001', completion: '0.00003' }, supported_parameters: ['tools'], context_length: 1000 },
+        ],
+      });
+    }
+    const body = JSON.parse(opts.body);
+    seen.push(body.model);
+    if (body.model === 'retired:free') return json(404, { error: { message: 'This model is unavailable for free' } });
+    if (body.model === 'busy:free') return json(429, { error: { message: 'Provider returned error' } });
+    return json(200, { choices: [{ message: { role: 'assistant', content: 'paid ok' } }] });
+  });
+  const out = await ai.chat({ messages: [{ role: 'user', content: 'hi' }] });
+  assert.strictEqual(out.reply, 'paid ok');
+  assert.strictEqual(out.model, 'cheap:paid');
+  assert.strictEqual(ai.status().discoveredModel, 'cheap:paid');
+  // Free first, then the cheapest paid model; the expensive one is never tried.
+  assert.deepStrictEqual(seen, ['retired:free', 'busy:free', 'cheap:paid']);
 });
 
 test('diagnose reports missing configured models and suggests free alternatives', async () => {

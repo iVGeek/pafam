@@ -137,17 +137,19 @@ replica, which is what a SQLite volume requires.
 | `AI_API_KEY` | Provider key (leave empty for a local server) | — |
 | `AI_MODEL` | Primary model name | `gpt-4o-mini` |
 | `AI_MODELS` | Ordered fallback chain (comma separated); wins over `AI_MODEL` | — |
-| `AI_AUTO_DISCOVER` | If every configured model is retired/paid/throttled, pick a free tool-capable model from the provider catalogue automatically (`0` disables) | `1` |
-| `AI_AUTO_DISCOVER_MAX` | How many catalogue models to try when self-healing | `2` |
+| `AI_AUTO_DISCOVER` | If every configured model is retired/paid/throttled, pick a working tool-capable model from the provider catalogue automatically (`0` disables) | `1` |
+| `AI_AUTO_DISCOVER_MAX` | How many catalogue models to try when self-healing (free first, then cheap paid) | `4` |
+| `AI_DISCOVER_MAX_PRICE` | Highest prompt price, USD per 1M tokens, for a paid self-heal model | `1` |
 | `AI_MAX_STEPS` | Max tool rounds per turn (raise for wide multi-line drafts) | `12` |
 | `AI_TIMEOUT_MS` | Per-attempt timeout | `45000` |
 
 When the primary model is retired, turned paid or throttled, the assistant
 silently moves to the next model in `AI_MODELS` and the chat header shows which
 one answered (`+N fallback`). If **every** configured model is stale, it asks
-the provider for the current catalogue, switches to a working free model that
-supports tool calls, and keeps using it until the process restarts — so a
-retired free model no longer breaks the assistant. If nothing works, the error
+the provider for the current catalogue and switches to a working model that
+supports tool calls — a free one if available, otherwise the cheapest paid one
+under `AI_DISCOVER_MAX_PRICE` — and keeps using it until the process restarts,
+so an exhausted free tier or a retired model no longer breaks the assistant. If nothing works, the error
 says exactly why (retired / paid-only / rate-limited / bad key) instead of a
 generic provider error. **Free catalogues churn** — run `npm run check:ai` any
 time the assistant stops working; `npm run check:ai -- --write` repairs `.env`

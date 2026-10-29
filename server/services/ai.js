@@ -1067,14 +1067,29 @@ async function discoverModels(exclude) {
     if (r.ok && r.data && Array.isArray(r.data.data)) catalog = r.data.data;
   } catch (_) { return []; }
   if (!catalog) return [];
-  const max = Math.max(0, Number(process.env.AI_AUTO_DISCOVER_MAX) || 2);
-  return catalog
-    .filter((m) => m && /:free$/.test(m.id))
-    .filter((m) => m.pricing && Number(m.pricing.prompt) === 0 && Number(m.pricing.completion) === 0)
-    .filter((m) => (m.supported_parameters || []).includes('tools'))
-    .map((m) => m.id)
-    .filter((id) => !exclude.includes(id))
-    .slice(0, max);
+  const max = Math.max(1, Number(process.env.AI_AUTO_DISCOVER_MAX) || 4);
+  // USD per 1M prompt tokens. Free models are preferred, but an exhausted
+  // free quota must not end the turn when the account can run a cheap model.
+  const maxPromptPerM = Math.max(0, Number(process.env.AI_DISCOVER_MAX_PRICE) || 1);
+  const tools = catalog
+    .filter((m) => m && m.pricing && (m.supported_parameters || []).includes('tools'))
+    .filter((m) => !exclude.includes(m.id));
+  const price = (m) => Number(m.pricing.prompt) || 0;
+  const isFree = (m) => price(m) === 0 && Number(m.pricing.completion) === 0;
+  const free = tools
+    .filter(isFree)
+    .sort((a, b) => (b.context_length || 0) - (a.context_length || 0));
+  const cheapPaid = tools
+    .filter((m) => !isFree(m) && price(m) <= maxPromptPerM / 1e6)
+    .sort((a, b) => price(a) - price(b) || (Number(a.pricing.completion) || 0) - (Number(b.pricing.completion) || 0));
+  // Interleave so an exhausted free quota cannot hide the paid candidates:
+  // free, paid, free, paid... (a working free model is still tried first).
+  const picks = [];
+  for (let i = 0; picks.length < max && (i < free.length || i < cheapPaid.length); i += 1) {
+    if (free[i]) picks.push(free[i].id);
+    if (cheapPaid[i] && picks.length < max) picks.push(cheapPaid[i].id);
+  }
+  return picks;
 }
 
 // One model attempt: resolves to { out } on success or { failure } when the
