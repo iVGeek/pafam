@@ -592,11 +592,14 @@ removed overnight). If the assistant stops answering, run `npm run check:ai`:
 it checks the key, verifies every configured model still exists and supports
 tool calling, and lists current free alternatives. `npm run check:ai -- --write`
 repairs `.env` with a working free model. The chat header shows which model
-answered. If every configured model is stale the assistant recovers by itself
-from the provider catalogue (free models first, then the cheapest paid one
-under `AI_DISCOVER_MAX_PRICE`), so a retired model or an exhausted free tier
-no longer stops it. When nothing works, the chat reports the real reason
-(retired / paid-only / rate-limited / invalid key) instead of a generic error.
+answered. If every configured model is stale the assistant recovers by itself:
+it tries a built-in chain of cheap, tool-capable models that ship with the app,
+then the provider catalogue (free models first, then the cheapest paid one under
+`AI_DISCOVER_MAX_PRICE`), and it remembers the model that answered so a restart
+starts on a working one. A retired model or an exhausted free tier therefore no
+longer stops it, and no environment change is needed. When nothing works, the
+chat reports the real reason (retired / paid-only / rate-limited / no credit /
+invalid key) instead of a generic error.
 A small paid model (for example `openai/gpt-4o-mini`) costs well under a cent
 per question and avoids the free-tier daily limit; the free models can stay in
 `AI_MODELS` as last-resort fallbacks.

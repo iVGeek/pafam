@@ -6,7 +6,7 @@
 // tools and *proposes* drafts that the UI applies under the signed-in user's
 // own role. Numbers always come from the services below, never from the model.
 
-const { db, getSetting } = require('../db');
+const { db, getSetting, setSetting } = require('../db');
 const pricing = require('./pricing');
 const { compareProduct } = require('./comparison');
 const { sourceLowest } = require('./sourcing');
@@ -38,6 +38,27 @@ function models() {
 }
 function model() { return models()[0]; }
 function apiKey() { return process.env.AI_API_KEY || ''; }
+
+// A working chain the app can fall back on with no configuration at all, so a
+// stale dashboard value (a retired model, an exhausted free tier) cannot leave
+// the assistant dead. Only slugs that are valid on the configured provider are
+// listed — everything here is an OpenRouter slug.
+const BUILTIN_FALLBACKS = {
+  openrouter: [
+    'openai/gpt-4o-mini',
+    'mistralai/mistral-small-3.2-24b-instruct',
+    'google/gemini-2.5-flash',
+    'meta-llama/llama-3.3-70b-instruct',
+  ],
+  github: ['openai/gpt-4o-mini'],
+};
+
+function builtinFallbacks() {
+  const url = baseUrl();
+  if (/openrouter\.ai/.test(url)) return BUILTIN_FALLBACKS.openrouter;
+  if (/models\.github\.ai/.test(url)) return BUILTIN_FALLBACKS.github;
+  return [];
+}
 function enabled() {
   return process.env.PTP_AI_MOCK === '1' || Boolean(process.env.AI_API_KEY) || Boolean(process.env.AI_BASE_URL);
 }
@@ -51,6 +72,8 @@ function status() {
     model: discoveredModel || model(),
     models: models(),
     discoveredModel,
+    lastGoodModel: lastGoodModel(),
+    fallbacks: builtinFallbacks(),
     provider: baseUrl(),
     hasKey: Boolean(apiKey()),
     baseUrlSet: Boolean(process.env.AI_BASE_URL),
@@ -973,8 +996,8 @@ function describeProvider(status, detail, modelId) {
       message: 'The AI provider rejected the API key. Check AI_API_KEY on the server.' };
   }
   if (status === 402) {
-    return { code: 'credits', retry: false, reason: 'the account has no credit',
-      message: 'The AI provider account is out of credit. Top up, or switch AI_MODEL to a free model.' };
+    return { code: 'credits', retry: true, reason: 'the account has no credit',
+      message: 'The AI provider account is out of credit.' };
   }
   if (status === 403 && /key|auth|forbidden|permission/i.test(d)) {
     return { code: 'auth', retry: false, reason: 'access was refused',
@@ -1006,14 +1029,15 @@ function describeProvider(status, detail, modelId) {
 
 function allFailed(failures) {
   const parts = failures.map((f) => f.model + ' (' + f.reason + ')');
-  const dead = failures.some((f) => f.code === 'model_unavailable' || f.code === 'model_restricted');
   const rate = failures.some((f) => f.code === 'rate_limit');
+  const credits = failures.some((f) => f.code === 'credits');
   const offline = failures.every((f) => f.code === 'network' || f.code === 'timeout');
   let hint = '';
-  if (dead) hint = ' Update AI_MODEL / AI_MODELS (run "npm run check:ai" to list working models).';
-  else if (rate) hint = ' The free-tier quota is exhausted - retry shortly or add another model to AI_MODELS.';
-  else if (offline) hint = ' Check the provider URL, this server\'s network access and AI_TIMEOUT_MS.';
-  const err = new Error('The assistant could not reach any configured model: ' + parts.join('; ') + '.' + hint);
+  if (offline) hint = ' Check the provider URL, this server\'s network access and AI_TIMEOUT_MS.';
+  else if (credits) hint = ' Top up the provider account or use a free model (npm run check:ai lists free ones).';
+  else if (rate) hint = ' The free-tier quota is exhausted - retry shortly; the assistant will switch to a cheap paid model automatically when one is available.';
+  else hint = ' Every model in the chain failed; the assistant already tried the provider catalogue. Run "npm run check:ai" for a live report.';
+  const err = new Error('The assistant could not reach any usable model, even after fallbacks: ' + parts.join('; ') + '.' + hint);
   err.status = failures.every((f) => f.code === 'timeout') ? 504 : 502;
   err.code = failures[0] && failures[0].code;
   err.failures = failures.map((f) => ({ model: f.model, code: f.code, reason: f.reason }));
@@ -1078,10 +1102,23 @@ async function readResponse(res, onDelta) {
 
 let discoveredModel = null;
 
-function candidateOrder() {
+// The last model that actually answered, remembered in the database so a
+// restart (or a redeploy) does not re-probe a chain that we already know is
+// dead. It is only a hint: if it stops working the chain moves on.
+function lastGoodModel() {
+  try { return getSetting('ai_model_last_good', null) || null; } catch (_) { return null; }
+}
+
+function rememberModel(id) {
+  if (!id || id === lastGoodModel()) return;
+  try { setSetting('ai_model_last_good', id); } catch (_) { /* best effort */ }
+}function candidateOrder() {
   const order = [];
-  if (discoveredModel) order.push(discoveredModel);
-  for (const id of models()) if (!order.includes(id)) order.push(id);
+  const push = (id) => { if (id && !order.includes(id)) order.push(id); };
+  push(discoveredModel);
+  push(lastGoodModel());
+  for (const id of models()) push(id);
+  for (const id of builtinFallbacks()) push(id);
   return order;
 }
 
@@ -1171,19 +1208,23 @@ async function callModel(payload, onDelta) {
   const failures = [];
   for (const id of candidateOrder()) {
     const r = await attempt(id, payload, onDelta);
-    if (r.out) return r.out;
+    if (r.out) {
+      rememberModel(id);
+      return r.out;
+    }
     failures.push(r.failure);
   }
 
-  // The configured slugs can all be stale (retired, paid-only, throttled).
-  // Ask the provider what exists right now, keep the first free tool-capable
-  // model that answers, and reuse it for the rest of this process.
-  const churn = failures.some((f) => f.code === 'model_unavailable' || f.code === 'model_restricted' || f.code === 'rate_limit');
+  // Everything in the chain can be stale at once (retired slugs, an exhausted
+  // free tier, a paid-only model). Ask the provider what exists right now and
+  // keep the first tool-capable model that answers.
+  const churn = failures.some((f) => f.code === 'model_unavailable' || f.code === 'model_restricted' || f.code === 'rate_limit' || f.code === 'credits');
   if (churn) {
     for (const id of await discoverModels(failures.map((f) => f.model))) {
       const r = await attempt(id, payload, onDelta);
       if (r.out) {
         discoveredModel = id;
+        rememberModel(id);
         console.warn('[ai] configured models unavailable; switched to discovered model ' + id);
         return r.out;
       }
@@ -1197,7 +1238,10 @@ let transport = callModel;
 function setTransport(fn) { transport = fn || callModel; }
 
 function setFetch(fn) { httpFetch = fn || ((url, opts) => fetch(url, opts)); }
-function resetDiscovery() { discoveredModel = null; }
+function resetDiscovery() {
+  discoveredModel = null;
+  try { setSetting('ai_model_last_good', ''); } catch (_) { /* best effort */ }
+}
 
 /* ------------------------------- diagnostics ------------------------------- */
 
@@ -1227,6 +1271,8 @@ async function diagnose() {
     provider,
     hasKey: Boolean(apiKey()),
     configured,
+    fallbacks: builtinFallbacks(),
+    lastGoodModel: lastGoodModel(),
     models: [],
     usable: [],
     freeAlternatives: [],
@@ -1285,7 +1331,11 @@ async function diagnose() {
   }
 
   out.ok = out.usable.length > 0;
-  if (!out.ok && out.freeAlternatives.length) {
+  if (!out.ok && out.fallbacks.length) {
+    out.hint = (out.hint ? out.hint + ' ' : '') +
+      'The assistant will fall back to its built-in chain until a configured model works: ' +
+      out.fallbacks.slice(0, 3).join(', ') + '.';
+  } else if (!out.ok && out.freeAlternatives.length) {
     out.hint = (out.hint ? out.hint + ' ' : '') + 'Configured models are missing or do not support tools; try ' +
       out.freeAlternatives.slice(0, 3).map((m) => m.id).join(', ') + '.';
   }

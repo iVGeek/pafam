@@ -145,16 +145,20 @@ replica, which is what a SQLite volume requires.
 
 When the primary model is retired, turned paid or throttled, the assistant
 silently moves to the next model in `AI_MODELS` and the chat header shows which
-one answered (`+N fallback`). If **every** configured model is stale, it asks
-the provider for the current catalogue and switches to a working model that
-supports tool calls — a free one if available, otherwise the cheapest paid one
-under `AI_DISCOVER_MAX_PRICE` — and keeps using it until the process restarts,
-so an exhausted free tier or a retired model no longer breaks the assistant. If nothing works, the error
-says exactly why (retired / paid-only / rate-limited / bad key) instead of a
-generic provider error. **Free catalogues churn** — run `npm run check:ai` any
-time the assistant stops working; `npm run check:ai -- --write` repairs `.env`
-with a working free model. `GET /api/ai/diagnose` returns the same report as
-JSON (signed-in users only, no key material).
+one answered (`+N fallback`). If **every** configured model is stale, it first
+tries a built-in chain of cheap, tool-capable models that ship with the app
+(`openai/gpt-4o-mini`, `mistral-small-3.2`, `gemini-2.5-flash` on OpenRouter),
+then asks the provider for the current catalogue — a free model if available,
+otherwise the cheapest paid one under `AI_DISCOVER_MAX_PRICE`. The model that
+answered is remembered in the database (`ai_model_last_good`), so a restart or
+redeploy starts on a model known to work instead of re-probing a dead one. A
+stale dashboard value therefore cannot leave the assistant dead, and no
+environment change is needed when a model is retired. If nothing works, the
+error says exactly why (retired / paid-only / rate-limited / no credit / bad
+key) instead of a generic provider error. **Free catalogues churn** — run
+`npm run check:ai` any time the assistant stops working; `npm run check:ai --
+--write` repairs `.env` with a working free model. `GET /api/ai/diagnose`
+returns the same report as JSON (signed-in users only, no key material).
 
 Provider examples:
 

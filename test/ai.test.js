@@ -150,7 +150,11 @@ test('a stale chain self-heals from the provider catalogue and remembers the mod
     }
     const body = JSON.parse(opts.body);
     seen.push(body.model);
-    if (body.model === 'retired:free') return json(404, { error: { message: 'This model is unavailable for free' } });
+    // Only the catalogue model works; the configured slug and the built-in
+    // fallbacks are all dead, so discovery is what rescues the turn.
+    if (body.model !== 'fresh:free') {
+      return json(404, { error: { message: 'This model is unavailable for free' } });
+    }
     return json(200, { choices: [{ message: { role: 'assistant', content: 'rescued' } }] });
   });
 
@@ -158,11 +162,13 @@ test('a stale chain self-heals from the provider catalogue and remembers the mod
   assert.strictEqual(first.reply, 'rescued');
   assert.strictEqual(first.model, 'fresh:free');
   assert.strictEqual(ai.status().discoveredModel, 'fresh:free');
+  assert.strictEqual(seen[0], 'retired:free');
 
   const second = await ai.chat({ messages: [{ role: 'user', content: 'again' }] });
   assert.strictEqual(second.reply, 'rescued');
   // Second turn starts with the discovered model: no dead-model attempt.
-  assert.deepStrictEqual(seen, ['retired:free', 'fresh:free', 'fresh:free']);
+  assert.strictEqual(seen[seen.length - 1], 'fresh:free');
+  assert.strictEqual(seen[seen.length - 2], 'fresh:free');
 });
 
 test('auto-discovery can be disabled (AI_AUTO_DISCOVER=0)', async () => {
@@ -422,6 +428,10 @@ test('an exhausted free tier self-heals to a cheap paid model', async () => {
     seen.push(body.model);
     if (body.model === 'retired:free') return json(404, { error: { message: 'This model is unavailable for free' } });
     if (body.model === 'busy:free') return json(429, { error: { message: 'Provider returned error' } });
+    // The built-in fallbacks are also unusable for this key (no credit).
+    if (!/^(busy|cheap|pricey):(free|paid)$/.test(body.model)) {
+      return json(402, { error: { message: 'Insufficient credits' } });
+    }
     return json(200, { choices: [{ message: { role: 'assistant', content: 'paid ok' } }] });
   });
   const out = await ai.chat({ messages: [{ role: 'user', content: 'hi' }] });
@@ -429,7 +439,27 @@ test('an exhausted free tier self-heals to a cheap paid model', async () => {
   assert.strictEqual(out.model, 'cheap:paid');
   assert.strictEqual(ai.status().discoveredModel, 'cheap:paid');
   // Free first, then the cheapest paid model; the expensive one is never tried.
-  assert.deepStrictEqual(seen, ['retired:free', 'busy:free', 'cheap:paid']);
+  assert.deepStrictEqual(seen.filter((id) => /^(busy|cheap|pricey):/.test(id)), ['busy:free', 'cheap:paid']);
+});
+
+test('a stale configured model is replaced by the built-in chain without discovery', async () => {
+  setEnv({ AI_MODELS: 'retired:free', AI_BASE_URL: 'https://openrouter.ai/api/v1' });
+  let catalogFetched = false;
+  const seen = [];
+  ai.setFetch(async (url, opts) => {
+    if (url.endsWith('/models')) { catalogFetched = true; throw new Error('no catalogue'); }
+    const body = JSON.parse(opts.body);
+    seen.push(body.model);
+    if (body.model === 'retired:free') return json(404, { error: { message: 'This model is unavailable for free' } });
+    return json(200, { choices: [{ message: { role: 'assistant', content: 'builtin ok' } }] });
+  });
+  const out = await ai.chat({ messages: [{ role: 'user', content: 'hi' }] });
+  assert.strictEqual(out.reply, 'builtin ok');
+  assert.strictEqual(out.model, 'openai/gpt-4o-mini');
+  // A known-good model answers before the slower catalogue lookup.
+  assert.deepStrictEqual(seen, ['retired:free', 'openai/gpt-4o-mini']);
+  assert.strictEqual(catalogFetched, false);
+  assert.strictEqual(ai.status().lastGoodModel, 'openai/gpt-4o-mini');
 });
 
 test('diagnose reports missing configured models and suggests free alternatives', async () => {

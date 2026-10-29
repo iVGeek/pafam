@@ -38,6 +38,13 @@ services:
         value: admin
       - key: PTP_ADMIN_PASS
         sync: false
+      # The assistant needs only AI_BASE_URL and AI_API_KEY. AI_MODELS is an
+      # optional starting chain: if one of these is retired the app falls back
+      # to its built-in chain and then the provider catalogue, so this value can
+      # go stale without breaking chat. Add AI_API_KEY (and AI_BASE_URL if not
+      # OpenRouter) as secrets in the dashboard.
+      - key: AI_MODELS
+        value: openai/gpt-4o-mini,mistralai/mistral-small-3.2-24b-instruct,google/gemini-2.5-flash
     disk:
       name: ptp-data
       mountPath: /var/data
