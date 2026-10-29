@@ -17,9 +17,10 @@ process.on('exit', () => {
 const { test, afterEach } = require('node:test');
 const assert = require('node:assert');
 const ai = require('../server/services/ai');
+const { db } = require('../server/db');
 
 const SAVED = {};
-for (const k of ['AI_MODEL', 'AI_MODELS', 'AI_BASE_URL', 'AI_API_KEY', 'PTP_AI_MOCK', 'AI_TIMEOUT_MS', 'AI_AUTO_DISCOVER', 'AI_AUTO_DISCOVER_MAX']) SAVED[k] = process.env[k];
+for (const k of ['AI_MODEL', 'AI_MODELS', 'AI_BASE_URL', 'AI_API_KEY', 'PTP_AI_MOCK', 'AI_TIMEOUT_MS', 'AI_AUTO_DISCOVER', 'AI_AUTO_DISCOVER_MAX', 'AI_MAX_STEPS']) SAVED[k] = process.env[k];
 
 function setEnv(vars) {
   for (const k of Object.keys(SAVED)) delete process.env[k];
@@ -37,6 +38,7 @@ function sse(chunks) {
 
 afterEach(() => {
   ai.setFetch(null);
+  ai.setTransport(null);
   ai._resetDiscovery();
   for (const k of Object.keys(SAVED)) {
     if (SAVED[k] === undefined) delete process.env[k];
@@ -211,6 +213,126 @@ test('the SSE route streams delta + done instead of closing the response early',
   } finally {
     await new Promise((resolve) => server.close(resolve));
   }
+});
+
+// Minimal catalogue for the draft_placement tests: one supplier, one upload,
+// four sizes of one product, and deliberately mixed offer shapes.
+function seedPlacementFixture() {
+  db.prepare("INSERT OR IGNORE INTO suppliers(code, name, currency) VALUES ('ALCO', 'Alcodis', 'EUR')").run();
+  let up = db.prepare('SELECT id FROM uploads LIMIT 1').get();
+  if (!up) {
+    up = { id: Number(db.prepare("INSERT INTO uploads(supplier_code, filename, file_hash) VALUES ('ALCO', 'test.xlsx', 'hash')").run().lastInsertRowid) };
+  }
+  const sizes = [50, 100];
+  const ids = {};
+  for (const ml of sizes) {
+    const name = 'Test Blue Eau de Toilette Vaporizador ' + ml + ' ml';
+    let p = db.prepare('SELECT id FROM products WHERE display_name = ?').get(name);
+    if (!p) {
+      p = { id: Number(db.prepare('INSERT INTO products(brand, fragrance, concentration, size_ml, display_name) VALUES (?,?,?,?,?)')
+        .run('Test', 'Blue', 'EDT', ml, name).lastInsertRowid) };
+    }
+    ids[ml] = p.id;
+  }
+  const offer = (productId, price, priceType, upc) => {
+    db.prepare(`INSERT INTO offers(upload_id, supplier_code, description, size_ml, currency, price, price_basis, price_type, units_per_case, product_id)
+      VALUES (?,?,?,?,?,?,?,?,?,?)`).run(up.id, 'ALCO', 'test offer', null, 'EUR', price, 'unit', priceType, upc, productId);
+  };
+  const count = db.prepare("SELECT COUNT(*) n FROM offers WHERE supplier_code = 'ALCO'").get().n;
+  if (!count) {
+    // The RRP-derived offer is cheaper but must lose to the real cost offer.
+    offer(ids[50], 5, 'rrp', 6);
+    offer(ids[50], 10, 'cost', 6);
+    offer(ids[100], 12, 'cost', 6);
+  }
+  return ids;
+}
+
+test('draft_placement resolves names and supplier offers in one call', () => {
+  const ids = seedPlacementFixture();
+  const out = ai.runTool('draft_placement', {
+    supplierCode: 'ALCO',
+    lines: [
+      { productQuery: 'Test Blue Eau de Toilette 50 ml', boxes: 1 },
+      { productQuery: 'Test Blue Eau de Toilette 100 ml', units: 7 },
+    ],
+  });
+  assert.ok(out.proposal, JSON.stringify(out.result));
+  const lines = out.proposal.apply.body.lines;
+  assert.deepStrictEqual(lines.map((l) => l.productId), [ids[50], ids[100]]);
+  // One full box, then 7 bottles rounded up to two boxes of six.
+  assert.deepStrictEqual(lines.map((l) => l.units), [6, 12]);
+  // Cost offer wins over the cheaper RRP-derived one.
+  assert.strictEqual(lines[0].unitCost, 10);
+  assert.strictEqual(lines[1].unitCost, 12);
+  assert.match(out.proposal.fields[1].value, /2 box\(es\) = 12 units/);
+  assert.match(out.proposal.summary, /204 EUR/);
+
+  // The proposal body must be directly applicable by the real service.
+  const placements = require('../server/services/placements');
+  const created = placements.createPlacement(Object.assign({ createdBy: 'test' }, out.proposal.apply.body));
+  assert.ok(created.ok, JSON.stringify(created));
+  const saved = placements.getPlacement(created.id);
+  assert.strictEqual(saved.lines.length, 2);
+  assert.deepStrictEqual(saved.lines.map((l) => l.units), [6, 12]);
+  assert.deepStrictEqual(saved.lines.map((l) => l.boxes), [1, 2]);
+  assert.strictEqual(saved.totals.total, 204);
+});
+
+test('draft_placement asks for a size instead of guessing between variants', () => {
+  seedPlacementFixture();
+  const out = ai.runTool('draft_placement', {
+    supplierCode: 'ALCO',
+    lines: [{ productQuery: 'Test Blue Eau de Toilette', boxes: 1 }],
+  });
+  assert.match(out.result.error, /several products match/);
+  assert.ok(out.result.candidates.length >= 2);
+});
+
+test('draft_placement explains a missing supplier offer', () => {
+  seedPlacementFixture();
+  db.prepare("INSERT OR IGNORE INTO suppliers(code, name, currency) VALUES ('OTHER', 'Other Co', 'EUR')").run();
+  const out = ai.runTool('draft_placement', {
+    supplierCode: 'OTHER',
+    lines: [{ productQuery: 'Test Blue Eau de Toilette 50 ml', boxes: 1 }],
+  });
+  assert.match(out.result.error, /Other Co has no usable cost offer/);
+});
+
+test('drafts prepared before the step budget runs out are still returned', async () => {
+  setEnv({ AI_MODELS: 'test:model', AI_MAX_STEPS: '2' });
+  let n = 0;
+  ai.setTransport(async () => {
+    n += 1;
+    return {
+      choices: [{
+        message: {
+          role: 'assistant',
+          content: '',
+          tool_calls: [{ id: 'c' + n, type: 'function', function: { name: 'draft_task', arguments: JSON.stringify({ title: 'follow up ' + n }) } }],
+        },
+      }],
+      _model: 'test:model',
+    };
+  });
+  const out = await ai.chat({ messages: [{ role: 'user', content: 'draft a task' }] });
+  assert.strictEqual(out.proposals.length, 2);
+  assert.match(out.reply, /prepared 2 drafts/);
+});
+
+test('repeated identical draft calls produce one card, not duplicates', async () => {
+  setEnv({ AI_MODELS: 'test:model' });
+  let turn = 0;
+  ai.setTransport(async () => {
+    turn += 1;
+    if (turn === 1) {
+      const call = (id) => ({ id, type: 'function', function: { name: 'draft_task', arguments: '{"title":"follow up"}' } });
+      return { choices: [{ message: { role: 'assistant', content: '', tool_calls: [call('a'), call('b')] } }], _model: 'test:model' };
+    }
+    return { choices: [{ message: { role: 'assistant', content: 'Drafted.' } }], _model: 'test:model' };
+  });
+  const out = await ai.chat({ messages: [{ role: 'user', content: 'draft it' }] });
+  assert.strictEqual(out.proposals.length, 1);
 });
 
 test('diagnose reports missing configured models and suggests free alternatives', async () => {

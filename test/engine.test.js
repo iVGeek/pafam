@@ -1308,7 +1308,9 @@ test('AI draft_placement proposes a supplier order', () => {
   const out = ai.runTool('draft_placement', { supplierCode: s.code, lines: [{ productId: p.id, quantity: 12, unitCost: 5 }] });
   assert.equal(out.proposal.type, 'placement');
   assert.equal(out.proposal.apply.url, '/placements');
-  assert.equal(out.proposal.apply.body.lines[0].quantity, 12);
+  const line = out.proposal.apply.body.lines[0];
+  assert.equal(line.productId, p.id);
+  assert.ok(line.units >= 12, 'quantity is rounded up to whole boxes, never down');
   assert.equal(out.result.proposal, undefined);
 });
 

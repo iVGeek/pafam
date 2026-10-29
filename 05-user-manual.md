@@ -584,6 +584,7 @@ server environment (the same place as the other `PTP_*` settings) and restart:
 | `AI_MODEL` | Primary model name, e.g. `gpt-4o-mini` | `gpt-4o-mini` |
 | `AI_MODELS` | Optional comma-separated fallback chain; if the primary is retired or throttled the next one answers | — |
 | `AI_AUTO_DISCOVER` | When every configured model is dead, switch automatically to a working free model from the provider catalogue (`0` disables) | `1` |
+| `AI_MAX_STEPS` | Maximum tool rounds per turn (multi-variant drafts need several) | `12` |
 
 Free model catalogues change without notice (a model can become paid-only or be
 removed overnight). If the assistant stops answering, run `npm run check:ai`:

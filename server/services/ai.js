@@ -20,7 +20,7 @@ const forecast = require('./forecast');
 const quoteCompare = require('./quoteCompare');
 const { SYSTEM_PROMPT } = require('./aiKnowledge');
 
-const MAX_STEPS = 6;
+const MAX_STEPS_DEFAULT = 12;
 
 /* ------------------------------ configuration ------------------------------ */
 
@@ -356,6 +356,63 @@ function toolDraftOffer({ productId, quantity, costPerBottle, targetPct, basis, 
   return { proposal };
 }
 
+// Free models often resolve one product per tool call, which burns the step
+// budget before a multi-variant draft is ready. These helpers let the draft
+// tools resolve a name/barcode and the supplier's own offer server-side, so a
+// whole placement can be prepared in a single call.
+const MATCH_STOP = new Set([
+  'the', 'and', 'for', 'with', 'of', 'de', 'du', 'la', 'le',
+  'eau', 'edt', 'edp', 'parfum', 'perfume', 'cologne',
+  'vaporizador', 'vaporisateur', 'vapor', 'spray', 'natural', 'bottle', 'size',
+]);
+
+function productCandidates(query) {
+  const q = String(query || '').trim();
+  if (!q) return [];
+  const size = Number((q.match(/(\d{2,4})\s*ml/i) || [])[1]) || null;
+  const tokens = q.toLowerCase().replace(/[^\p{L}\p{N}\s]/gu, ' ').split(/\s+/)
+    .filter((t) => t.length > 1 && !MATCH_STOP.has(t));
+  const cols = 'SELECT id, display_name, canonical_gtin, size_ml FROM products';
+  let rows;
+  if (!tokens.length) {
+    rows = db.prepare(cols + ' WHERE lower(display_name) LIKE ? LIMIT 25').all('%' + q.toLowerCase() + '%');
+  } else {
+    const where = tokens.map(() => '(lower(display_name) LIKE ? OR canonical_gtin LIKE ?)').join(' AND ');
+    const params = [];
+    for (const t of tokens) params.push('%' + t + '%', '%' + t + '%');
+    rows = db.prepare(cols + ' WHERE ' + where + ' LIMIT 25').all(...params);
+  }
+  if (!rows.length) {
+    // Fall back to a looser "most tokens match" search for long supplier names.
+    const loose = db.prepare(cols + ' WHERE lower(display_name) LIKE ? LIMIT 25').all('%' + (tokens.slice(-1)[0] || q.toLowerCase()) + '%');
+    rows = loose;
+  }
+  if (size) {
+    const exact = rows.filter((r) => Number(r.size_ml) === size || new RegExp('\\b' + size + '\\s*ml\\b', 'i').test(r.display_name));
+    if (exact.length) rows = exact;
+  }
+  return rows;
+}
+
+// Cheapest cost-based offer this supplier has on the product (RRP-derived
+// offers only win when there is nothing else).
+function supplierOffer(productId, supplierCode) {
+  const rows = db.prepare(
+    `SELECT o.*, s.default_discount_pct FROM offers o JOIN suppliers s ON s.code = o.supplier_code
+     WHERE o.product_id = ? AND o.supplier_code = ?`
+  ).all(Number(productId), supplierCode);
+  const scored = rows.map((o) => {
+    const acq = pricing.unitAcquisitionPrice(o);
+    return {
+      offer: o,
+      perBottle: Number.isFinite(acq.perBottle) ? acq.perBottle : null,
+      derived: o.price_type === 'rrp',
+    };
+  }).filter((o) => o.perBottle != null);
+  scored.sort((a, b) => (Number(a.derived) - Number(b.derived)) || (a.perBottle - b.perBottle));
+  return scored[0] || null;
+}
+
 function toolDraftPlacement({ supplierCode, lines } = {}) {
   const code = String(supplierCode || '').trim();
   if (!code) return { error: 'supplierCode is required' };
@@ -366,29 +423,66 @@ function toolDraftPlacement({ supplierCode, lines } = {}) {
 
   const prepared = [];
   for (const l of input) {
-    const product = l && l.productId != null
-      ? db.prepare('SELECT id, display_name, canonical_gtin FROM products WHERE id = ?').get(Number(l.productId))
-      : null;
-    if (!product) return { error: 'product not found on a line: ' + (l && l.productId) };
-    const qty = Math.max(0, Math.round(Number(l.quantity) || 0));
-    if (!qty) return { error: 'quantity required for ' + product.display_name };
+    const line = l || {};
+    let product = null;
+    if (line.productId != null) {
+      product = db.prepare('SELECT id, display_name, canonical_gtin, size_ml FROM products WHERE id = ?').get(Number(line.productId)) || null;
+      if (!product) return { error: 'product not found on a line: ' + line.productId };
+    } else {
+      const candidates = productCandidates(line.productQuery || line.query || line.name);
+      if (!candidates.length) {
+        return { error: 'no product matched "' + (line.productQuery || line.query || line.name || '') + '"' };
+      }
+      if (candidates.length > 1) {
+        return {
+          error: 'several products match "' + (line.productQuery || line.query || line.name) + '" — add the size or pass productId',
+          candidates: candidates.slice(0, 6),
+        };
+      }
+      product = candidates[0];
+    }
+
+    const best = supplierOffer(product.id, supplier.code);
+    if (!best && line.unitCost == null) {
+      return { error: supplier.name + ' has no usable cost offer on ' + product.display_name + ' (pass unitCost to override)' };
+    }
+    const upc = Math.max(1, Number((best && best.offer.units_per_case) || line.unitsPerCase) || 1);
+    const unitCost = line.unitCost != null && line.unitCost !== ''
+      ? Math.round(Number(line.unitCost) * 10000) / 10000
+      : (best && best.perBottle != null ? Math.round(best.perBottle * 10000) / 10000 : null);
+
+    // boxes is the supplier's unit; units are rounded up to whole boxes.
+    const boxesIn = line.boxes != null && line.boxes !== '' ? Math.max(0, Math.floor(Number(line.boxes))) : null;
+    const unitsIn = line.units != null && line.units !== ''
+      ? Math.max(0, Number(line.units))
+      : (line.quantity != null && line.quantity !== '' ? Math.max(0, Number(line.quantity)) : null);
+    const units = boxesIn != null ? boxesIn * upc : (unitsIn != null ? Math.ceil(unitsIn / upc) * upc : upc);
+    if (!units) return { error: 'quantity required for ' + product.display_name };
+
     prepared.push({
       productId: product.id,
       product: product.display_name,
-      quantity: qty,
-      unitCost: l.unitCost != null && l.unitCost !== '' ? Number(l.unitCost) : null,
+      offerId: best ? best.offer.id : null,
+      unitsPerCase: upc,
+      boxes: units / upc,
+      units,
+      unitCost,
+      derived: Boolean(best && best.derived),
     });
   }
 
-  const estimated = prepared.reduce((s, l) => s + (l.unitCost != null ? l.unitCost * l.quantity : 0), 0);
+  const estimated = prepared.reduce((s, l) => s + (l.unitCost != null ? l.unitCost * l.units : 0), 0);
   return {
     proposal: {
       type: 'placement',
       title: 'Supplier order — ' + supplier.name,
-      summary: `${prepared.length} line(s)` + (estimated ? ` - about ${estimated} ${supplier.currency}` : ''),
+      summary: `${prepared.length} line(s), ${prepared.reduce((s, l) => s + l.boxes, 0)} box(es)` +
+        (estimated ? ` - about ${Math.round(estimated * 100) / 100} ${supplier.currency}` : ''),
       fields: prepared.map((l) => ({
         label: l.product,
-        value: `${l.quantity} units` + (l.unitCost != null ? ` @ ${l.unitCost}` : ' (cost taken from the offer)'),
+        value: `${l.boxes} box(es) = ${l.units} units` +
+          (l.unitCost != null ? ` @ ${Math.round(l.unitCost * 10000) / 10000} ${supplier.currency}` : '') +
+          (l.derived ? ' (RRP-derived cost)' : ''),
       })),
       apply: {
         label: 'Create placement',
@@ -396,7 +490,7 @@ function toolDraftPlacement({ supplierCode, lines } = {}) {
         url: '/placements',
         body: {
           supplierCode: supplier.code,
-          lines: prepared.map((l) => ({ productId: l.productId, quantity: l.quantity, unitCost: l.unitCost })),
+          lines: prepared.map((l) => ({ productId: l.productId, offerId: l.offerId, units: l.units, unitCost: l.unitCost })),
         },
       },
     },
@@ -618,17 +712,25 @@ const TOOLS = [
     type: 'function',
     function: {
       name: 'draft_placement',
-      description: 'Prepare (do not save) a supplier order/placement at cost price with full-box quantities. Returns a proposal a human applies.',
+      description: 'Prepare (do not save) a supplier order/placement at cost price with full-box quantities. Resolve every line from a product name or barcode in ONE call — do not search products first. Each line: productQuery (name incl. size, e.g. "Versace Dylan Blue EDT 50 ml") or productId; boxes (preferred) or units; the supplier\'s cheapest cost offer supplies pack size and unit cost. Returns a proposal a human applies.',
       parameters: {
         type: 'object',
         properties: {
-          supplierCode: { type: 'string' },
+          supplierCode: { type: 'string', description: 'Supplier code from list_suppliers, e.g. ALCODIS' },
           lines: {
             type: 'array',
+            description: 'One entry per variant to order',
             items: {
               type: 'object',
-              properties: { productId: { type: 'integer' }, quantity: { type: 'integer' }, unitCost: { type: 'number' } },
-              required: ['productId', 'quantity'],
+              properties: {
+                productId: { type: 'integer' },
+                productQuery: { type: 'string', description: 'Product name including size, or barcode' },
+                boxes: { type: 'integer', description: 'Full boxes to order (preferred)' },
+                units: { type: 'integer', description: 'Bottles; rounded up to whole boxes' },
+                quantity: { type: 'integer', description: 'Alias for units' },
+                unitCost: { type: 'number', description: 'Optional override; defaults to the supplier offer cost' },
+                unitsPerCase: { type: 'integer', description: 'Optional override for the pack size' },
+              },
             },
           },
         },
@@ -1165,11 +1267,22 @@ async function chat({ messages, onEvent } = {}) {
   }
   const convo = [{ role: 'system', content: SYSTEM_PROMPT }].concat(sanitize(messages));
   const proposals = [];
+  const proposalKeys = new Set();
   let usedModel = model();
   const emit = (event) => { if (typeof onEvent === 'function') { try { onEvent(event); } catch (_) { /* listener must not break the turn */ } } };
   const stream = typeof onEvent === 'function';
+  // A multi-variant draft needs several tool rounds; 6 was too tight for free
+  // models that emit one call per step.
+  const maxSteps = Math.min(Math.max(Number(process.env.AI_MAX_STEPS) || MAX_STEPS_DEFAULT, 2), 24);
 
-  for (let step = 0; step < MAX_STEPS; step += 1) {
+  for (let step = 0; step < maxSteps; step += 1) {
+    // Near the limit, stop exploring and produce the answer/proposals now.
+    if (step === maxSteps - 2) {
+      convo.push({
+        role: 'system',
+        content: 'You are close to the step limit. Do not call more read tools. Call the draft tool now if one is still needed, then reply with your final answer.',
+      });
+    }
     const onDelta = stream ? (text) => emit({ type: 'delta', text }) : undefined;
     const resp = await transport({ model: usedModel, messages: convo, tools: TOOLS, tool_choice: 'auto' }, onDelta);
     if (resp && typeof resp === 'object' && resp._model) usedModel = resp._model;
@@ -1187,11 +1300,20 @@ async function chat({ messages, onEvent } = {}) {
       let args = {};
       try { args = call.function && call.function.arguments ? JSON.parse(call.function.arguments) : {}; } catch (_) { args = {}; }
       const out = runTool(name, args);
-      if (out.proposal) proposals.push(out.proposal);
+      if (out.proposal) {
+        // Models sometimes repeat the same draft call; one card is enough.
+        const key = out.proposal.type + '|' + JSON.stringify(out.proposal.apply && out.proposal.apply.body);
+        if (!proposalKeys.has(key)) { proposalKeys.add(key); proposals.push(out.proposal); }
+      }
       convo.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(out.result) });
     }
   }
-  return { reply: 'I hit the step limit before finishing — try narrowing the request.', proposals, model: usedModel };
+  // Keep whatever was drafted: the proposals are still valid and applicable.
+  const reply = proposals.length
+    ? 'I prepared ' + proposals.length + ' draft' + (proposals.length === 1 ? '' : 's') +
+      ' but ran out of steps before writing the full explanation. Review the draft(s) below.'
+    : 'I hit the step limit before finishing — try narrowing the request.';
+  return { reply, proposals, model: usedModel };
 }
 
 module.exports = {

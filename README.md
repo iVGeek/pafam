@@ -139,6 +139,7 @@ replica, which is what a SQLite volume requires.
 | `AI_MODELS` | Ordered fallback chain (comma separated); wins over `AI_MODEL` | — |
 | `AI_AUTO_DISCOVER` | If every configured model is retired/paid/throttled, pick a free tool-capable model from the provider catalogue automatically (`0` disables) | `1` |
 | `AI_AUTO_DISCOVER_MAX` | How many catalogue models to try when self-healing | `2` |
+| `AI_MAX_STEPS` | Max tool rounds per turn (raise for wide multi-line drafts) | `12` |
 | `AI_TIMEOUT_MS` | Per-attempt timeout | `45000` |
 
 When the primary model is retired, turned paid or throttled, the assistant
