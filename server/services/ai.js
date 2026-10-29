@@ -413,6 +413,21 @@ function supplierOffer(productId, supplierCode) {
   return scored[0] || null;
 }
 
+// The name with the size (and any "6 UDS" pack suffix) stripped, so variants of
+// one product that differ only by size share a key. EDT and EDP stay different.
+function familyKey(row) {
+  return String(row.display_name || '')
+    .toLowerCase()
+    .replace(/\d+(?:[.,]\d+)?\s*ml\b/g, ' ')
+    .replace(/\d+\s*(?:uds|unidades|units?)\b/g, ' ')
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .trim();
+}
+
+function hasExplicitQuantity(line) {
+  return [line.boxes, line.units, line.quantity].some((v) => v != null && v !== '');
+}
+
 function toolDraftPlacement({ supplierCode, lines } = {}) {
   const code = String(supplierCode || '').trim();
   if (!code) return { error: 'supplierCode is required' };
@@ -424,51 +439,64 @@ function toolDraftPlacement({ supplierCode, lines } = {}) {
   const prepared = [];
   for (const l of input) {
     const line = l || {};
-    let product = null;
+    let products = [];
     if (line.productId != null) {
-      product = db.prepare('SELECT id, display_name, canonical_gtin, size_ml FROM products WHERE id = ?').get(Number(line.productId)) || null;
+      const product = db.prepare('SELECT id, display_name, canonical_gtin, size_ml FROM products WHERE id = ?').get(Number(line.productId)) || null;
       if (!product) return { error: 'product not found on a line: ' + line.productId };
+      products = [product];
     } else {
-      const candidates = productCandidates(line.productQuery || line.query || line.name);
+      const query = line.productQuery || line.query || line.name;
+      const candidates = productCandidates(query);
       if (!candidates.length) {
-        return { error: 'no product matched "' + (line.productQuery || line.query || line.name || '') + '"' };
+        return { error: 'no product matched "' + (query || '') + '"' };
       }
       if (candidates.length > 1) {
-        return {
-          error: 'several products match "' + (line.productQuery || line.query || line.name) + '" — add the size or pass productId',
-          candidates: candidates.slice(0, 6),
-        };
+        // "Dylan Blue EDT" with no size and no quantity means "one of each size":
+        // the variants are one product, so draft them all rather than asking.
+        const queryHasSize = /\d{2,4}\s*ml/i.test(String(query || ''));
+        const family = familyKey(candidates[0]);
+        const sameFamily = candidates.every((c) => familyKey(c) === family);
+        if (queryHasSize || !sameFamily || hasExplicitQuantity(line)) {
+          return {
+            error: 'several products match "' + query + '" — add the size or pass productId',
+            candidates: candidates.slice(0, 6),
+          };
+        }
+        products = candidates;
+      } else {
+        products = [candidates[0]];
       }
-      product = candidates[0];
     }
 
-    const best = supplierOffer(product.id, supplier.code);
-    if (!best && line.unitCost == null) {
-      return { error: supplier.name + ' has no usable cost offer on ' + product.display_name + ' (pass unitCost to override)' };
+    for (const product of products) {
+      const best = supplierOffer(product.id, supplier.code);
+      if (!best && line.unitCost == null) {
+        return { error: supplier.name + ' has no usable cost offer on ' + product.display_name + ' (pass unitCost to override)' };
+      }
+      const upc = Math.max(1, Number((best && best.offer.units_per_case) || line.unitsPerCase) || 1);
+      const unitCost = line.unitCost != null && line.unitCost !== ''
+        ? Math.round(Number(line.unitCost) * 10000) / 10000
+        : (best && best.perBottle != null ? Math.round(best.perBottle * 10000) / 10000 : null);
+
+      // boxes is the supplier's unit; units are rounded up to whole boxes.
+      const boxesIn = line.boxes != null && line.boxes !== '' ? Math.max(0, Math.floor(Number(line.boxes))) : null;
+      const unitsIn = line.units != null && line.units !== ''
+        ? Math.max(0, Number(line.units))
+        : (line.quantity != null && line.quantity !== '' ? Math.max(0, Number(line.quantity)) : null);
+      const units = boxesIn != null ? boxesIn * upc : (unitsIn != null ? Math.ceil(unitsIn / upc) * upc : upc);
+      if (!units) return { error: 'quantity required for ' + product.display_name };
+
+      prepared.push({
+        productId: product.id,
+        product: product.display_name,
+        offerId: best ? best.offer.id : null,
+        unitsPerCase: upc,
+        boxes: units / upc,
+        units,
+        unitCost,
+        derived: Boolean(best && best.derived),
+      });
     }
-    const upc = Math.max(1, Number((best && best.offer.units_per_case) || line.unitsPerCase) || 1);
-    const unitCost = line.unitCost != null && line.unitCost !== ''
-      ? Math.round(Number(line.unitCost) * 10000) / 10000
-      : (best && best.perBottle != null ? Math.round(best.perBottle * 10000) / 10000 : null);
-
-    // boxes is the supplier's unit; units are rounded up to whole boxes.
-    const boxesIn = line.boxes != null && line.boxes !== '' ? Math.max(0, Math.floor(Number(line.boxes))) : null;
-    const unitsIn = line.units != null && line.units !== ''
-      ? Math.max(0, Number(line.units))
-      : (line.quantity != null && line.quantity !== '' ? Math.max(0, Number(line.quantity)) : null);
-    const units = boxesIn != null ? boxesIn * upc : (unitsIn != null ? Math.ceil(unitsIn / upc) * upc : upc);
-    if (!units) return { error: 'quantity required for ' + product.display_name };
-
-    prepared.push({
-      productId: product.id,
-      product: product.display_name,
-      offerId: best ? best.offer.id : null,
-      unitsPerCase: upc,
-      boxes: units / upc,
-      units,
-      unitCost,
-      derived: Boolean(best && best.derived),
-    });
   }
 
   const estimated = prepared.reduce((s, l) => s + (l.unitCost != null ? l.unitCost * l.units : 0), 0);
@@ -712,7 +740,7 @@ const TOOLS = [
     type: 'function',
     function: {
       name: 'draft_placement',
-      description: 'Prepare (do not save) a supplier order/placement at cost price with full-box quantities. Resolve every line from a product name or barcode in ONE call — do not search products first. Each line: productQuery (name incl. size, e.g. "Versace Dylan Blue EDT 50 ml") or productId; boxes (preferred) or units; the supplier\'s cheapest cost offer supplies pack size and unit cost. Returns a proposal a human applies.',
+      description: 'Prepare (do not save) a supplier order/placement at cost price with full-box quantities. Resolve every line from a product name or barcode in ONE call — do not search products first. Each line: productQuery (name, size optional) or productId; boxes (preferred) or units; the supplier\'s cheapest cost offer supplies pack size and unit cost. A name without a size (e.g. "Versace Dylan Blue EDT") expands to one line per size, one full box each. Returns a proposal a human applies.',
       parameters: {
         type: 'object',
         properties: {
@@ -1274,6 +1302,17 @@ function sanitize(messages) {
     .map((m) => ({ role: m.role, content: m.content.slice(0, 4000) }));
 }
 
+// Which draft tool a confirmed offer refers to, from the assistant's offer text.
+function offeredDraftTool(text) {
+  const t = String(text || '').toLowerCase();
+  if (/\bplacement|supplier order|order placement\b/.test(t)) return 'draft_placement';
+  if (/\bquote|offer\b/.test(t)) return 'draft_offer';
+  if (/\bdemand\b/.test(t)) return 'draft_demand';
+  if (/\border\b/.test(t)) return 'draft_order';
+  if (/\btask\b/.test(t)) return 'draft_task';
+  return null;
+}
+
 async function chat({ messages, onEvent } = {}) {
   if (!enabled()) {
     const err = new Error('The assistant is not configured. Set AI_BASE_URL, AI_API_KEY and AI_MODEL on the server.');
@@ -1284,8 +1323,12 @@ async function chat({ messages, onEvent } = {}) {
   // "yes" after an offered draft must not be re-analysed: steer the model to act.
   const lastUser = [...messages].reverse().find((m) => m && m.role === 'user' && typeof m.content === 'string');
   const hadAssistant = messages.some((m) => m && m.role === 'assistant');
-  if (hadAssistant && lastUser && /^\s*(yes|yep|yeah|ok|okay|sure|go ahead|do it|please do|proceed|confirm(ed)?)\b/i.test(lastUser.content)
-      && lastUser.content.trim().length <= 30) {
+  const confirmed = Boolean(
+    hadAssistant && lastUser &&
+    /^\s*(yes|yep|yeah|ok|okay|sure|go ahead|do it|please do|proceed|confirm(ed)?)\b/i.test(lastUser.content) &&
+    lastUser.content.trim().length <= 30
+  );
+  if (confirmed) {
     convo.push({
       role: 'system',
       content: 'The user confirmed your previous offer. Call the relevant draft tool now using the data already discussed (draft tools resolve product names themselves), then describe the prepared draft. Do not repeat the analysis and do not ask again.',
@@ -1293,7 +1336,11 @@ async function chat({ messages, onEvent } = {}) {
   }
   const proposals = [];
   const proposalKeys = new Set();
+  const offeredTool = confirmed
+    ? offeredDraftTool(([...messages].reverse().find((m) => m && m.role === 'assistant' && typeof m.content === 'string') || {}).content)
+    : null;
   let usedModel = model();
+  let forcedAttempts = 0;
   const emit = (event) => { if (typeof onEvent === 'function') { try { onEvent(event); } catch (_) { /* listener must not break the turn */ } } };
   const stream = typeof onEvent === 'function';
   // A multi-variant draft needs several tool rounds; 6 was too tight for free
@@ -1309,7 +1356,18 @@ async function chat({ messages, onEvent } = {}) {
       });
     }
     const onDelta = stream ? (text) => emit({ type: 'delta', text }) : undefined;
-    const resp = await transport({ model: usedModel, messages: convo, tools: TOOLS, tool_choice: 'auto' }, onDelta);
+    // After a confirmed offer, a model that replies with a question instead of
+    // drafting gets the offered draft tool forced — otherwise "yes" silently
+    // does nothing.
+    const forceTool = confirmed && !proposals.length && forcedAttempts < 2;
+    let toolChoice = 'auto';
+    if (forceTool) {
+      toolChoice = offeredTool
+        ? { type: 'function', function: { name: offeredTool } }
+        : 'required';
+      forcedAttempts += 1;
+    }
+    const resp = await transport({ model: usedModel, messages: convo, tools: TOOLS, tool_choice: toolChoice }, onDelta);
     if (resp && typeof resp === 'object' && resp._model) usedModel = resp._model;
     const msg = resp && resp.choices && resp.choices[0] && resp.choices[0].message;
     if (!msg) throw Object.assign(new Error('The AI provider returned an empty response.'), { status: 502 });

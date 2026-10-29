@@ -279,11 +279,24 @@ test('draft_placement resolves names and supplier offers in one call', () => {
   assert.strictEqual(saved.totals.total, 204);
 });
 
-test('draft_placement asks for a size instead of guessing between variants', () => {
+test('draft_placement expands a size-less family name into one line per size', () => {
+  const ids = seedPlacementFixture();
+  const out = ai.runTool('draft_placement', {
+    supplierCode: 'ALCO',
+    lines: [{ productQuery: 'Test Blue Eau de Toilette' }],
+  });
+  assert.ok(out.proposal, JSON.stringify(out.result));
+  assert.deepStrictEqual(out.proposal.apply.body.lines.map((l) => l.productId), [ids[50], ids[100]]);
+  // One full box of each variant.
+  assert.deepStrictEqual(out.proposal.apply.body.lines.map((l) => l.units), [6, 6]);
+  assert.match(out.proposal.fields[0].value, /1 box\(es\)/);
+});
+
+test('draft_placement asks for a size when a quantity makes expansion unsafe', () => {
   seedPlacementFixture();
   const out = ai.runTool('draft_placement', {
     supplierCode: 'ALCO',
-    lines: [{ productQuery: 'Test Blue Eau de Toilette', boxes: 1 }],
+    lines: [{ productQuery: 'Test Blue Eau de Toilette', units: 12 }],
   });
   assert.match(out.result.error, /several products match/);
   assert.ok(out.result.candidates.length >= 2);
@@ -338,8 +351,10 @@ test('repeated identical draft calls produce one card, not duplicates', async ()
 test('a bare "yes" is steered to act on the offered draft', async () => {
   setEnv({ AI_MODELS: 'test:model' });
   let seen = null;
+  let choice = null;
   ai.setTransport(async (payload) => {
     seen = payload.messages;
+    choice = payload.tool_choice;
     return { choices: [{ message: { role: 'assistant', content: 'Prepared.' } }], _model: 'test:model' };
   });
   await ai.chat({
@@ -350,6 +365,19 @@ test('a bare "yes" is steered to act on the offered draft', async () => {
     ],
   });
   assert.ok(seen.some((m) => m.role === 'system' && /confirmed your previous offer/i.test(m.content)));
+  // The confirmation forces the draft tool that was offered, not another question.
+  assert.deepStrictEqual(choice, { type: 'function', function: { name: 'draft_placement' } });
+});
+
+test('an ordinary question leaves the tool choice automatic', async () => {
+  setEnv({ AI_MODELS: 'test:model' });
+  let choice = null;
+  ai.setTransport(async (payload) => {
+    choice = payload.tool_choice;
+    return { choices: [{ message: { role: 'assistant', content: 'Hello.' } }], _model: 'test:model' };
+  });
+  await ai.chat({ messages: [{ role: 'user', content: 'how many products do we have?' }] });
+  assert.strictEqual(choice, 'auto');
 });
 
 test('a successful retry is described even if the model narrates the earlier error', async () => {

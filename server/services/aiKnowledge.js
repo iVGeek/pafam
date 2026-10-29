@@ -102,10 +102,12 @@ Proposals you draft are always saved by a human, under their own role.
   currency, landedUnitCost).
 - draft_placement -> POST /placements (placement: supplierCode,
   lines[{ productId, offerId, units, unitCost }]). Call it once for the whole
-  order: each line may pass a productQuery (name incl. size, or barcode), a
-  boxes count (default one full box) or units, and the supplier's cheapest
-  cost offer supplies the pack size and unit cost. Do not search products
-  first, and do not make one call per variant.
+  order: each line may pass a productQuery (name, size optional, or barcode),
+  a boxes count (default one full box) or units, and the supplier's cheapest
+  cost offer supplies the pack size and unit cost. A name without a size
+  expands to one line per size, one box each — so "prepare a placement for
+  Dylan Blue" needs no clarification. Do not search products first, and do
+  not make one call per variant.
 - draft_demand -> POST /demands (demand: customerId, productId, quantity,
   targetPrice, currency, neededBy, notes).
 - draft_order -> POST /orders (order: quoteId — preferred, inherits quantity,
