@@ -2506,7 +2506,7 @@ $('#pwBtn').addEventListener('click', () => {
 // own: a proposal card has an Apply button that runs the normal, role-checked
 // API under the user. Replies stream in over SSE; the transcript is kept in
 // localStorage so a reload does not lose the conversation.
-const chat = { messages: [], enabled: null, model: '', streaming: false, controller: null };
+const chat = { messages: [], enabled: null, model: '', models: [], streaming: false, controller: null };
 const CHAT_KEY = 'perfumes.chat.v1';
 const TOOL_LABELS = {
   search_products: 'looking up products',
@@ -2705,9 +2705,11 @@ async function sendChat() {
         sawDone = true;
         if (!turn.content && data.reply) turn.content = data.reply;
         (data.proposals || []).forEach((p) => chat.messages.push({ role: 'proposal', proposal: p }));
-        if (data.model) chat.model = data.model;
+        if (data.model) { chat.model = data.model; setChatModelLabel(); }
       } else if (event === 'error') {
-        throw new Error(data.message || 'The assistant failed.');
+        const err = new Error(data.message || 'The assistant failed.');
+        if (data.code) err.fatal = true; // provider/config problem: retrying the plain route cannot help
+        throw err;
       }
     };
     for (;;) {
@@ -2734,6 +2736,8 @@ async function sendChat() {
   } catch (e) {
     if (e.name === 'AbortError') {
       if (!turn.content) turn.content = '(stopped)';
+    } else if (e.fatal) {
+      turn.content = '**Assistant unavailable.** ' + e.message;
     } else {
       // Stream unavailable (older server, proxy): fall back to the plain turn.
       try {
@@ -2742,7 +2746,7 @@ async function sendChat() {
         (out.proposals || []).forEach((p) => chat.messages.push({ role: 'proposal', proposal: p }));
         if (!turn.content && !(out.proposals || []).length) turn.content = '(no answer)';
       } catch (e2) {
-        turn.content = 'Error: ' + e2.message;
+        turn.content = '**Assistant unavailable.** ' + e2.message;
       }
     }
   } finally {
@@ -2754,6 +2758,14 @@ async function sendChat() {
     saveChatHistory();
     renderChat();
   }
+}
+
+function setChatModelLabel() {
+  const el = $('#chatModel');
+  if (!el) return;
+  const chain = chat.models || [];
+  const extra = chain.length > 1 ? ' +' + (chain.length - 1) + ' fallback' : '';
+  el.textContent = chat.enabled ? (chat.model || '') + extra : 'not configured';
 }
 
 function setChatSending(on) {
@@ -2809,8 +2821,8 @@ async function initAssistant() {
     const s = await GET('/ai/status');
     chat.enabled = !!s.enabled;
     chat.model = s.model || '';
-    const el = $('#chatModel');
-    if (el) el.textContent = s.enabled ? (s.model || '') : 'not configured';
+    chat.models = s.models || (s.model ? [s.model] : []);
+    setChatModelLabel();
   } catch (e) { chat.enabled = false; }
   renderChat();
 }

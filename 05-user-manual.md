@@ -581,7 +581,16 @@ server environment (the same place as the other `PTP_*` settings) and restart:
 |---|---|---|
 | `AI_BASE_URL` | API base, e.g. `https://api.openai.com/v1` (OpenAI, Azure OpenAI, Groq, OpenRouter, or a local vLLM/Ollama) | `https://api.openai.com/v1` |
 | `AI_API_KEY` | The provider key (leave empty for a local server that needs none) | — |
-| `AI_MODEL` | Model name, e.g. `gpt-4o-mini` | `gpt-4o-mini` |
+| `AI_MODEL` | Primary model name, e.g. `gpt-4o-mini` | `gpt-4o-mini` |
+| `AI_MODELS` | Optional comma-separated fallback chain; if the primary is retired or throttled the next one answers | — |
+
+Free model catalogues change without notice (a model can become paid-only or be
+removed overnight). If the assistant stops answering, run `npm run check:ai`:
+it checks the key, verifies every configured model still exists and supports
+tool calling, and lists current free alternatives. `npm run check:ai -- --write`
+repairs `.env` with a working free model. The chat header shows which model
+answered. When every model fails, the chat reports the real reason (retired /
+paid-only / rate-limited / invalid key) instead of a generic error.
 
 Until `AI_BASE_URL` or `AI_API_KEY` is set the panel opens but shows **not
 configured**. The assistant has no direct database access: it reads through a

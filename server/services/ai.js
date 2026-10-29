@@ -24,17 +24,32 @@ const MAX_STEPS = 6;
 
 /* ------------------------------ configuration ------------------------------ */
 
+const DEFAULT_MODEL = 'gpt-4o-mini';
+
 function baseUrl() { return (process.env.AI_BASE_URL || 'https://api.openai.com/v1').replace(/\/+$/, ''); }
-function model() { return process.env.AI_MODEL || 'gpt-4o-mini'; }
+
+// Free model catalogues churn: providers retire a model, turn it paid, or
+// rate-limit it without notice. AI_MODELS holds an ordered fallback chain
+// (comma separated); AI_MODEL is still honoured as the single-model form.
+function models() {
+  const raw = process.env.AI_MODELS || process.env.AI_MODEL || '';
+  const list = raw.split(',').map((s) => s.trim()).filter(Boolean);
+  return list.length ? Array.from(new Set(list)) : [DEFAULT_MODEL];
+}
+function model() { return models()[0]; }
 function apiKey() { return process.env.AI_API_KEY || ''; }
 function enabled() {
   return process.env.PTP_AI_MOCK === '1' || Boolean(process.env.AI_API_KEY) || Boolean(process.env.AI_BASE_URL);
+}
+function headers() {
+  return Object.assign({ 'content-type': 'application/json' }, apiKey() ? { authorization: 'Bearer ' + apiKey() } : {});
 }
 
 function status() {
   return {
     enabled: enabled(),
     model: model(),
+    models: models(),
     provider: baseUrl(),
     hasKey: Boolean(apiKey()),
     baseUrlSet: Boolean(process.env.AI_BASE_URL),
@@ -811,39 +826,80 @@ function runTool(name, args) {
 
 /* --------------------------------- transport ------------------------------- */
 
+// One attempt may fail because a model was retired, turned paid or throttled.
+// Fall back through AI_MODELS in order; only stop early on errors retrying
+// cannot fix (bad key, no credit, malformed request).
+let httpFetch = (url, opts) => fetch(url, opts);
+
 // Swappable so tests can drive the loop without a network. When onDelta is a
 // function the real transport streams tokens (SSE from the provider) and calls
 // onDelta(text) per content fragment, then returns the assembled message.
-async function callModel(payload, onDelta) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), Number(process.env.AI_TIMEOUT_MS) || 45000);
-  const streaming = typeof onDelta === 'function';
-  let res;
+function describeProvider(status, detail, modelId) {
+  const d = String(detail || '').replace(/\s+/g, ' ').trim().slice(0, 300);
+  const id = String(modelId || '?');
+  if (status === 401) {
+    return { code: 'auth', retry: false, reason: 'the API key was rejected',
+      message: 'The AI provider rejected the API key. Check AI_API_KEY on the server.' };
+  }
+  if (status === 402) {
+    return { code: 'credits', retry: false, reason: 'the account has no credit',
+      message: 'The AI provider account is out of credit. Top up, or switch AI_MODEL to a free model.' };
+  }
+  if (status === 403 && /key|auth|forbidden|permission/i.test(d)) {
+    return { code: 'auth', retry: false, reason: 'access was refused',
+      message: 'The AI provider refused access (HTTP 403): ' + (d || 'check the API key and model permissions') };
+  }
+  if (status === 404 && /unavailable for free|not a valid model|no endpoints found|does not exist|deprecated|not found/i.test(d)) {
+    return { code: 'model_unavailable', retry: true, reason: 'retired or paid-only',
+      message: 'Model "' + id + '" is retired or paid-only on this provider.' };
+  }
+  if (status === 403) {
+    return { code: 'model_restricted', retry: true, reason: 'not available for this account',
+      message: 'Model "' + id + '" is not available with this account' + (d ? ' (' + d + ')' : '') + '.' };
+  }
+  if (status === 404) {
+    return { code: 'model_unavailable', retry: true, reason: 'not found',
+      message: 'Model "' + id + '" was not found on this provider.' };
+  }
+  if (status === 429) {
+    return { code: 'rate_limit', retry: true, reason: 'rate-limited (free-tier quota)',
+      message: 'The provider rate-limited model "' + id + '".' };
+  }
+  if (status >= 500) {
+    return { code: 'provider', retry: true, reason: 'provider error ' + status,
+      message: 'The provider failed on model "' + id + '" (HTTP ' + status + ')' + (d ? ': ' + d : '') + '.' };
+  }
+  return { code: 'bad_request', retry: false, reason: 'request rejected',
+    message: 'The provider rejected the request' + (d ? ': ' + d : ' (HTTP ' + status + ')') + '.' };
+}
+
+function allFailed(failures) {
+  const parts = failures.map((f) => f.model + ' (' + f.reason + ')');
+  const dead = failures.some((f) => f.code === 'model_unavailable' || f.code === 'model_restricted');
+  const rate = failures.some((f) => f.code === 'rate_limit');
+  const offline = failures.every((f) => f.code === 'network' || f.code === 'timeout');
+  let hint = '';
+  if (dead) hint = ' Update AI_MODEL / AI_MODELS (run "npm run check:ai" to list working models).';
+  else if (rate) hint = ' The free-tier quota is exhausted - retry shortly or add another model to AI_MODELS.';
+  else if (offline) hint = ' Check the provider URL, this server\'s network access and AI_TIMEOUT_MS.';
+  const err = new Error('The assistant could not reach any configured model: ' + parts.join('; ') + '.' + hint);
+  err.status = failures.every((f) => f.code === 'timeout') ? 504 : 502;
+  err.code = failures[0] && failures[0].code;
+  err.failures = failures.map((f) => ({ model: f.model, code: f.code, reason: f.reason }));
+  return err;
+}
+
+async function readResponse(res, onDelta) {
+  if (typeof onDelta !== 'function') {
+    const text = await res.text();
+    let data = null;
+    try { data = JSON.parse(text); } catch (_) { data = null; }
+    return data;
+  }
+  // SSE: "data: {...}" lines, terminated by "data: [DONE]". Content tokens
+  // arrive as delta.content; tool calls arrive as delta.tool_calls fragments
+  // keyed by index (id/name whole, arguments cumulative).
   try {
-    res = await fetch(baseUrl() + '/chat/completions', {
-      method: 'POST',
-      headers: Object.assign({ 'content-type': 'application/json' }, apiKey() ? { authorization: 'Bearer ' + apiKey() } : {}),
-      body: JSON.stringify(streaming ? Object.assign({}, payload, { stream: true }) : payload),
-      signal: controller.signal,
-    });
-    if (!res.ok) {
-      const text = await res.text();
-      let data = null;
-      try { data = JSON.parse(text); } catch (_) { data = null; }
-      const detail = (data && data.error && data.error.message) || text || ('HTTP ' + res.status);
-      const err = new Error('AI provider error: ' + detail);
-      err.status = 502;
-      throw err;
-    }
-    if (!streaming) {
-      const text = await res.text();
-      let data = null;
-      try { data = JSON.parse(text); } catch (_) { data = null; }
-      return data;
-    }
-    // SSE: "data: {...}" lines, terminated by "data: [DONE]". Content tokens
-    // arrive as delta.content; tool calls arrive as delta.tool_calls fragments
-    // keyed by index (id/name whole, arguments cumulative).
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
     let buf = '';
@@ -881,22 +937,164 @@ async function callModel(payload, onDelta) {
     if (toolCalls.length) msg.tool_calls = toolCalls;
     return { choices: [{ message: msg }] };
   } catch (e) {
-    if (e.name === 'AbortError') {
-      const err = new Error('The AI provider timed out.');
-      err.status = 504;
-      throw err;
-    }
-    if (e.status) throw e;
-    const err = new Error('Could not reach the AI provider: ' + e.message);
+    const err = new Error('The AI provider stopped mid-answer. Retry to get the full reply.');
     err.status = 502;
+    err.code = 'stream';
+    err.retry = false;
     throw err;
-  } finally {
-    clearTimeout(timeout);
   }
+}
+
+async function callModel(payload, onDelta) {
+  const list = models();
+  const failures = [];
+  for (const id of list) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), Number(process.env.AI_TIMEOUT_MS) || 45000);
+    try {
+      const body = Object.assign({}, payload, { model: id });
+      if (typeof onDelta === 'function') body.stream = true;
+      const res = await httpFetch(baseUrl() + '/chat/completions', {
+        method: 'POST',
+        headers: headers(),
+        body: JSON.stringify(body),
+        signal: controller.signal,
+      });
+      if (!res.ok) {
+        const text = await res.text();
+        let data = null;
+        try { data = JSON.parse(text); } catch (_) { data = null; }
+        const detail = (data && data.error && (data.error.message || data.error.code)) || text || ('HTTP ' + res.status);
+        const info = describeProvider(res.status, detail, id);
+        if (!info.retry) {
+          const err = new Error(info.message);
+          err.status = 502;
+          err.code = info.code;
+          err.retry = false;
+          err.failures = [{ model: id, code: info.code, reason: info.reason }];
+          throw err;
+        }
+        failures.push({ model: id, code: info.code, reason: info.reason });
+        continue;
+      }
+      const out = await readResponse(res, onDelta);
+      if (out && typeof out === 'object') {
+        out._model = id;
+        if (!out.model) out.model = id;
+      }
+      return out;
+    } catch (e) {
+      if (e && e.retry === false) throw e;
+      if (e && e.name === 'AbortError') {
+        failures.push({ model: id, code: 'timeout', reason: 'timed out after ' + Math.round((Number(process.env.AI_TIMEOUT_MS) || 45000) / 1000) + 's' });
+        continue;
+      }
+      failures.push({ model: id, code: 'network', reason: 'could not connect: ' + e.message });
+      continue;
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+  throw allFailed(failures);
 }
 
 let transport = callModel;
 function setTransport(fn) { transport = fn || callModel; }
+
+function setFetch(fn) { httpFetch = fn || ((url, opts) => fetch(url, opts)); }
+
+/* ------------------------------- diagnostics ------------------------------- */
+
+async function getJson(url, ms) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), ms || 8000);
+  try {
+    const res = await httpFetch(url, { headers: headers(), signal: controller.signal });
+    const text = await res.text();
+    let data = null;
+    try { data = JSON.parse(text); } catch (_) { data = null; }
+    return { ok: res.ok, status: res.status, data };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+// Live health check used by GET /api/ai/diagnose and `npm run check:ai`:
+// is the provider reachable, do the configured models still exist, do they
+// support tool calls, does the key have credit, and what free models could
+// replace a dead one.
+async function diagnose() {
+  const provider = baseUrl();
+  const configured = models();
+  const out = {
+    enabled: enabled(),
+    provider,
+    hasKey: Boolean(apiKey()),
+    configured,
+    models: [],
+    usable: [],
+    freeAlternatives: [],
+    key: null,
+    reachable: null,
+    ok: false,
+    hint: null,
+  };
+  let catalog = null;
+  try {
+    const r = await getJson(provider + '/models', 8000);
+    out.reachable = r.status;
+    if (r.ok && r.data && Array.isArray(r.data.data)) catalog = r.data.data;
+    else out.hint = 'GET ' + provider + '/models returned HTTP ' + r.status + '.';
+  } catch (e) {
+    out.reachable = false;
+    out.hint = 'Could not reach ' + provider + ': ' + e.message;
+  }
+
+  if (catalog) {
+    const byId = new Map(catalog.map((m) => [m.id, m]));
+    for (const id of configured) {
+      const m = byId.get(id);
+      const params = (m && m.supported_parameters) || [];
+      const free = Boolean(m) && Number(m.pricing && m.pricing.prompt) === 0 && Number(m.pricing && m.pricing.completion) === 0;
+      out.models.push({ id, present: Boolean(m), supportsTools: m ? params.includes('tools') : null, free });
+      if (m && params.includes('tools')) out.usable.push(id);
+    }
+    out.freeAlternatives = catalog
+      .filter((m) => /:free$/.test(m.id))
+      .filter((m) => m.pricing && Number(m.pricing.prompt) === 0 && Number(m.pricing.completion) === 0)
+      .filter((m) => (m.supported_parameters || []).includes('tools'))
+      .sort((a, b) => (b.context_length || 0) - (a.context_length || 0))
+      .slice(0, 12)
+      .map((m) => ({ id: m.id, context: m.context_length || null }));
+  } else {
+    out.models = configured.map((id) => ({ id, present: null, supportsTools: null, free: null }));
+    out.usable = configured.slice();
+  }
+
+  if (/openrouter\.ai/.test(provider)) {
+    try {
+      const r = await getJson(provider + '/key', 8000);
+      if (r.ok && r.data && r.data.data) {
+        const d = r.data.data;
+        out.key = {
+          label: d.label || null,
+          limit: d.limit,
+          remaining: d.limit_remaining,
+          usage: d.usage,
+          freeTier: Boolean(d.is_free_tier),
+        };
+        if (Number(d.limit_remaining) === 0) out.hint = 'The OpenRouter key has no remaining credit.';
+      }
+    } catch (_) { /* key introspection is optional */ }
+  }
+
+  out.ok = out.usable.length > 0;
+  if (!out.ok && out.freeAlternatives.length) {
+    out.hint = (out.hint ? out.hint + ' ' : '') + 'Configured models are missing or do not support tools; try ' +
+      out.freeAlternatives.slice(0, 3).map((m) => m.id).join(', ') + '.';
+  }
+  return out;
+}
 
 /* ---------------------------------- chat ----------------------------------- */
 
@@ -916,19 +1114,21 @@ async function chat({ messages, onEvent } = {}) {
   }
   const convo = [{ role: 'system', content: SYSTEM_PROMPT }].concat(sanitize(messages));
   const proposals = [];
+  let usedModel = model();
   const emit = (event) => { if (typeof onEvent === 'function') { try { onEvent(event); } catch (_) { /* listener must not break the turn */ } } };
   const stream = typeof onEvent === 'function';
 
   for (let step = 0; step < MAX_STEPS; step += 1) {
     const onDelta = stream ? (text) => emit({ type: 'delta', text }) : undefined;
-    const resp = await transport({ model: model(), messages: convo, tools: TOOLS, tool_choice: 'auto' }, onDelta);
+    const resp = await transport({ model: usedModel, messages: convo, tools: TOOLS, tool_choice: 'auto' }, onDelta);
+    if (resp && typeof resp === 'object' && resp._model) usedModel = resp._model;
     const msg = resp && resp.choices && resp.choices[0] && resp.choices[0].message;
     if (!msg) throw Object.assign(new Error('The AI provider returned an empty response.'), { status: 502 });
     convo.push(msg);
 
     const calls = msg.tool_calls || [];
     if (!calls.length) {
-      return { reply: msg.content || '', proposals, model: model() };
+      return { reply: msg.content || '', proposals, model: usedModel };
     }
     for (const call of calls) {
       const name = call.function && call.function.name;
@@ -940,15 +1140,19 @@ async function chat({ messages, onEvent } = {}) {
       convo.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(out.result) });
     }
   }
-  return { reply: 'I hit the step limit before finishing — try narrowing the request.', proposals, model: model() };
+  return { reply: 'I hit the step limit before finishing — try narrowing the request.', proposals, model: usedModel };
 }
 
 module.exports = {
   enabled,
   status,
+  models,
+  diagnose,
   chat,
   runTool,
   setTransport,
+  setFetch,
   tools: TOOLS,
   _executors: EXECUTORS,
+  _describeProvider: describeProvider,
 };

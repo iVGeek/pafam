@@ -135,7 +135,18 @@ replica, which is what a SQLite volume requires.
 |---|---|---|
 | `AI_BASE_URL` | API base URL | `https://api.openai.com/v1` |
 | `AI_API_KEY` | Provider key (leave empty for a local server) | — |
-| `AI_MODEL` | Model name | `gpt-4o-mini` |
+| `AI_MODEL` | Primary model name | `gpt-4o-mini` |
+| `AI_MODELS` | Ordered fallback chain (comma separated); wins over `AI_MODEL` | — |
+| `AI_TIMEOUT_MS` | Per-attempt timeout | `45000` |
+
+When the primary model is retired, turned paid or throttled, the assistant
+silently moves to the next model in `AI_MODELS` and the chat header shows which
+one answered (`+N fallback`). If every model fails, the error says exactly why
+(retired / paid-only / rate-limited / bad key) instead of a generic provider
+error. **Free catalogues churn** — run `npm run check:ai` any time the
+assistant stops working; `npm run check:ai -- --write` repairs `.env` with a
+working free model. `GET /api/ai/diagnose` returns the same report as JSON
+(signed-in users only, no key material).
 
 Provider examples:
 
@@ -144,14 +155,15 @@ Provider examples:
 | **GitHub Models** (free) | `https://models.github.ai/inference` | `openai/gpt-4o-mini` | GitHub PAT with the `models:read` scope |
 | OpenAI | `https://api.openai.com/v1` | `gpt-4o-mini` | OpenAI key |
 | Groq (free tier) | `https://api.groq.com/openai/v1` | `llama-3.3-70b-versatile` | Groq key |
-| OpenRouter (free models) | `https://openrouter.ai/api/v1` | `nvidia/nemotron-3-super-120b-a12b:free` | OpenRouter key |
+| OpenRouter (free models) | `https://openrouter.ai/api/v1` | `nvidia/nemotron-3.5-lightning:free` | OpenRouter key |
 | Google Gemini | `https://generativelanguage.googleapis.com/v1beta/openai/` | `gemini-1.5-flash` | Google key |
 | Ollama (local) | `http://localhost:11434/v1` | `llama3.1` | *(none)* |
 
 Locally, put these in a `.env` file at the project root (it is git-ignored and
 loaded on start); on Railway/Render set them as dashboard variables. Free model
-lists rotate — check the provider's `GET {AI_BASE_URL}/models` for current names
-(the model must support tool/function calling).
+lists rotate — `npm run check:ai` lists current free models that support
+tool/function calling (that capability is mandatory; without it the assistant
+cannot read the business).
 
 Until `AI_BASE_URL` or `AI_API_KEY` is set, the panel opens but reports **not
 configured**. See the [User Manual](05-user-manual.md) §§24–25.

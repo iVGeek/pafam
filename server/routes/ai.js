@@ -9,6 +9,13 @@ router.get('/ai/status', (req, res) => {
   res.json(ai.status());
 });
 
+// Live health check: provider reachable, configured models still exist and
+// support tool calls, key credit, and free models that could replace a dead
+// one. Safe to expose: no key material is returned.
+router.get('/ai/diagnose', async (req, res, next) => {
+  try { res.json(await ai.diagnose()); } catch (e) { next(e); }
+});
+
 // One turn of the conversation. The model may call read tools and draft tools;
 // drafts come back as proposals for the human to apply. Nothing is written here.
 router.post('/ai/chat', async (req, res, next) => {
@@ -43,7 +50,7 @@ router.post('/ai/chat/stream', async (req, res) => {
     });
     if (!closed) send('done', { reply: out.reply, proposals: out.proposals, model: out.model });
   } catch (e) {
-    if (!closed) send('error', { message: e.message, status: e.status || 500 });
+    if (!closed) send('error', { message: e.message, status: e.status || 500, code: e.code || null, failures: e.failures || null });
   }
   res.end();
 });
