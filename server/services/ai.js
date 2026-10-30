@@ -331,28 +331,45 @@ function toolDraftOffer({ productId, quantity, costPerBottle, targetPct, basis, 
   const cost = Number(costPerBottle);
   if (!Number.isFinite(cost) || cost <= 0) return { error: 'costPerBottle (supplier cost per bottle) is required' };
 
+  // A quote is a commercial commitment: never invent the quantity, the customer
+  // or the margin. Small models happily fill these with 1, the first customer in
+  // the list and the default margin, producing a plausible but fictitious quote.
+  // Ask instead; the answer becomes one more tool call.
+  const rawQty = Number(quantity);
+  if (!Number.isFinite(rawQty) || rawQty <= 0) {
+    return { error: 'quantity is missing — ask the user how many bottles this quote is for, then call draft_offer again' };
+  }
+  const qty = Math.max(1, Math.round(rawQty));
+
+  const customer = customerId
+    ? db.prepare('SELECT id, name, code FROM customers WHERE id = ?').get(Number(customerId))
+    : null;
+  if (!customer) {
+    return { error: 'customerId is missing — ask which customer the quote is for (list_customers shows the options), then call draft_offer again' };
+  }
+
   const pct = Number(targetPct);
-  const usePct = Number.isFinite(pct) ? pct : (Number(getSetting('default_margin_pct', '30')) || 30);
+  const explicitPct = Number.isFinite(pct);
+  const usePct = explicitPct ? pct : (Number(getSetting('default_margin_pct', '30')) || 30);
   const which = basis === 'markup_on_cost' ? 'markupOnCost' : 'marginOnSelling';
   const calc = pricing.priceFromMargin(cost, usePct);
   const chosen = calc[which];
   if (!chosen || !chosen.valid) return { error: (chosen && chosen.reason) || 'cannot price at that margin' };
 
-  const qty = Math.max(1, Math.round(Number(quantity) || 1));
   const cur = currency || getSetting('base_currency', 'USD');
-  const customer = customerId ? db.prepare('SELECT id, name, code FROM customers WHERE id = ?').get(Number(customerId)) : null;
   const convention = which === 'markupOnCost' ? 'markup on cost' : 'margin on selling';
+  const targetLabel = `${usePct}% ${convention}` + (explicitPct ? '' : ' (default — confirm)');
 
   const proposal = {
     type: 'quote',
-    title: 'Quote — ' + product.display_name + (customer ? ' for ' + customer.name : ''),
-    summary: `${qty} x ${product.display_name} @ ${chosen.sellingUnitPrice} ${cur} (cost ${cost}, ${usePct}% ${convention})`,
+    title: 'Quote — ' + product.display_name + ' for ' + customer.name,
+    summary: `${qty} x ${product.display_name} @ ${chosen.sellingUnitPrice} ${cur} (cost ${cost}, ${targetLabel})`,
     fields: [
       { label: 'Product', value: product.display_name + (product.canonical_gtin ? ' - ' + product.canonical_gtin : '') },
-      { label: 'Customer', value: customer ? customer.name : '(choose a customer)' },
+      { label: 'Customer', value: customer.name },
       { label: 'Quantity', value: qty },
       { label: 'Cost / bottle', value: `${cost} ${cur}` },
-      { label: 'Target', value: `${usePct}% ${convention}` },
+      { label: 'Target', value: targetLabel },
       { label: 'Selling price / bottle', value: `${chosen.sellingUnitPrice} ${cur}` },
       { label: 'Margin on selling', value: chosen.marginPctOnSell == null ? '-' : chosen.marginPctOnSell + '%' },
       { label: 'Markup on cost', value: chosen.markupPctOfCost == null ? '-' : chosen.markupPctOfCost + '%' },
@@ -366,7 +383,7 @@ function toolDraftOffer({ productId, quantity, costPerBottle, targetPct, basis, 
       method: 'POST',
       url: '/quotes',
       body: {
-        customerId: customer ? customer.id : null,
+        customerId: customer.id,
         productId: product.id,
         quantity: qty,
         unitPrice: chosen.sellingUnitPrice,
@@ -375,7 +392,9 @@ function toolDraftOffer({ productId, quantity, costPerBottle, targetPct, basis, 
       },
     },
   };
-  if (!customer) proposal.note = 'Pick a customer before saving — a quote needs a customerId.';
+  if (!explicitPct) {
+    proposal.note = 'No margin was given, so the default ' + usePct + '% ' + convention + ' was used. Confirm it (or ask for another margin) before applying.';
+  }
   return { proposal };
 }
 
@@ -743,19 +762,19 @@ const TOOLS = [
     type: 'function',
     function: {
       name: 'draft_offer',
-      description: 'Prepare (do not save) a quote/offer from a cost price and target margin. Shows both margin conventions. Returns a proposal a human applies.',
+      description: 'Prepare (do not save) a quote/offer from a cost price and target margin. Shows both margin conventions. quantity and customerId are mandatory — ask the user when either is missing instead of guessing. Returns a proposal a human applies.',
       parameters: {
         type: 'object',
         properties: {
           productId: { type: 'integer' },
-          quantity: { type: 'integer' },
+          quantity: { type: 'integer', description: 'Bottles to quote (required)' },
           costPerBottle: { type: 'number' },
           targetPct: { type: 'number', description: 'target margin or markup in percent' },
           basis: { type: 'string', enum: ['margin_on_selling', 'markup_on_cost'] },
-          customerId: { type: 'integer' },
+          customerId: { type: 'integer', description: 'Customer receiving the quote (required)' },
           currency: { type: 'string' },
         },
-        required: ['productId', 'costPerBottle'],
+        required: ['productId', 'costPerBottle', 'quantity', 'customerId'],
       },
     },
   },
@@ -1352,14 +1371,36 @@ function sanitize(messages) {
     .map((m) => ({ role: m.role, content: m.content.slice(0, 4000) }));
 }
 
-// Which draft tool a confirmed offer refers to, from the assistant's offer text.
-function offeredDraftTool(text) {
-  const t = String(text || '').toLowerCase();
-  if (/\bplacement|supplier order|order placement\b/.test(t)) return 'draft_placement';
-  if (/\bquote|offer\b/.test(t)) return 'draft_offer';
-  if (/\bdemand\b/.test(t)) return 'draft_demand';
-  if (/\border\b/.test(t)) return 'draft_order';
-  if (/\btask\b/.test(t)) return 'draft_task';
+// Which draft tool a confirmed offer refers to. The assistant's own wording is
+// authoritative, but small models often end a supplier-price lookup with a
+// generic "Would you like to prepare a draft for this product?" — no keyword at
+// all. In that case the user's original request decides: a "cheapest supplier"
+// question means a supplier placement, never a customer quote.
+function offeredDraftTool(assistantText, userText) {
+  const a = String(assistantText || '').toLowerCase();
+  const u = String(userText || '').toLowerCase();
+  const PLACE = /\b(placement|supplier order|order placement|purchase order|restock)\b/;
+  const QUOTE = /\b(quote|sales offer|offer to (?:the )?customer)\b/;
+  const DEMAND = /\bdemand\b/;
+  const ORDER = /\b(customer order|sales order)\b/;
+  const TASK = /\btask\b/;
+
+  const fromAssistant = [];
+  if (PLACE.test(a)) fromAssistant.push('draft_placement');
+  if (QUOTE.test(a)) fromAssistant.push('draft_offer');
+  if (DEMAND.test(a)) fromAssistant.push('draft_demand');
+  if (ORDER.test(a)) fromAssistant.push('draft_order');
+  if (TASK.test(a)) fromAssistant.push('draft_task');
+  // An unambiguous offer in the assistant's reply wins.
+  if (fromAssistant.length === 1) return fromAssistant[0];
+
+  // Otherwise infer from what the user originally asked for.
+  if (DEMAND.test(u)) return 'draft_demand';
+  if (TASK.test(u) || /\bremind\b/.test(u)) return 'draft_task';
+  if (PLACE.test(u) || /\b(supplier|source|sourcing|buy|purchase|restock)\b/.test(u)) return 'draft_placement';
+  if (QUOTE.test(u) || /\b(margin|selling price)\b/.test(u)) return 'draft_offer';
+  if (ORDER.test(u) || /\border\b/.test(u)) return 'draft_order';
+  // The assistant offered several things and the request is generic: ask.
   return null;
 }
 
@@ -1372,23 +1413,40 @@ async function chat({ messages, onEvent } = {}) {
   const convo = [{ role: 'system', content: SYSTEM_PROMPT }].concat(sanitize(messages));
   // "yes" after an offered draft must not be re-analysed: steer the model to act.
   const lastUser = [...messages].reverse().find((m) => m && m.role === 'user' && typeof m.content === 'string');
+  const lastAssistant = [...messages].reverse().find((m) => m && m.role === 'assistant' && typeof m.content === 'string');
   const hadAssistant = messages.some((m) => m && m.role === 'assistant');
   const confirmed = Boolean(
     hadAssistant && lastUser &&
     /^\s*(yes|yep|yeah|ok|okay|sure|go ahead|do it|please do|proceed|confirm(ed)?)\b/i.test(lastUser.content) &&
     lastUser.content.trim().length <= 30
   );
-  if (confirmed) {
+  const offeredTool = confirmed
+    ? offeredDraftTool(
+      lastAssistant && lastAssistant.content,
+      // Everything the user said *before* the confirmation; "yes" carries no
+      // intent on its own.
+      messages
+        .filter((m) => m && m.role === 'user' && typeof m.content === 'string')
+        .slice(0, -1)
+        .map((m) => m.content)
+        .join(' \n ')
+    )
+    : null;
+  if (confirmed && offeredTool) {
     convo.push({
       role: 'system',
-      content: 'The user confirmed your previous offer. Call the relevant draft tool now using the data already discussed (draft tools resolve product names themselves), then describe the prepared draft. Do not repeat the analysis and do not ask again.',
+      content: 'The user confirmed your previous offer. Call ' + offeredTool + ' now using the data already discussed (draft tools resolve product names themselves), then describe the prepared draft. Do not repeat the analysis and do not ask again.',
+    });
+  } else if (confirmed) {
+    // Forcing *some* tool here is what makes a small model invent a quote with a
+    // made-up quantity, margin and customer. Ask one short question instead.
+    convo.push({
+      role: 'system',
+      content: 'The user agreed, but it is not yet clear which draft they mean. Ask one short question: should I prepare a customer quote or a supplier order, and for which product and quantity? Do not call a draft tool until they answer.',
     });
   }
   const proposals = [];
   const proposalKeys = new Set();
-  const offeredTool = confirmed
-    ? offeredDraftTool(([...messages].reverse().find((m) => m && m.role === 'assistant' && typeof m.content === 'string') || {}).content)
-    : null;
   let usedModel = model();
   let forcedAttempts = 0;
   const emit = (event) => { if (typeof onEvent === 'function') { try { onEvent(event); } catch (_) { /* listener must not break the turn */ } } };
@@ -1408,13 +1466,12 @@ async function chat({ messages, onEvent } = {}) {
     const onDelta = stream ? (text) => emit({ type: 'delta', text }) : undefined;
     // After a confirmed offer, a model that replies with a question instead of
     // drafting gets the offered draft tool forced — otherwise "yes" silently
-    // does nothing.
-    const forceTool = confirmed && !proposals.length && forcedAttempts < 2;
+    // does nothing. When the intent is unknown, nothing is forced: a required
+    // tool call would just make the model invent a plausible-looking draft.
+    const forceTool = confirmed && Boolean(offeredTool) && !proposals.length && forcedAttempts < 2;
     let toolChoice = 'auto';
     if (forceTool) {
-      toolChoice = offeredTool
-        ? { type: 'function', function: { name: offeredTool } }
-        : 'required';
+      toolChoice = { type: 'function', function: { name: offeredTool } };
       forcedAttempts += 1;
     }
     const resp = await transport({ model: usedModel, messages: convo, tools: TOOLS, tool_choice: toolChoice }, onDelta);
@@ -1471,4 +1528,5 @@ module.exports = {
   tools: TOOLS,
   _executors: EXECUTORS,
   _describeProvider: describeProvider,
+  _offeredDraftTool: offeredDraftTool,
 };

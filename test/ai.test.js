@@ -375,6 +375,70 @@ test('a bare "yes" is steered to act on the offered draft', async () => {
   assert.deepStrictEqual(choice, { type: 'function', function: { name: 'draft_placement' } });
 });
 
+test('an ambiguous "yes" never forces a tool, so no draft is invented', async () => {
+  setEnv({ AI_MODELS: 'test:model' });
+  let choice = null;
+  let seen = null;
+  ai.setTransport(async (payload) => {
+    choice = payload.tool_choice;
+    seen = payload.messages;
+    return { choices: [{ message: { role: 'assistant', content: 'Sure — a customer quote or a supplier order?' } }], _model: 'test:model' };
+  });
+  const out = await ai.chat({
+    messages: [
+      { role: 'user', content: 'what should I look at today?' },
+      { role: 'assistant', content: 'Would you like to prepare a draft for this product?' },
+      { role: 'user', content: 'yes' },
+    ],
+  });
+  // No tool is forced and the model is asked to clarify instead.
+  assert.strictEqual(choice, 'auto');
+  assert.ok(seen.some((m) => m.role === 'system' && /not yet clear which draft/i.test(m.content)));
+  assert.strictEqual(out.proposals.length, 0);
+});
+
+test('a generic offer after a supplier question forces a placement, not a quote', async () => {
+  setEnv({ AI_MODELS: 'test:model' });
+  let choice = null;
+  ai.setTransport(async (payload) => {
+    choice = payload.tool_choice;
+    return { choices: [{ message: { role: 'assistant', content: 'Prepared.' } }], _model: 'test:model' };
+  });
+  await ai.chat({
+    messages: [
+      { role: 'user', content: 'the cheapest supplier for Versace Dylan Blue EDT' },
+      { role: 'assistant', content: 'Alcodis is the cheapest. Would you like to prepare a draft for this product?' },
+      { role: 'user', content: 'yes' },
+    ],
+  });
+  assert.deepStrictEqual(choice, { type: 'function', function: { name: 'draft_placement' } });
+});
+
+test('draft_offer refuses to invent a quantity, customer or margin', () => {
+  const ids = seedPlacementFixture();
+  const productId = ids[50];
+
+  const noQty = ai.runTool('draft_offer', { productId, costPerBottle: 10 });
+  assert.strictEqual(noQty.proposal, undefined);
+  assert.match(noQty.result.error, /quantity is missing/);
+
+  const noCustomer = ai.runTool('draft_offer', { productId, quantity: 12, costPerBottle: 10 });
+  assert.strictEqual(noCustomer.proposal, undefined);
+  assert.match(noCustomer.result.error, /customerId is missing/);
+
+  let customer = db.prepare('SELECT id FROM customers LIMIT 1').get();
+  if (!customer) {
+    customer = { id: Number(db.prepare("INSERT INTO customers(code, name) VALUES ('TC', 'Test Customer')").run().lastInsertRowid) };
+  }
+  const noMargin = ai.runTool('draft_offer', { productId, quantity: 12, costPerBottle: 10, customerId: customer.id });
+  assert.ok(noMargin.proposal, JSON.stringify(noMargin.result));
+  // The default margin is used but labelled as a default that must be confirmed.
+  assert.match(noMargin.proposal.fields.find((f) => f.label === 'Target').value, /default/);
+  assert.match(noMargin.proposal.note, /default/);
+  assert.strictEqual(noMargin.proposal.apply.body.customerId, customer.id);
+  assert.strictEqual(noMargin.proposal.apply.body.quantity, 12);
+});
+
 test('an ordinary question leaves the tool choice automatic', async () => {
   setEnv({ AI_MODELS: 'test:model' });
   let choice = null;

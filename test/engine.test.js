@@ -1289,16 +1289,17 @@ test('AI tool: lowest_cost resolves a product to a landed cost', () => {
 
 test('AI draft_offer shows both margin conventions', () => {
   const p = db.prepare('SELECT id FROM products LIMIT 1').get();
-  const m = ai.runTool('draft_offer', { productId: p.id, costPerBottle: 100, targetPct: 40, basis: 'margin_on_selling' }).proposal;
+  const cust = db.prepare('SELECT id FROM customers LIMIT 1').get().id;
+  const m = ai.runTool('draft_offer', { productId: p.id, quantity: 12, customerId: cust, costPerBottle: 100, targetPct: 40, basis: 'margin_on_selling' }).proposal;
   assert.equal(m.type, 'quote');
   assert.equal(m.apply.url, '/quotes');
   assert.equal(m.apply.body.unitPrice, 166.6667);
   assert.equal(m.alternatives.markupOnCost, 140);
 
-  const k = ai.runTool('draft_offer', { productId: p.id, costPerBottle: 100, targetPct: 40, basis: 'markup_on_cost' }).proposal;
+  const k = ai.runTool('draft_offer', { productId: p.id, quantity: 12, customerId: cust, costPerBottle: 100, targetPct: 40, basis: 'markup_on_cost' }).proposal;
   assert.equal(k.apply.body.unitPrice, 140);
 
-  const bad = ai.runTool('draft_offer', { productId: p.id, costPerBottle: 0 }).result;
+  const bad = ai.runTool('draft_offer', { productId: p.id, quantity: 12, customerId: cust, costPerBottle: 0 }).result;
   assert.ok(bad.error);
 });
 
@@ -1317,12 +1318,13 @@ test('AI draft_placement proposes a supplier order', () => {
 test('AI chat loop runs a tool then answers, surfacing the proposal', async () => {
   process.env.AI_API_KEY = 'test-key';
   const p = db.prepare('SELECT id FROM products LIMIT 1').get();
+  const cust = db.prepare('SELECT id FROM customers LIMIT 1').get().id;
   let calls = 0;
   ai.setTransport(async () => {
     calls += 1;
     if (calls === 1) {
       return { choices: [{ message: { role: 'assistant', content: null, tool_calls: [
-        { id: 'c1', type: 'function', function: { name: 'draft_offer', arguments: JSON.stringify({ productId: p.id, costPerBottle: 10, targetPct: 50 }) } },
+        { id: 'c1', type: 'function', function: { name: 'draft_offer', arguments: JSON.stringify({ productId: p.id, quantity: 12, customerId: cust, costPerBottle: 10, targetPct: 50 }) } },
       ] } }] };
     }
     return { choices: [{ message: { role: 'assistant', content: 'Here is a draft quote for you to apply.' } }] };

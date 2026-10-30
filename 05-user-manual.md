@@ -557,8 +557,11 @@ Every action comes back as a **draft card** with the figures it used and an
 When you click **Apply**, the record is created through the normal screens, as
 *you*, under your own role — so saving a quote or placement still needs the
 **buyer** role, and everything is audited exactly as if you had entered it by
-hand. If a draft needs more information (for example a quote needs a customer),
-the card says so and Apply will refuse until you supply it.
+hand. If a draft needs more information, the assistant asks for it instead of
+guessing: a quote always needs a quantity and a named customer, and a margin that
+was not given is clearly labelled as the default. Saying “yes” only drafts the
+kind of action that was actually discussed — a supplier price question becomes a
+supplier order, never a customer quote.
 
 ### Example prompts
 
