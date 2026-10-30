@@ -1,0 +1,14 @@
+[Unit]
+Description=Perfumes database and uploads backup to S3
+Documentation=file:///opt/perfumes/deploy/aws/README.md
+Requires=docker.service
+RequiresMountsFor=/var/data
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+EnvironmentFile=/etc/perfumes/backup.env
+ExecStart=/usr/local/bin/perfumes-backup.sh
+Nice=10
+IOSchedulingClass=best-effort

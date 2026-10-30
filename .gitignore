@@ -1,5 +1,7 @@
 node_modules/
 .env
+.env.*
+.aws-*
 .env.local
 data/ptp.db
 data/ptp.db-wal

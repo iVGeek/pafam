@@ -26,6 +26,15 @@ Other scripts:
 | `npm start` | Start the web app (API + UI) on port 4173 (`PORT` env to change) |
 | `npm run import` | Headless importer spike / data-quality report (writes `output/`) |
 | `npm run gen:samples` | Regenerate the two demo perfume supplier lists under `samples/` (deterministic) |
+| `npm run gen:templates` | Regenerate the client onboarding Excel templates under `client-templates/` |
+| `npm run check:ai` | Live AI health check (add `-- --write` to store the working model) |
+| `npm run aws:deploy` | Create/update the AWS stack and push secrets to SSM |
+| `npm run aws:migrate` | Copy the local database + uploads to the AWS instance |
+| `npm run aws:update` | Rebuild/restart the app on AWS from `main` |
+| `npm run aws:env` | Push `.env` changes to SSM and restart |
+| `npm run aws:exec` | Run a shell command on the instance over SSM |
+| `npm run backup:db` | Consistent local SQLite snapshot (`-- <output.db>`) |
+| `npm run set:password` | Reset a user's password directly in SQLite |
 | `npm test` | Unit tests for the GTIN, pack-size, pricing, reservation, forecast and integrity engines (runs against a throwaway database; the first run seeds it from the sample files and caches a fixture, later runs take ~1s. Set `PTP_TEST_NO_CACHE=1` to force a fresh seed) |
 
 ## Deploy on Render
@@ -111,6 +120,25 @@ assistant (any OpenAI-compatible endpoint).
 The container listens on Railway's injected `$PORT` and starts unprivileged
 (the entrypoint chowns `/var/data` to the `node` user). Railway runs a single
 replica, which is what a SQLite volume requires.
+
+## Deploy on AWS (free tier)
+
+A complete CloudFormation kit is in [`deploy/aws/`](deploy/aws/README.md). It
+creates one `t3.micro` in `us-east-1`, a retained 20 GB EBS data volume, S3
+backups, an SSM SecureString for secrets, and a CloudFront distribution whose
+`*.cloudfront.net` hostname provides HTTPS — so **no domain is needed**.
+
+```bash
+aws login                      # interactive; valid up to 12 hours
+npm run aws:deploy             # ~10-15 min (CloudFront rolls out)
+npm run aws:migrate            # optional: copy data/ptp.db + uploads
+npm run aws:update             # rebuild/restart after pushing to main
+```
+
+Cost: free for 12 months (750 h t3.micro, 30 GB EBS, CloudFront 1 TB), then
+roughly $13–15/month. Administration is SSM-only (no SSH, no open admin port).
+The [AWS runbook](deploy/aws/README.md) covers backups/restore, secret rotation,
+logs, AMI pinning, teardown and troubleshooting.
 
 ## Search and the AI assistant
 

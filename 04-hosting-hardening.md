@@ -7,6 +7,13 @@ points at it, so the checklist reflects what is actually deployed.
 
 Read alongside `README.md` (deploy notes) and `render.yaml` (the blueprint).
 
+For the AWS free-tier deployment (EC2 + EBS + CloudFront + SSM + S3), follow
+[`deploy/aws/README.md`](deploy/aws/README.md). It keeps the same guarantees
+described here: CloudFront terminates TLS with its own certificate, the origin
+port is reachable only from CloudFront, sessions stay `Secure`, SQLite and
+uploads live on a retained EBS volume, and backups go to a private, versioned,
+TLS-only S3 bucket.
+
 ---
 
 ## 1. Topology and assumptions

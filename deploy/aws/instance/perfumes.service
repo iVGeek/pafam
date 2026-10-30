@@ -1,0 +1,26 @@
+[Unit]
+Description=Perfumes wholesale trading platform (Docker)
+Documentation=file:///opt/perfumes/deploy/aws/README.md
+Requires=docker.service
+RequiresMountsFor=/var/data
+After=docker.service network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+EnvironmentFile=/etc/perfumes/app.env
+TimeoutStartSec=300
+ExecStartPre=/usr/local/bin/perfumes-refresh-env.sh
+ExecStartPre=-/usr/bin/docker rm -f perfumes
+ExecStart=/usr/bin/docker run --rm --name perfumes \
+  -p 80:8080 \
+  --env-file /opt/perfumes/.env \
+  -v /var/data:/var/data \
+  perfumes:latest
+ExecStop=/usr/bin/docker stop -t 30 perfumes
+Restart=always
+RestartSec=10
+TimeoutStopSec=60
+
+[Install]
+WantedBy=multi-user.target

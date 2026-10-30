@@ -15,6 +15,14 @@
     "gen:samples": "node --no-warnings scripts/generate-samples.js",
     "gen:templates": "node --no-warnings scripts/generate-client-templates.js",
     "check:ai": "node --no-warnings scripts/check-ai.js",
+    "check:aws": "node --check deploy/aws/lib.js && node --check deploy/aws/deploy.js && node --check deploy/aws/update.js && node --check deploy/aws/migrate.js && node --check deploy/aws/env.js && node --check deploy/aws/exec.js",
+    "aws:deploy": "node deploy/aws/deploy.js",
+    "aws:update": "node deploy/aws/update.js",
+    "aws:migrate": "node deploy/aws/migrate.js",
+    "aws:env": "node deploy/aws/env.js",
+    "aws:exec": "node deploy/aws/exec.js",
+    "backup:db": "node --no-warnings scripts/backup-db.js",
+    "set:password": "node --no-warnings scripts/set-password.js",
     "test": "node --test"
   },
   "dependencies": {

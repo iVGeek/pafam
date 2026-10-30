@@ -1,0 +1,492 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: >-
+  Perfumes wholesale trading platform - a single free-tier EC2 instance runs the
+  existing Node/Docker image with SQLite on a retained 20 GB EBS volume, fronted
+  by CloudFront's TLS hostname (no domain needed) and administered only through
+  SSM Session Manager.
+
+Metadata:
+  AWSToolsMetrics:
+    AWSAgentToolkit: aws-cloudformation@3
+  com.aws.cloudformation.Context:
+    arch: CloudFront (default TLS hostname) -> EC2 t3.micro :80 -> docker :8080; SQLite + uploads on EBS /var/data; backups in S3
+    must:
+      - Origin port 80 is reachable only from the CloudFront origin-facing managed prefix list, never 0.0.0.0/0
+      - No secrets in this template or its plain parameters; runtime secrets live in the SSM SecureString named by EnvParameterName
+      - EBS data volume and S3 backup bucket are retained on stack delete/replace
+      - No SSH ingress; shell access is SSM Session Manager / send-command only
+    ref:
+      - at: deploy/aws/README.md
+        has: deploy, update, migrate, backup and restore runbook
+        scope: stack
+    owner: iVGeek
+
+Parameters:
+  AmiId:
+    Type: AWS::EC2::Image::Id
+    Description: >-
+      Pinned Amazon Linux 2023 x86_64 AMI. deploy.js reuses the value already in
+      the stack so routine updates never replace the instance; pass --new-ami to
+      roll a new AMI deliberately.
+
+  InstanceType:
+    Type: String
+    Default: t3.micro
+    Description: Free-tier eligible x86 instance type (t3.micro = 750 h/month for 12 months).
+    AllowedValues:
+      - t3.micro
+      - t3.small
+      - t3.medium
+
+  RootVolumeSize:
+    Type: Number
+    Default: 10
+    MinValue: 8
+    MaxValue: 30
+    Description: Root EBS size in GB (10 + 20 data = 30 GB, the free-tier EBS allowance).
+
+  DataVolumeSize:
+    Type: Number
+    Default: 20
+    MinValue: 8
+    MaxValue: 100
+    Description: Persistent data volume in GB for SQLite, uploads and local backups.
+
+  RepoUrl:
+    Type: String
+    Default: https://github.com/iVGeek/pafam.git
+    AllowedPattern: '^https://.+'
+    Description: Public https git URL cloned by the instance on first boot (main branch only).
+
+  EnvParameterName:
+    Type: String
+    Default: /perfumes/env
+    AllowedPattern: '^/[A-Za-z0-9_.-]+(/[A-Za-z0-9_.-]+)*$'
+    Description: SSM SecureString parameter holding the container env file (never a template value).
+
+  CloudFrontPrefixListId:
+    Type: String
+    Default: pl-3b927c52
+    AllowedPattern: '^pl-[0-9a-f]+$'
+    Description: Managed prefix list com.amazonaws.global.cloudfront.origin-facing for this region (deploy.js resolves it).
+
+  BackupRetentionDays:
+    Type: Number
+    Default: 30
+    MinValue: 7
+    MaxValue: 365
+    Description: Days to keep daily database/uploads backups in S3.
+
+Resources:
+  Vpc:
+    Type: AWS::EC2::VPC
+    Metadata:
+      com.aws.cloudformation.Context:
+        why: dedicated /16 keeps this stack independent of any existing account network; DNS support+hostnames are required so CloudFront can use the instance public DNS name
+        must:
+          - EnableDnsHostnames stays true or CloudFront origin resolution fails
+        mutable: must-never-change
+    Properties:
+      CidrBlock: 10.42.0.0/16
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-vpc'
+        - Key: Project
+          Value: perfumes
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-igw'
+
+  InternetGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref Vpc
+      InternetGatewayId: !Ref InternetGateway
+
+  PublicSubnet:
+    Type: AWS::EC2::Subnet
+    Metadata:
+      com.aws.cloudformation.Context:
+        why: one public subnet is enough for a single-instance app; MapPublicIpOnLaunch lets the instance reach package mirrors before the EIP attaches
+        must:
+          - CloudFront origin is the EIP-backed instance, so the subnet must stay public
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: 10.42.10.0/24
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-public'
+        - Key: Project
+          Value: perfumes
+
+  RouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref Vpc
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-public'
+        - Key: Project
+          Value: perfumes
+
+  DefaultRoute:
+    Type: AWS::EC2::Route
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      RouteTableId: !Ref RouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  SubnetRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet
+      RouteTableId: !Ref RouteTable
+
+  WebSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Metadata:
+      com.aws.cloudformation.Context:
+        why: CloudFront terminates TLS and talks HTTP to the origin; restricting ingress to the CloudFront prefix list keeps the unencrypted hop private
+        must:
+          - 80/tcp source is the CloudFront origin-facing prefix list; never 0.0.0.0/0
+          - no 22/tcp ingress; admin access is SSM only
+        mutable: change-with-constraints
+    Properties:
+      GroupDescription: Perfumes origin - CloudFront only, no SSH
+      VpcId: !Ref Vpc
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          SourcePrefixListId: !Ref CloudFrontPrefixListId
+          Description: CloudFront origin-facing prefix list
+      SecurityGroupEgress:
+        - IpProtocol: '-1'
+          CidrIp: 0.0.0.0/0
+          Description: Outbound HTTPS for dnf, GitHub, AI provider, S3 and SSM
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-origin'
+        - Key: Project
+          Value: perfumes
+
+  BackupBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Metadata:
+      com.aws.cloudformation.Context:
+        why: off-instance copy of the SQLite database and uploads; versioned and lifecycle-managed, and retained even if the stack is deleted
+        must:
+          - Public access blocked on all four switches
+          - Versioning stays enabled so a bad backup cannot destroy the previous copy
+          - Lifecycle expiration keeps storage inside the free tier
+        mutable: change-with-constraints
+    Properties:
+      BucketName: !Sub 'perfumes-backups-${AWS::AccountId}-${AWS::Region}'
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerEnforced
+      VersioningConfiguration:
+        Status: Enabled
+      LifecycleConfiguration:
+        Rules:
+          - Id: expire-old-backups
+            Status: Enabled
+            Filter:
+              Prefix: backups/
+            ExpirationInDays: !Ref BackupRetentionDays
+            NoncurrentVersionExpiration:
+              NoncurrentDays: 7
+            AbortIncompleteMultipartUpload:
+              DaysAfterInitiation: 7
+      Tags:
+        - Key: Project
+          Value: perfumes
+
+  BackupBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Metadata:
+      com.aws.cloudformation.Context:
+        why: TLS-only access; the instance role has no need for plaintext transport
+        must:
+          - Keep the aws:SecureTransport deny
+    Properties:
+      Bucket: !Ref BackupBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: DenyInsecureTransport
+            Effect: Deny
+            Principal: '*'
+            Action: 's3:*'
+            Resource:
+              - !GetAtt BackupBucket.Arn
+              - !Sub '${BackupBucket.Arn}/*'
+            Condition:
+              Bool:
+                aws:SecureTransport: 'false'
+
+  InstanceRole:
+    Type: AWS::IAM::Role
+    Metadata:
+      com.aws.cloudformation.Context:
+        why: SSM core for keyless shell access, plus read of exactly one SecureString and write of backups; no static credentials anywhere
+        must:
+          - ssm:GetParameter is scoped to EnvParameterName only
+          - kms:Decrypt only via the SSM service for this account
+          - S3 permissions are scoped to the backup bucket
+        mutable: change-with-constraints
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - !Sub 'arn:${AWS::Partition}:iam::aws:policy/AmazonSSMManagedInstanceCore'
+      Policies:
+        - PolicyName: perfumes-runtime
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Sid: ReadRuntimeEnv
+                Effect: Allow
+                Action:
+                  - ssm:GetParameter
+                  - ssm:GetParameters
+                Resource: !Sub 'arn:${AWS::Partition}:ssm:${AWS::Region}:${AWS::AccountId}:parameter${EnvParameterName}'
+              - Sid: DecryptRuntimeEnv
+                Effect: Allow
+                Action: kms:Decrypt
+                Resource: '*'
+                Condition:
+                  StringEquals:
+                    kms:ViaService: !Sub 'ssm.${AWS::Region}.amazonaws.com'
+                    kms:CallerAccount: !Ref AWS::AccountId
+              - Sid: BackupObjects
+                Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:GetObject
+                  - s3:DeleteObject
+                  - s3:ListBucket
+                Resource:
+                  - !GetAtt BackupBucket.Arn
+                  - !Sub '${BackupBucket.Arn}/*'
+      Tags:
+        - Key: Project
+          Value: perfumes
+
+  InstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - !Ref InstanceRole
+
+  Instance:
+    Type: AWS::EC2::Instance
+    Metadata:
+      com.aws.cloudformation.Context:
+        why: runs the existing Dockerfile unchanged; user data only prepares the host, then hands off to deploy/aws/instance/bootstrap.sh in the repo
+        must:
+          - IMDSv2 required with hop limit 1 (containers must not reach instance credentials)
+          - Root volume stays on gp3 for the free-tier EBS allowance
+          - User data must remain idempotent because a new AMI replaces the instance
+        mutable: change-with-constraints
+        mutability:
+          ImageId: review-required
+          InstanceType: free-to-tune
+    Properties:
+      ImageId: !Ref AmiId
+      InstanceType: !Ref InstanceType
+      SubnetId: !Ref PublicSubnet
+      SecurityGroupIds:
+        - !Ref WebSecurityGroup
+      IamInstanceProfile: !Ref InstanceProfile
+      MetadataOptions:
+        HttpEndpoint: enabled
+        HttpTokens: required
+        HttpPutResponseHopLimit: 1
+      BlockDeviceMappings:
+        - DeviceName: /dev/xvda
+          Ebs:
+            VolumeSize: !Ref RootVolumeSize
+            VolumeType: gp3
+            Encrypted: true
+            DeleteOnTermination: true
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          set -euxo pipefail
+          exec > >(tee -a /var/log/perfumes-user-data.log) 2>&1
+
+          # The EIP is associated moments after launch; wait for outbound access
+          # before dnf runs (a failed user-data script is not retried).
+          for i in $(seq 1 60); do
+            if curl -fsS --max-time 5 https://github.com >/dev/null 2>&1; then break; fi
+            sleep 5
+          done
+
+          dnf install -y git docker
+          systemctl enable --now docker
+
+          if [ ! -d /opt/perfumes/.git ]; then
+            git clone --depth 1 --branch main ${RepoUrl} /opt/perfumes
+          fi
+
+          PTP_ENV_PARAM='${EnvParameterName}' \
+          PTP_BACKUP_BUCKET='${BackupBucket}' \
+          PTP_DATA_MOUNT=/var/data \
+          AWS_REGION='${AWS::Region}' \
+          bash /opt/perfumes/deploy/aws/instance/bootstrap.sh
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-app'
+        - Key: Project
+          Value: perfumes
+
+  ElasticIp:
+    Type: AWS::EC2::EIP
+    Metadata:
+      com.aws.cloudformation.Context:
+        why: a stable public IPv4 lets the CloudFront origin stay valid across stop/start; the association is part of this resource
+        must:
+          - Keep the EIP attached or CloudFront's origin DNS stops resolving
+    Properties:
+      Domain: vpc
+      InstanceId: !Ref Instance
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-origin'
+        - Key: Project
+          Value: perfumes
+
+  DataVolume:
+    Type: AWS::EC2::Volume
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Metadata:
+      com.aws.cloudformation.Context:
+        why: SQLite plus uploads must survive instance replacement; ext4 on a separately retained gp3 volume is the whole persistence story
+        must:
+          - DeletionPolicy and UpdateReplacePolicy stay Retain
+          - Never recreate/replace without taking a backup first
+        mutable: must-never-change
+    Properties:
+      AvailabilityZone: !GetAtt Instance.AvailabilityZone
+      Size: !Ref DataVolumeSize
+      VolumeType: gp3
+      Encrypted: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-data'
+        - Key: Project
+          Value: perfumes
+
+  DataVolumeAttachment:
+    Type: AWS::EC2::VolumeAttachment
+    Properties:
+      InstanceId: !Ref Instance
+      VolumeId: !Ref DataVolume
+      Device: /dev/sdf
+
+  Distribution:
+    Type: AWS::CloudFront::Distribution
+    DependsOn: ElasticIp
+    Metadata:
+      com.aws.cloudformation.Context:
+        why: CloudFront's *.cloudfront.net certificate provides HTTPS without owning a domain; AllViewer + caching disabled keeps cookies, uploads and SSE working
+        must:
+          - CachingDisabled policy + AllViewer origin request policy (cookies, auth headers, query strings, bodies)
+          - Origin protocol stays http-only because the EC2 hop is protected by the prefix-list security group
+          - Viewer protocol stays redirect-to-https because the app sets Secure cookies
+        mutable: change-with-constraints
+    Properties:
+      DistributionConfig:
+        Comment: !Sub '${AWS::StackName} Perfumes'
+        Enabled: true
+        DefaultRootObject: index.html
+        Origins:
+          - Id: ec2-origin
+            DomainName: !GetAtt Instance.PublicDnsName
+            ConnectionAttempts: 3
+            ConnectionTimeout: 10
+            CustomOriginConfig:
+              HTTPPort: 80
+              HTTPSPort: 443
+              OriginProtocolPolicy: http-only
+              OriginReadTimeout: 60
+              OriginKeepaliveTimeout: 5
+        DefaultCacheBehavior:
+          TargetOriginId: ec2-origin
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods:
+            - GET
+            - HEAD
+            - OPTIONS
+            - PUT
+            - POST
+            - PATCH
+            - DELETE
+          CachedMethods:
+            - GET
+            - HEAD
+            - OPTIONS
+          CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad
+          OriginRequestPolicyId: 216adef6-5c7f-47e4-b989-5492eafa07d3
+          Compress: false
+          SmoothStreaming: false
+        PriceClass: PriceClass_100
+        HttpVersion: http2
+        IPV6Enabled: false
+        ViewerCertificate:
+          CloudFrontDefaultCertificate: true
+        Restrictions:
+          GeoRestriction:
+            RestrictionType: none
+      Tags:
+        - Key: Project
+          Value: perfumes
+
+Outputs:
+  SiteUrl:
+    Description: Public HTTPS URL (CloudFront hostname, no domain required)
+    Value: !Sub 'https://${Distribution.DomainName}'
+  DistributionId:
+    Description: CloudFront distribution ID
+    Value: !Ref Distribution
+  InstanceId:
+    Description: EC2 instance ID used by SSM send-command
+    Value: !Ref Instance
+  OriginPublicDns:
+    Description: Origin public DNS name behind CloudFront
+    Value: !GetAtt Instance.PublicDnsName
+  BackupBucketName:
+    Description: S3 bucket for database and uploads backups
+    Value: !Ref BackupBucket
+  EnvParameterName:
+    Description: SSM SecureString holding the runtime environment
+    Value: !Ref EnvParameterName
+  DataVolumeId:
+    Description: Retained EBS volume holding SQLite and uploads
+    Value: !Ref DataVolume
