@@ -71,6 +71,111 @@ const PROFILES = [
       image: [/image|link/i],
     },
   },
+  // ---- Cacharel (France) ----
+  {
+    id: 'CACHarel',
+    name: 'Cacharel',
+    currency: 'EUR',
+    // recognition: a "Cod." column + an "Ean Code" column + French price column
+    match: (headers) =>
+      headers.some((h) => /^cod\./i.test(h)) &&
+      headers.some((h) => /^ean\s*code/i.test(h)) &&
+      headers.some((h) => /^price$/i.test(h)),
+    fields: {
+      gtinSource: [/^ean\s*code/i],
+      internalSku: [/^cod\./i],
+      description: [/^line up$/i, /^description$/i],
+      sizeLiters: null, // not used for perfumes typically
+      abv: null,
+      capType: null,
+      refillable: null,
+      price: [/^price$/i],
+      orderMultiple: null,
+      moq: null,
+      validUntil: null,
+      readyDate: null,
+      leadTimeDays: null,
+      countryOfOrigin: null,
+      stockWarehouse: null,
+      lastStockConfirmation: null,
+      stockConfidence: null,
+      permittedDestination: null,
+      usSuitability: null,
+      stockOwnerId: null,
+      image: null,
+    },
+  },
+  // ---- Sanya International ----
+  {
+    id: 'SANYA',
+    name: 'Sanya International',
+    currency: 'USD',
+    // recognition: headers include "Description", "MPN", "Price", "QTY"
+    match: (headers) =>
+      headers.some((h) => /^description/i.test(h)) &&
+      headers.some((h) => /^mpn/i.test(h)) &&
+      headers.some((h) => /^price/i.test(h)) &&
+      headers.some((h) => /^qty/i.test(h)),
+    fields: {
+      gtinSource: null, // no GTIN column in this format
+      internalSku: [/^mpn$/i],
+      description: [/^description$/i],
+      sizeLiters: null,
+      abv: null,
+      capType: null,
+      refillable: null,
+      price: [/^price$/i],
+      orderMultiple: null,
+      moq: null,
+      validUntil: null,
+      readyDate: null,
+      leadTimeDays: null,
+      countryOfOrigin: null,
+      stockWarehouse: null,
+      lastStockConfirmation: null,
+      stockConfidence: null,
+      permittedDestination: null,
+      usSuitability: null,
+      stockOwnerId: null,
+      image: null,
+    },
+  },
+  // ---- Viktor&Rolf (VR) ----
+  {
+    id: 'VR',
+    name: 'Viktor&Rolf',
+    currency: 'EUR',
+    // recognition: a "REF" column + "CODICE EAN" column + "FORMATO" + "QTY" + price columns
+    match: (headers) =>
+      headers.some((h) => /^ref/i.test(h)) &&
+      headers.some((h) => /^codice\s*ean/i.test(h)) &&
+      headers.some((h) => /^formato/i.test(h)) &&
+      headers.some((h) => /^qty/i.test(h)) &&
+      headers.some((h) => /^price$/i.test(h)),
+    fields: {
+      gtinSource: [/^codice\s*ean/i],
+      internalSku: [/^ref$/i],
+      description: [/^formato/i, /^description$/i],
+      sizeLiters: null, // format field holds size info
+      abv: null,
+      capType: null,
+      refillable: null,
+      price: [/^price$/i],
+      orderMultiple: null,
+      moq: null,
+      validUntil: null,
+      readyDate: null,
+      leadTimeDays: null,
+      countryOfOrigin: null,
+      stockWarehouse: null,
+      lastStockConfirmation: null,
+      stockConfidence: null,
+      permittedDestination: null,
+      usSuitability: null,
+      stockOwnerId: null,
+      image: null,
+    },
+  },
 ];
 
 function detectProfile(headers) {

@@ -9,7 +9,8 @@ const { importFile } = require('../services/importer');
 const { parseList, diffLists } = require('../services/listdiff');
 const auth = require('../services/auth');
 
-const UPLOAD_DIR = path.join(__dirname, '..', '..', 'data', 'uploads');
+const DATA_DIR = process.env.PTP_DATA_DIR || path.join(__dirname, '..', '..', 'data');
+const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(DATA_DIR, 'uploads');
 if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 const upload = multer({ dest: UPLOAD_DIR, limits: { fileSize: 50 * 1024 * 1024 } });
 

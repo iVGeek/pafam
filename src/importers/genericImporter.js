@@ -52,6 +52,7 @@ function findHeader(aoa) {
 function resolveColumns(profile, headers) {
   const map = {};
   for (const [field, patterns] of Object.entries(profile.fields)) {
+    if (patterns == null) continue; // skip fields with no column mapping
     for (let c = 0; c < headers.length; c++) {
       const h = headers[c];
       if (!h) continue;

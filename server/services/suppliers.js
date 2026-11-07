@@ -25,6 +25,30 @@ const SUPPLIERS = {
     incoterm: 'EXW', incotermPlace: 'Lleida', stockCountry: 'ES', paymentTerms: null,
     profiles: ['IGAN'],
   },
+  // ---- Cacharel (France) ----
+  CACHarel: {
+    code: 'CACHarel', name: 'Cacharel',
+    currency: 'EUR', priceType: 'cost', defaultDiscount: 0,
+    priceBasisFromPack: false,
+    incoterm: null, incotermPlace: null, stockCountry: null, paymentTerms: null,
+    profiles: ['CACHarel'],
+  },
+  // ---- Sanya International ----
+  SANYA: {
+    code: 'SANYA', name: 'Sanya International',
+    currency: 'USD', priceType: 'cost', defaultDiscount: 0,
+    priceBasisFromPack: false,
+    incoterm: null, incotermPlace: null, stockCountry: null, paymentTerms: null,
+    profiles: ['SANYA'],
+  },
+  // ---- Viktor&Rolf (VR) ----
+  VR: {
+    code: 'VR', name: 'Viktor&Rolf',
+    currency: 'EUR', priceType: 'cost', defaultDiscount: 0,
+    priceBasisFromPack: false,
+    incoterm: null, incotermPlace: null, stockCountry: null, paymentTerms: null,
+    profiles: ['VR'],
+  },
 };
 
 function getSupplier(code) {
