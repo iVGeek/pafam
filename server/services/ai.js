@@ -90,8 +90,8 @@ function toolSearchProducts({ query, limit } = {}) {
        (SELECT COUNT(DISTINCT supplier_code) FROM offers o WHERE o.product_id = p.id) AS supplier_count
      FROM products p`;
   const rows = q
-    ? db.prepare(`${cols} WHERE p.display_name LIKE ? OR p.canonical_gtin LIKE ? OR p.category LIKE ?
-        ORDER BY supplier_count DESC, offer_count DESC, p.id LIMIT ?`).all('%' + q + '%', '%' + q + '%', '%' + q + '%', n)
+    ? db.prepare(`${cols} WHERE p.display_name LIKE ? OR p.canonical_gtin LIKE ? OR p.category LIKE ? OR p.internal_sku LIKE ?
+        ORDER BY supplier_count DESC, offer_count DESC, p.id LIMIT ?`).all('%' + q + '%', '%' + q + '%', '%' + q + '%', '%' + q + '%', n)
     : db.prepare(`${cols} ORDER BY p.id DESC LIMIT ?`).all(n);
   return { count: rows.length, products: rows };
 }
@@ -715,7 +715,7 @@ const TOOLS = [
     type: 'function',
     function: {
       name: 'search_products',
-      description: 'Find products by name, barcode (GTIN) or category. Use this first to turn a name into a product id.',
+      description: 'Find products by name, barcode (GTIN), supplier reference/SKU or category. Use this first to turn a name or reference into a product id.',
       parameters: { type: 'object', properties: { query: { type: 'string' }, limit: { type: 'integer' } }, required: ['query'] },
     },
   },

@@ -31,6 +31,17 @@ function parseNumber(v) {
   return Number.isFinite(n) ? n : null;
 }
 
+function parseSizeMl(v) {
+  const s = toText(v);
+  if (!s) return null;
+  const m = s.match(/(\d+(?:[.,]\d+)?)\s*ml\b/i);
+  if (m) {
+    const n = Number(String(m[1]).replace(',', '.'));
+    return Number.isFinite(n) && n > 0 ? Math.round(n) : null;
+  }
+  return null;
+}
+
 function loadSheetRows(filePath) {
   const wb = XLSX.readFile(filePath, { cellDates: false, cellNF: false });
   const sheetName = wb.SheetNames[0];
@@ -53,11 +64,22 @@ function resolveColumns(profile, headers) {
   const map = {};
   for (const [field, patterns] of Object.entries(profile.fields)) {
     if (patterns == null) continue; // skip fields with no column mapping
-    for (let c = 0; c < headers.length; c++) {
-      const h = headers[c];
-      if (!h) continue;
-      if (patterns.some((re) => re.test(h))) { map[field] = c; break; }
+    // Pattern order is priority order: prefer the first pattern that matches
+    // any column over a later pattern that happens to sit in an earlier column.
+    for (const re of patterns) {
+      let found = false;
+      for (let c = 0; c < headers.length; c++) {
+        const h = headers[c];
+        if (!h) continue;
+        if (re.test(h)) { map[field] = c; found = true; break; }
+      }
+      if (found) break;
     }
+  }
+  // Some vendor sheets have data in unheadered columns (e.g. VR's product name
+  // in column C). A profile can bind those by zero-based column index.
+  for (const [field, idx] of Object.entries(profile.indexFields || {})) {
+    if (map[field] === undefined && Number.isInteger(idx)) map[field] = idx;
   }
   return map;
 }
@@ -83,7 +105,8 @@ function extract(filePath, supplier) {
     offer.sourceFileId = path.basename(filePath);
     offer.sourceRow = r + 1; // 1-based sheet row
     offer.category = get('category') || get('subcategory') || null;
-    offer.description = get('description') || null;
+    const descParts = [get('description'), get('descriptionSuffix')].map((s) => s.trim()).filter(Boolean);
+    offer.description = descParts.length ? descParts.join(' ') : null;
     offer.internalSku = get('internalSku') || null;
     offer.gtinSource = get('gtinSource') || null;
     offer[CASE_GTIN_FIELD] = get('caseGtinSource') || null;
@@ -96,8 +119,12 @@ function extract(filePath, supplier) {
     offer.price = parseNumber(get('price') || get('rrp'));
     offer.rrp = parseNumber(get('rrp'));
     offer.abv = parseNumber(get('abv'));
+    const sizeFromText = parseSizeMl(get('sizeText'));
     const sizeL = parseNumber(get('sizeLiters'));
-    offer.sizeMl = sizeL !== null ? Math.round(sizeL * 1000) : null;
+    offer.sizeMl = sizeFromText !== null ? sizeFromText : (sizeL !== null ? Math.round(sizeL * 1000) : null);
+    // Many lists put the bottle size only in the description ("Amor Amor EDP
+    // 30ml"); capture it when no dedicated size column exists.
+    if (offer.sizeMl == null && offer.description) offer.sizeMl = parseSizeMl(offer.description);
     offer.unitsPerCase = parseNumber(get('unitsPerCase'));
     const stockPal = parseNumber(get('availableQuantity'));
     offer.availableQuantity = stockPal;

@@ -121,9 +121,11 @@ expiry_date, notes, cap_type, refillable, product_id, status, units_per_case_sou
       const p = parsePackSize(o.description);
       if (p) { unitsPerCase = p; packFromDescription = true; packSource = 'description'; }
     }
+    // Never pass undefined: SQLite rejects the whole row and the upload ends up
+    // with zero offers (which then trips the duplicate guard on retry).
     const priceBasis = (supplier.priceBasisFromPack && unitsPerCase && unitsPerCase > 1 && packFromDescription)
       ? 'case'
-      : supplier.defaultBasis;
+      : (supplier.defaultBasis || 'unit');
 
     const hasException = isBlank || isInvalid || isDuplicate || price === null;
     const status = hasException ? 'exception' : (productId ? 'matched' : 'new');

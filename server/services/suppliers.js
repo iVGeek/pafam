@@ -29,6 +29,7 @@ const SUPPLIERS = {
   CACHarel: {
     code: 'CACHarel', name: 'Cacharel',
     currency: 'EUR', priceType: 'cost', defaultDiscount: 0,
+    defaultBasis: 'unit',
     priceBasisFromPack: false,
     incoterm: null, incotermPlace: null, stockCountry: null, paymentTerms: null,
     profiles: ['CACHarel'],
@@ -37,6 +38,7 @@ const SUPPLIERS = {
   SANYA: {
     code: 'SANYA', name: 'Sanya International',
     currency: 'USD', priceType: 'cost', defaultDiscount: 0,
+    defaultBasis: 'unit',
     priceBasisFromPack: false,
     incoterm: null, incotermPlace: null, stockCountry: null, paymentTerms: null,
     profiles: ['SANYA'],
@@ -45,6 +47,7 @@ const SUPPLIERS = {
   VR: {
     code: 'VR', name: 'Viktor&Rolf',
     currency: 'EUR', priceType: 'cost', defaultDiscount: 0,
+    defaultBasis: 'unit',
     priceBasisFromPack: false,
     incoterm: null, incotermPlace: null, stockCountry: null, paymentTerms: null,
     profiles: ['VR'],

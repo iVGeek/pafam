@@ -84,7 +84,9 @@ const PROFILES = [
     fields: {
       gtinSource: [/^ean\s*code/i],
       internalSku: [/^cod\./i],
-      description: [/^line up$/i, /^description$/i],
+      // The Description column is the real product name; "Line up" is just the
+      // family ("Amor Amor"), so prefer the former when both exist.
+      description: [/^description$/i, /^line up$/i],
       sizeLiters: null, // not used for perfumes typically
       abv: null,
       capType: null,
@@ -117,7 +119,10 @@ const PROFILES = [
       headers.some((h) => /^price/i.test(h)) &&
       headers.some((h) => /^qty/i.test(h)),
     fields: {
-      gtinSource: null, // no GTIN column in this format
+      // The MPN column carries EAN/UPC barcodes for the vast majority of rows
+      // (13- or 12-digit numeric); the GTIN analyser validates them, so real
+      // barcodes match products while alphanumeric MPNs fall to exceptions.
+      gtinSource: [/^mpn$/i],
       internalSku: [/^mpn$/i],
       description: [/^description$/i],
       sizeLiters: null,
@@ -152,11 +157,17 @@ const PROFILES = [
       headers.some((h) => /^formato/i.test(h)) &&
       headers.some((h) => /^qty/i.test(h)) &&
       headers.some((h) => /^price$/i.test(h)),
+    // product name lives in unheadered column C (zero-based index 2)
+    indexFields: { description: 2 },
     fields: {
       gtinSource: [/^codice\s*ean/i],
       internalSku: [/^ref$/i],
-      description: [/^formato/i, /^description$/i],
-      sizeLiters: null, // format field holds size info
+      // Column C (index 2) holds the product name but has no header; the
+      // FORMATO column holds the size ("50ml"). Combine them for a usable name.
+      description: null,
+      descriptionSuffix: [/^formato/i],
+      sizeText: [/^formato/i],
+      sizeLiters: null,
       abv: null,
       capType: null,
       refillable: null,

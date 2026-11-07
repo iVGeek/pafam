@@ -220,6 +220,15 @@ svg.spark polyline { fill: none; stroke: var(--accent); stroke-width: 2; stroke-
 .cp-fields .k { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .05em; white-space: nowrap; }
 .chat-foot { display: flex; gap: 8px; padding: 10px 12px; border-top: 1px solid var(--border); }
 .chat-foot textarea { flex: 1; resize: none; max-height: 120px; }
+.chat-foot #chatAttachBtn { flex: 0 0 auto; font-size: 16px; line-height: 1; padding: 4px 8px; }
+.chat-head #chatHistory { max-width: 150px; font-size: 12px; padding: 3px 6px; }
+.chat-attach { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 12px 0; border-top: 1px solid var(--border); }
+.chat-attach.hidden { display: none; }
+.chat-file { display: inline-flex; align-items: center; gap: 4px; background: var(--panel-2); border: 1px solid var(--border); border-radius: 999px; padding: 2px 8px; font-size: 11px; color: var(--text-dim); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chat-file-x { background: none; border: none; color: var(--muted); cursor: pointer; padding: 0 2px; font-size: 13px; line-height: 1; }
+.chat-file-x:hover { color: var(--danger); }
+.chat-files { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+.chat-msg.user .chat-file { background: rgba(0, 0, 0, .25); }
 
 /* Streaming reply: typing dots before the first token, a live caret while the
    answer is arriving, and a quiet line naming the tool the assistant is using. */

@@ -2457,7 +2457,10 @@ window.addEventListener('hashchange', () => {
   if (r !== state.route && routes[r]) { state.route = r; viewSearch = ''; render(); }
 });
 
-$$('#nav a').forEach((a) => a.addEventListener('click', () => go(a.dataset.route)));
+$$('#nav a').forEach((a) => a.addEventListener('click', () => {
+  if (a.dataset.route === 'ai-chat') { openAssistant(); return; }
+  go(a.dataset.route);
+}));
 $('#refreshBtn').addEventListener('click', () => { loadSettings().then(render); });
 
 async function doLogin() {
@@ -2507,7 +2510,11 @@ $('#pwBtn').addEventListener('click', () => {
 // API under the user. Replies stream in over SSE; the transcript is kept in
 // localStorage so a reload does not lose the conversation.
 const chat = { messages: [], enabled: null, model: '', models: [], streaming: false, controller: null };
-const CHAT_KEY = 'perfumes.chat.v1';
+const CONVOS_KEY = 'perfumes.chat.convos.v1';
+const LEGACY_CHAT_KEY = 'perfumes.chat.v1';
+let convos = [];
+let activeConvoId = null;
+let pendingFiles = [];
 const TOOL_LABELS = {
   search_products: 'looking up products',
   product_prices: 'checking supplier prices',
@@ -2537,23 +2544,172 @@ const TOOL_LABELS = {
   draft_task: 'preparing a task draft',
 };
 
+// ---- conversations: start a new chat and switch back to previous ones ----
+function newConvoId() { return 'c' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6); }
+
+function convTitle(messages) {
+  const firstUser = (messages || []).find((m) => m && m.role === 'user' && m.content);
+  if (!firstUser) return 'New chat';
+  const t = String(firstUser.content).replace(/\s+/g, ' ').trim();
+  return t.length > 42 ? t.slice(0, 42) + '…' : (t || 'New chat');
+}
+
+function slimMessages(messages) {
+  return (messages || [])
+    .filter((m) => m && (m.role === 'user' || (m.role === 'assistant' && m.content) || m.role === 'proposal'))
+    .slice(-60)
+    .map((m) => {
+      if (m.role === 'proposal') return { role: 'proposal', proposal: m.proposal };
+      const o = { role: m.role, content: m.content };
+      if (m.send) o.send = m.send;
+      if (m.files && m.files.length) o.files = m.files;
+      return o;
+    });
+}
+
 function loadChatHistory() {
   try {
-    const raw = localStorage.getItem(CHAT_KEY);
-    if (!raw) return;
-    const arr = JSON.parse(raw);
-    if (Array.isArray(arr)) chat.messages = arr.filter((m) => m && (m.role === 'user' || m.role === 'assistant' || m.role === 'proposal'));
+    const raw = localStorage.getItem(CONVOS_KEY);
+    if (raw) {
+      const arr = JSON.parse(raw);
+      if (Array.isArray(arr)) convos = arr.filter((c) => c && c.id && Array.isArray(c.messages));
+    }
   } catch (_) { /* corrupt history is not worth an error */ }
+  // Migrate a legacy single conversation, so nothing is lost on upgrade.
+  if (!convos.length) {
+    try {
+      const raw = localStorage.getItem(LEGACY_CHAT_KEY);
+      const arr = raw ? JSON.parse(raw) : null;
+      if (Array.isArray(arr) && arr.length) {
+        convos = [{ id: newConvoId(), title: convTitle(arr), updatedAt: Date.now(), messages: arr }];
+      }
+    } catch (_) { /* ignore */ }
+  }
+  if (!convos.length) convos = [{ id: newConvoId(), title: 'New chat', updatedAt: Date.now(), messages: [] }];
+  convos.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+  activeConvoId = convos[0].id;
+  chat.messages = convos[0].messages;
+  pendingFiles = [];
+  renderChatHistory();
+  renderAttachments();
 }
 
 function saveChatHistory() {
   try {
-    const slim = chat.messages
-      .filter((m) => m.role === 'user' || (m.role === 'assistant' && m.content) || m.role === 'proposal')
-      .slice(-60)
-      .map((m) => (m.role === 'proposal' ? { role: 'proposal', proposal: m.proposal } : { role: m.role, content: m.content }));
-    localStorage.setItem(CHAT_KEY, JSON.stringify(slim));
+    const active = convos.find((c) => c.id === activeConvoId);
+    if (active) {
+      active.messages = slimMessages(chat.messages);
+      active.title = convTitle(chat.messages);
+      active.updatedAt = Date.now();
+    }
+    localStorage.setItem(CONVOS_KEY, JSON.stringify(convos));
+    try { localStorage.removeItem(LEGACY_CHAT_KEY); } catch (_) { /* ignore */ }
   } catch (_) { /* storage full or blocked: keep chatting without history */ }
+  renderChatHistory();
+}
+
+function renderChatHistory() {
+  const sel = $('#chatHistory');
+  if (!sel) return;
+  const sorted = convos.slice().sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+  sel.innerHTML = sorted.map((c) => `<option value="${esc(c.id)}">${esc(c.title || 'New chat')}</option>`).join('');
+  if (activeConvoId) sel.value = activeConvoId;
+}
+
+function newChat() {
+  if (chat.streaming) stopChat();
+  saveChatHistory();
+  const c = { id: newConvoId(), title: 'New chat', updatedAt: Date.now(), messages: [] };
+  convos.unshift(c);
+  activeConvoId = c.id;
+  chat.messages = c.messages;
+  pendingFiles = [];
+  renderAttachments();
+  const input = $('#chatInput');
+  if (input) { input.value = ''; input.focus(); }
+  renderChat();
+  renderChatHistory();
+}
+
+function openChat(id) {
+  if (!id || id === activeConvoId) return;
+  if (chat.streaming) stopChat();
+  saveChatHistory();
+  const c = convos.find((x) => x.id === id);
+  if (!c) return;
+  activeConvoId = id;
+  chat.messages = c.messages;
+  pendingFiles = [];
+  renderAttachments();
+  renderChat();
+  renderChatHistory();
+}
+
+async function openAssistant() {
+  if (!$('#chatLauncher')) await initAssistant();
+  const panel = $('#chatPanel');
+  if (panel) {
+    panel.classList.remove('hidden');
+    const input = $('#chatInput');
+    if (input) input.focus();
+  }
+}
+
+// ---- attachments: any file type; text files are read into the prompt ----
+const TEXT_EXT = ['txt', 'csv', 'tsv', 'md', 'json', 'xml', 'html', 'htm', 'js', 'ts', 'log', 'yaml', 'yml', 'ini', 'sql', 'rtf'];
+
+function humanSize(n) {
+  n = Number(n) || 0;
+  if (n < 1024) return n + ' B';
+  if (n < 1048576) return (n / 1024).toFixed(1) + ' KB';
+  return (n / 1048576).toFixed(1) + ' MB';
+}
+
+function isTextFile(f) {
+  const type = (f.type || '').toLowerCase();
+  const ext = (String(f.name).split('.').pop() || '').toLowerCase();
+  return type.startsWith('text/') || type === 'application/json' || type === 'application/xml' || TEXT_EXT.includes(ext);
+}
+
+async function addFiles(fileList) {
+  const arr = Array.from(fileList || []);
+  const totalTextBudget = 60000; // keep the request under the server's 5 MB body limit
+  let used = pendingFiles.reduce((n, f) => n + (f.text ? f.text.length : 0), 0);
+  for (const f of arr) {
+    const item = { name: f.name, size: f.size, type: f.type || '' };
+    try {
+      if (isTextFile(f) && f.size <= 512 * 1024 && used < totalTextBudget) {
+        const text = await f.text();
+        const room = totalTextBudget - used;
+        item.text = text.length > room ? text.slice(0, room) + '\n…[truncated]' : text;
+        used += item.text.length;
+      }
+    } catch (_) { /* unreadable file: attach by name only */ }
+    pendingFiles.push(item);
+  }
+  renderAttachments();
+}
+
+function attachmentsPrompt(files) {
+  if (!files || !files.length) return '';
+  const parts = files.map((f) => {
+    let s = `- ${f.name} (${humanSize(f.size)}${f.type ? ', ' + f.type : ''})`;
+    if (f.text) s += `\n\`\`\`\n${f.text}\n\`\`\``;
+    return s;
+  });
+  return '\n\nAttached files:\n' + parts.join('\n');
+}
+
+function renderAttachments() {
+  const box = $('#chatAttach');
+  if (!box) return;
+  if (!pendingFiles.length) { box.classList.add('hidden'); box.innerHTML = ''; return; }
+  box.classList.remove('hidden');
+  box.innerHTML = pendingFiles.map((f, i) => `<span class="chat-file" title="${esc(f.name)}">📎 ${esc(f.name)} <span class="muted">${humanSize(f.size)}</span> <button class="chat-file-x" data-file-rm="${i}" aria-label="Remove attachment">×</button></span>`).join('');
+  box.querySelectorAll('[data-file-rm]').forEach((b) => b.addEventListener('click', () => {
+    pendingFiles.splice(Number(b.dataset.fileRm), 1);
+    renderAttachments();
+  }));
 }
 
 // Minimal, safe markdown: text is escaped first, then only these constructs
@@ -2599,7 +2755,12 @@ function proposalCard(p, idx) {
 
 function chatBubble(m, idx) {
   if (m.role === 'proposal') return proposalCard(m.proposal, idx);
-  if (m.role === 'user') return `<div class="chat-msg user">${esc(m.content)}</div>`;
+  if (m.role === 'user') {
+    const chips = (m.files && m.files.length)
+      ? `<div class="chat-files">${m.files.map((f) => `<span class="chat-file">📎 ${esc(f.name)}</span>`).join('')}</div>`
+      : '';
+    return `<div class="chat-msg user">${esc(m.content)}${chips}</div>`;
+  }
   if (m.streaming && !m.content) {
     const tool = m.tool ? `<span class="chat-tool">${esc(TOOL_LABELS[m.tool] || m.tool)}</span>` : '';
     return `<div class="chat-msg bot">${tool}<span class="chat-typing"><i></i><i></i><i></i></span></div>`;
@@ -2666,9 +2827,14 @@ async function applyProposal(idx) {
 async function sendChat() {
   const input = $('#chatInput');
   const text = (input.value || '').trim();
-  if (!text || chat.streaming) return;
+  if ((!text && !pendingFiles.length) || chat.streaming) return;
   input.value = '';
-  chat.messages.push({ role: 'user', content: text });
+  const files = pendingFiles.slice();
+  const display = text || '📎 ' + files.map((f) => f.name).join(', ');
+  const send = (text || '(see the attached files)') + attachmentsPrompt(files);
+  chat.messages.push({ role: 'user', content: display, send, files: files.map((f) => ({ name: f.name, size: f.size, type: f.type })) });
+  pendingFiles = [];
+  renderAttachments();
   if (chat.enabled === false) {
     chat.messages.push({ role: 'assistant', content: 'The assistant is not configured on the server yet. Ask an admin to set AI_BASE_URL, AI_API_KEY and AI_MODEL, then restart.' });
     saveChatHistory();
@@ -2682,8 +2848,8 @@ async function sendChat() {
   renderChat();
 
   const payload = chat.messages
-    .filter((m) => (m.role === 'user' || m.role === 'assistant') && m.content)
-    .map((m) => ({ role: m.role, content: m.content }));
+    .filter((m) => (m.role === 'user' || m.role === 'assistant') && (m.content || m.send))
+    .map((m) => ({ role: m.role, content: m.send || m.content }));
 
   chat.controller = new AbortController();
   let sawDone = false;
@@ -2794,13 +2960,17 @@ async function initAssistant() {
     <div class="chat-head">
       <div><strong>Assistant</strong> <span class="small muted" id="chatModel"></span></div>
       <div class="row" style="gap:6px">
-        <button class="ghost sm" id="chatClear" title="Clear this conversation">Clear</button>
+        <select id="chatHistory" title="Previous chats" aria-label="Previous chats"></select>
+        <button class="ghost sm" id="chatNew" title="Start a new chat">New</button>
         <button class="ghost sm" id="chatClose" aria-label="Close">&#10005;</button>
       </div>
     </div>
     <div class="chat-body" id="chatBody"></div>
+    <div class="chat-attach hidden" id="chatAttach"></div>
     <div class="chat-foot">
-      <textarea id="chatInput" rows="1" placeholder="Ask or instruct…" aria-label="Message the assistant"></textarea>
+      <button id="chatAttachBtn" class="ghost sm" title="Attach files (any type)">📎</button>
+      <input id="chatFile" type="file" accept="*/*" multiple hidden />
+      <textarea id="chatInput" rows="1" placeholder="Ask or instruct… (📎 to attach any file)" aria-label="Message the assistant"></textarea>
       <button id="chatSend">Send</button>
     </div>`;
   document.body.appendChild(btn);
@@ -2810,11 +2980,10 @@ async function initAssistant() {
     if (!panel.classList.contains('hidden')) $('#chatInput').focus();
   });
   $('#chatClose').addEventListener('click', () => panel.classList.add('hidden'));
-  $('#chatClear').addEventListener('click', () => {
-    chat.messages = [];
-    try { localStorage.removeItem(CHAT_KEY); } catch (_) { /* ignore */ }
-    renderChat();
-  });
+  $('#chatNew').addEventListener('click', newChat);
+  $('#chatHistory').addEventListener('change', (e) => openChat(e.target.value));
+  $('#chatAttachBtn').addEventListener('click', () => $('#chatFile').click());
+  $('#chatFile').addEventListener('change', (e) => { addFiles(e.target.files); e.target.value = ''; });
   $('#chatSend').addEventListener('click', () => { if (chat.streaming) stopChat(); else sendChat(); });
   $('#chatInput').addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); if (!chat.streaming) sendChat(); } });
   loadChatHistory();
