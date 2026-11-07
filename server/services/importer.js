@@ -35,9 +35,19 @@ function importFile(filePath, opts = {}) {
   ensureSupplier(supplier.code);
 
   // Duplicate-file guard (brief section 6: re-importing a file must not duplicate).
+  // Only a file that actually imported rows counts as a duplicate. A previous
+  // attempt that crashed left uploads.rows_imported at 0 (and possibly partial
+  // offers); clear it so the fixed importer can try again instead of the user
+  // being stuck on "duplicate" with no data.
   const existing = db.prepare('SELECT * FROM uploads WHERE supplier_code = ? AND file_hash = ?').get(supplier.code, fileHash);
-  if (existing && !opts.force) {
+  if (existing && !opts.force && Number(existing.rows_imported) > 0) {
     return { duplicate: true, upload: existing, supplier: supplier.code };
+  }
+  if (existing && !opts.force) {
+    db.prepare('DELETE FROM exceptions WHERE upload_id = ?').run(existing.id);
+    db.prepare('DELETE FROM price_history WHERE upload_id = ?').run(existing.id);
+    db.prepare('DELETE FROM offers WHERE upload_id = ?').run(existing.id);
+    db.prepare('DELETE FROM uploads WHERE id = ?').run(existing.id);
   }
 
   const listDate = opts.listDate || new Date().toISOString().slice(0, 10);
