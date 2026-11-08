@@ -2640,7 +2640,8 @@ routes['ai-chat'] = async () => {
   $('#aiInput').addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); if (!chat.streaming) sendChat(); }
   });
-  $('#aiAttachBtn').innerHTML = icon('paperclip', 17);
+  const aib = $('#aiAttachBtn');
+  if (aib) aib.innerHTML = icon('paperclip', 17);
   setTimeout(() => { const i = $('#aiInput'); if (i) i.focus(); }, 50);
 };
 
@@ -3447,9 +3448,9 @@ async function initAssistant() {
       <textarea id="chatInput" rows="1" placeholder="Ask or instruct… Paste with Ctrl+V, or attach any file" aria-label="Message the assistant"></textarea>
       <button id="chatSend">Send</button>
     </div>`;
-  $('#chatAttachBtn').innerHTML = icon('paperclip', 17);
   document.body.appendChild(btn);
   document.body.appendChild(panel);
+  $('#chatAttachBtn').innerHTML = icon('paperclip', 17);
   btn.addEventListener('click', () => {
     panel.classList.toggle('hidden');
     if (!panel.classList.contains('hidden')) $('#chatInput').focus();
