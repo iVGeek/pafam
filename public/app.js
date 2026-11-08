@@ -269,11 +269,25 @@ function installExportBar() {
   $$('.viewExportBar [data-vx]', bar).forEach((b) => b.addEventListener('click', () => exportView(b.dataset.vx)));
 }
 
+const DEAL_STEPS = [
+  ['demands', 'Demand'], ['buying', 'Buying'], ['builder', 'Quote'],
+  ['orders', 'Order'], ['placements', 'Placement'], ['shipments', 'Shipment'],
+];
+function dealStepper(active) {
+  return `<div class="deal-stepper" aria-label="Deal lifecycle">${DEAL_STEPS.map(([r, label], i) =>
+    `${i ? '<span class="ds-sep">›</span>' : ''}<button class="ds ${r === active ? 'active' : ''}" data-step="${r}" type="button"><span class="n">${i + 1}</span>${label}</button>`
+  ).join('')}</div>`;
+}
+
 function wireView() {
   const root = $('#view');
   if (!root) return;
+  if (DEAL_STEPS.some(([r]) => r === state.route) && !root.querySelector('.deal-stepper')) {
+    root.insertAdjacentHTML('afterbegin', dealStepper(state.route));
+  }
   installExportBar();
   installTableFilters();
+  $$('#view [data-step]').forEach((b) => b.addEventListener('click', () => go(b.dataset.step)));
   const box = $('#globalSearch');
   if (box) box.value = viewSearch;
   refreshSearchUI();
@@ -2396,6 +2410,33 @@ function quoteFromRec(productId) {
   });
 }
 
+routes['ai-chat'] = async () => {
+  const s = await GET('/ai/status').catch(() => ({ enabled: false }));
+  $('#view').innerHTML = `
+    <div class="panel">
+      <h2>AI Assistant</h2>
+      <div class="muted small" style="margin:6px 0 10px">The assistant lives in the big chat window at the bottom-right. It can read every module (prices, orders, stock, shipments, KPIs, imports, audit) and prepare drafts for you to confirm — it never saves anything itself.</div>
+      <div class="grid cards">
+        <div class="card"><div class="k">Status</div><div class="v">${s.enabled ? 'On' : 'Off'}</div><div class="s">${esc(s.model || 'not configured')}</div></div>
+        <div class="card"><div class="k">What it can do</div><div class="v">45 tools</div><div class="s">read + draft (you click Apply)</div></div>
+        <div class="card"><div class="k">Drafts</div><div class="v">8 types</div><div class="s">quote · placement · demand · order · task · reservation · shipment · exception</div></div>
+        <div class="card"><div class="k">Tip</div><div class="v">↗ button</div><div class="s">on the chat window to expand it</div></div>
+      </div>
+      <div class="row" style="margin-top:14px">
+        <button id="aiOpen">Open the assistant</button>
+        <button id="aiAsk" class="ghost">Ask: what needs attention?</button>
+      </div>
+      <div class="small muted" style="margin-top:10px">Free model chain: ${esc((s.models || []).join(' → ') || '—')}</div>
+    </div>`;
+  const open = () => { openAssistant(); const p = $('#chatPanel'); if (p) p.classList.add('expanded'); };
+  $('#aiOpen').addEventListener('click', open);
+  $('#aiAsk').addEventListener('click', () => {
+    open();
+    const input = $('#chatInput');
+    if (input) { input.value = 'What needs my attention today?'; input.focus(); }
+  });
+};
+
 routes.users = async () => {
   const users = await GET('/users');
   $('#view').innerHTML = `
@@ -2477,6 +2518,7 @@ const TITLES = {
   shipments: ['Shipment Costs', 'Allocate freight, duty and handling across the lines they belong to'],
   users: ['Users & Roles', 'Accounts and role-based access'],
   audit: ['Audit Log', 'Who did what, when'],
+  'ai-chat': ['AI Assistant', 'A copilot that can read the whole system and prepare drafts for you to confirm'],
 };
 
 function updateUserUI() {
@@ -2520,7 +2562,6 @@ window.addEventListener('hashchange', () => {
 });
 
 $$('#nav a').forEach((a) => a.addEventListener('click', () => {
-  if (a.dataset.route === 'ai-chat') { openAssistant(); return; }
   go(a.dataset.route);
 }));
 $('#refreshBtn').addEventListener('click', () => { loadSettings().then(render); });

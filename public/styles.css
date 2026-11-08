@@ -191,6 +191,14 @@ svg.spark polyline { fill: none; stroke: var(--accent); stroke-width: 2; stroke-
 .kpi-inline .item .k { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
 .kpi-inline .item .v { font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums; }
 
+/* Deal lifecycle stepper: shows where you are in the trade */
+.deal-stepper { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 16px; align-items: center; }
+.ds { padding: 7px 13px; border: 1px solid var(--border); border-radius: 999px; font-size: 12.5px; color: var(--muted); cursor: pointer; background: var(--panel); display: inline-flex; gap: 6px; align-items: center; }
+.ds .n { font-size: 11px; font-weight: 700; opacity: .7; }
+.ds:hover { color: var(--text); border-color: var(--border-strong); }
+.ds.active { background: var(--accent-soft); color: var(--accent); border-color: var(--accent-line); font-weight: 700; }
+.ds-sep { color: var(--muted); font-size: 12px; }
+
 .split { display: grid; grid-template-columns: 1fr 320px; gap: 16px; align-items: start; }
 @media (max-width: 1000px) { .split { grid-template-columns: 1fr; } .layout { grid-template-columns: 1fr; } .sidebar { position: static; height: auto; } }
 .modal-bg { position: fixed; inset: 0; background: rgba(0, 0, 0, .72); display: flex; align-items: center; justify-content: center; z-index: 40; }
