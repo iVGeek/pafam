@@ -53,9 +53,10 @@
           <h1 id="pageTitle">Dashboard</h1>
           <div class="sub" id="pageSub"></div>
         </div>
-        <div class="searchbar">
-          <input id="globalSearch" type="search" autocomplete="off" placeholder="Search this window — name, GTIN, supplier, ref…" aria-label="Search this window" />
+        <div class="searchbar" style="position:relative">
+          <input id="globalSearch" type="search" autocomplete="off" placeholder="Find a product, customer or supplier…" aria-label="Global search" />
           <span id="searchCount" class="small muted"></span>
+          <div id="globalSearchDrop" class="gs-drop hidden"></div>
         </div>
         <div class="row">
           <span class="badge muted" id="baseCur">USD</span>

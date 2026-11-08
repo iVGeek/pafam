@@ -53,18 +53,28 @@ const DEL = (u) => api('DELETE', u);
 const RANK = { viewer: 1, analyst: 2, buyer: 3, admin: 4 };
 function can(min) { return (RANK[state.user && state.user.role] || 0) >= (RANK[min] || 1); }
 
-function modal(title, bodyHtml, onMount) {
+function modal(title, bodyHtml, onMount, opts) {
+  const wide = opts && opts.wide;
   const bg = document.createElement('div');
   bg.className = 'modal-bg';
-  bg.innerHTML = `<div class="modal"><div class="row" style="justify-content:space-between"><h2 style="margin:0">${esc(title)}</h2><button class="ghost sm" data-close aria-label="Close">&#10005;</button></div><div style="margin-top:14px" data-body></div></div>`;
+  bg.innerHTML = `<div class="modal ${wide ? 'wide' : ''}" role="dialog" aria-modal="true" aria-label="${esc(title)}"><div class="row" style="justify-content:space-between"><h2 style="margin:0">${esc(title)}</h2><button class="ghost sm" data-close aria-label="Close">&#10005;</button></div><div style="margin-top:14px" data-body></div></div>`;
   bg.querySelector('[data-body]').innerHTML = bodyHtml;
-  const close = () => { bg.remove(); document.removeEventListener('keydown', onKey); };
+  const close = () => { bg.remove(); document.removeEventListener('keydown', onKey); if (lastFocus) lastFocus.focus(); };
   const onKey = (e) => { if (e.key === 'Escape') close(); };
   bg.addEventListener('click', (e) => { if (e.target === bg || e.target.hasAttribute('data-close')) close(); });
   document.addEventListener('keydown', onKey);
+  const lastFocus = document.activeElement;
   document.body.appendChild(bg);
+  const first = bg.querySelector('input, select, textarea, button:not([data-close])');
+  if (first) first.focus();
   if (onMount) onMount(bg);
   return bg;
+}
+
+function skeleton(n) {
+  n = n || 4;
+  const bars = Array.from({ length: n }).map(() => '<div class="bar" style="width:' + (40 + Math.random() * 55) + '%"></div>').join('');
+  return `<div class="skel" aria-busy="true">${bars}</div>`;
 }
 
 function badgeList(flags) {
@@ -136,6 +146,7 @@ function applyGlobalSearch() {
 }
 
 function installTableFilters() {
+  state._filters = state._filters || {};
   $$('#view table').forEach((t) => {
     if (t.dataset.filtered === '1') return;
     const body = t.tBodies && t.tBodies[0];
@@ -148,10 +159,19 @@ function installTableFilters() {
     bar.innerHTML = '<input type="search" placeholder="Filter these rows…" autocomplete="off" aria-label="Filter these rows" /><span class="small muted"></span>';
     const input = bar.querySelector('input');
     const count = bar.querySelector('span');
+    state._filters._n = (state._filters._n || 0) + 1;
+    const fid = 'f' + state._filters._n;
+    const saved = state._filters[state.route + ':' + fid];
+    if (saved) input.value = saved;
     input.addEventListener('input', () => {
+      state._filters[state.route + ':' + fid] = input.value;
       const res = filterTableRows(t, input.value);
       count.textContent = input.value ? `${res.shown}/${res.total}` : '';
     });
+    if (input.value) {
+      const res = filterTableRows(t, input.value);
+      count.textContent = `${res.shown}/${res.total}`;
+    }
     wrap.parentNode.insertBefore(bar, wrap);
     t.dataset.filtered = '1';
   });
@@ -289,15 +309,60 @@ function wireView() {
   installTableFilters();
   $$('#view [data-step]').forEach((b) => b.addEventListener('click', () => go(b.dataset.step)));
   const box = $('#globalSearch');
-  if (box) box.value = viewSearch;
-  refreshSearchUI();
+  if (box) box.value = '';
+  const drop = $('#globalSearchDrop');
+  if (drop) drop.classList.add('hidden');
 }
 
 const globalSearchBox = $('#globalSearch');
+const globalDrop = $('#globalSearchDrop');
+let gsTimer = null;
+async function globalFind(q) {
+  const query = (q || '').trim();
+  if (query.length < 2 || !globalDrop) { if (globalDrop) globalDrop.classList.add('hidden'); return; }
+  const ql = query.toLowerCase();
+  const customers = await GET('/customers').catch(() => []);
+  const custHits = customers.filter((c) => (c.name || '').toLowerCase().includes(ql) || (c.code || '').toLowerCase().includes(ql)).slice(0, 5);
+  const supHits = (state.suppliers || []).filter((s) => (s.name || '').toLowerCase().includes(ql) || (s.code || '').toLowerCase().includes(ql)).slice(0, 5);
+  const prod = await GET('/products?limit=8&q=' + encodeURIComponent(query)).catch(() => ({ rows: [] }));
+  const prodHits = prod.rows || [];
+  const html = [];
+  if (prodHits.length) {
+    html.push('<div class="gs-sec">Products</div>');
+    prodHits.forEach((p) => html.push(`<button class="gs-item" data-gs="product" data-id="${p.id}">${esc((p.display_name || '').slice(0, 60))}<span class="sub">${esc(p.canonical_gtin || '')} · ${p.supplier_count} supplier(s)</span></button>`));
+  }
+  if (custHits.length) {
+    html.push('<div class="gs-sec">Customers</div>');
+    custHits.forEach((c) => html.push(`<button class="gs-item" data-gs="customer">${esc(c.name || '')}<span class="sub">${esc(c.code || '')} · ${esc(c.region || '')}</span></button>`));
+  }
+  if (supHits.length) {
+    html.push('<div class="gs-sec">Suppliers</div>');
+    supHits.forEach((s) => html.push(`<button class="gs-item" data-gs="supplier" data-id="${esc(s.code)}">${esc(s.name || s.code)}<span class="sub">${esc(s.code)} · ${esc(s.currency || '')}</span></button>`));
+  }
+  globalDrop.innerHTML = html.join('') || '<div class="gs-item">No matches</div>';
+  globalDrop.classList.remove('hidden');
+  $$('#globalSearchDrop [data-gs]').forEach((b) => b.addEventListener('click', () => {
+    globalDrop.classList.add('hidden');
+    if (b.dataset.gs === 'product') openCompare(Number(b.dataset.id));
+    else if (b.dataset.gs === 'supplier') { state._offerFilter = state._offerFilter || { limit: 40, offset: 0 }; state._offerFilter.supplier = b.dataset.id; state._offerFilter.offset = 0; go('offers'); }
+    else if (b.dataset.gs === 'customer') { go('customers'); }
+  }));
+}
 if (globalSearchBox) {
-  globalSearchBox.addEventListener('input', () => { viewSearch = globalSearchBox.value; refreshSearchUI(); });
+  globalSearchBox.addEventListener('input', () => {
+    const q = globalSearchBox.value;
+    clearTimeout(gsTimer);
+    gsTimer = setTimeout(() => globalFind(q), 180);
+  });
   globalSearchBox.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') { globalSearchBox.value = ''; viewSearch = ''; refreshSearchUI(); }
+    if (e.key === 'Escape') { globalSearchBox.value = ''; if (globalDrop) globalDrop.classList.add('hidden'); }
+    if (e.key === 'Enter') {
+      const first = globalDrop && globalDrop.querySelector('[data-gs]');
+      if (first) first.click();
+    }
+  });
+  document.addEventListener('click', (e) => {
+    if (globalDrop && !globalDrop.contains(e.target) && e.target !== globalSearchBox) globalDrop.classList.add('hidden');
   });
 }
 
@@ -2412,29 +2477,45 @@ function quoteFromRec(productId) {
 
 routes['ai-chat'] = async () => {
   const s = await GET('/ai/status').catch(() => ({ enabled: false }));
+  if (!$('#chatLauncher')) await initAssistant();
+  const active = convos.find((c) => c.id === activeConvoId);
   $('#view').innerHTML = `
-    <div class="panel">
-      <h2>AI Assistant</h2>
-      <div class="muted small" style="margin:6px 0 10px">The assistant lives in the big chat window at the bottom-right. It can read every module (prices, orders, stock, shipments, KPIs, imports, audit) and prepare drafts for you to confirm — it never saves anything itself.</div>
-      <div class="grid cards">
-        <div class="card"><div class="k">Status</div><div class="v">${s.enabled ? 'On' : 'Off'}</div><div class="s">${esc(s.model || 'not configured')}</div></div>
-        <div class="card"><div class="k">What it can do</div><div class="v">45 tools</div><div class="s">read + draft (you click Apply)</div></div>
-        <div class="card"><div class="k">Drafts</div><div class="v">8 types</div><div class="s">quote · placement · demand · order · task · reservation · shipment · exception</div></div>
-        <div class="card"><div class="k">Tip</div><div class="v">↗ button</div><div class="s">on the chat window to expand it</div></div>
+    <div class="ai-layout">
+      <div class="ai-side">
+        <button id="aiNew" class="new">＋ New chat</button>
+        <div class="ai-list" id="aiList"></div>
+        <div class="small muted" style="padding:8px 2px 0">${s.enabled ? esc(s.model || '') : 'not configured'} · 45 tools · drafts are confirmed by you</div>
+        <button id="aiDelete" class="ghost sm" style="margin-top:8px">Delete this chat</button>
       </div>
-      <div class="row" style="margin-top:14px">
-        <button id="aiOpen">Open the assistant</button>
-        <button id="aiAsk" class="ghost">Ask: what needs attention?</button>
+      <div class="ai-main">
+        <div class="chat-head">
+          <div><strong id="aiTitle">${esc((active && active.title) || 'New chat')}</strong> <span class="small muted" id="aiModel">${esc(s.model || '')}</span></div>
+          <button class="ghost sm" id="aiPop" title="Also available as a floating window on every screen">Pop-out ↗</button>
+        </div>
+        <div class="ai-body" id="aiBody"></div>
+        <div class="chat-attach hidden" id="chatAttachPage"></div>
+        <div class="ai-foot">
+          <button id="aiAttachBtn" class="ghost sm" title="Attach files (any type)" style="font-size:17px">📎</button>
+          <input id="aiFile" type="file" accept="*/*" multiple hidden />
+          <textarea id="aiInput" rows="1" placeholder="Message the assistant… (Enter to send, Shift+Enter for new line)" aria-label="Message the assistant"></textarea>
+          <button id="aiSend">Send</button>
+        </div>
       </div>
-      <div class="small muted" style="margin-top:10px">Free model chain: ${esc((s.models || []).join(' → ') || '—')}</div>
     </div>`;
-  const open = () => { openAssistant(); const p = $('#chatPanel'); if (p) p.classList.add('expanded'); };
-  $('#aiOpen').addEventListener('click', open);
-  $('#aiAsk').addEventListener('click', () => {
-    open();
-    const input = $('#chatInput');
-    if (input) { input.value = 'What needs my attention today?'; input.focus(); }
+  renderChat();
+  const fitPage = () => { const ta = $('#aiInput'); if (ta) { ta.style.height = 'auto'; ta.style.height = Math.min(ta.scrollHeight, 180) + 'px'; } };
+  $('#aiNew').addEventListener('click', () => { newChat(); const t = $('#aiTitle'); if (t) t.textContent = 'New chat'; const i = $('#aiInput'); if (i) i.focus(); });
+  $('#aiDelete').addEventListener('click', deleteChat);
+  $('#aiPop').addEventListener('click', openAssistant);
+  $('#aiAttachBtn').addEventListener('click', () => $('#aiFile').click());
+  $('#aiFile').addEventListener('change', (e) => { addFiles(e.target.files); e.target.value = ''; });
+  $('#aiSend').addEventListener('click', () => { if (chat.streaming) stopChat(); else sendChat(); });
+  $('#aiInput').addEventListener('input', fitPage);
+  $('#aiInput').addEventListener('paste', () => setTimeout(fitPage, 0));
+  $('#aiInput').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); if (!chat.streaming) sendChat(); }
   });
+  setTimeout(() => { const i = $('#aiInput'); if (i) i.focus(); }, 50);
 };
 
 routes.users = async () => {
@@ -2823,15 +2904,17 @@ function attachmentsPrompt(files) {
 }
 
 function renderAttachments() {
-  const box = $('#chatAttach');
-  if (!box) return;
-  if (!pendingFiles.length) { box.classList.add('hidden'); box.innerHTML = ''; return; }
-  box.classList.remove('hidden');
-  box.innerHTML = pendingFiles.map((f, i) => `<span class="chat-file" title="${esc(f.name)}">📎 ${esc(f.name)} <span class="muted">${humanSize(f.size)}</span> <button class="chat-file-x" data-file-rm="${i}" aria-label="Remove attachment">×</button></span>`).join('');
-  box.querySelectorAll('[data-file-rm]').forEach((b) => b.addEventListener('click', () => {
-    pendingFiles.splice(Number(b.dataset.fileRm), 1);
-    renderAttachments();
-  }));
+  for (const id of ['chatAttach', 'chatAttachPage']) {
+    const box = document.getElementById(id);
+    if (!box) continue;
+    if (!pendingFiles.length) { box.classList.add('hidden'); box.innerHTML = ''; continue; }
+    box.classList.remove('hidden');
+    box.innerHTML = pendingFiles.map((f, i) => `<span class="chat-file" title="${esc(f.name)}">📎 ${esc(f.name)} <span class="muted">${humanSize(f.size)}</span> <button class="chat-file-x" data-file-rm="${i}" aria-label="Remove attachment">×</button></span>`).join('');
+    box.querySelectorAll('[data-file-rm]').forEach((b) => b.addEventListener('click', () => {
+      pendingFiles.splice(Number(b.dataset.fileRm), 1);
+      renderAttachments();
+    }));
+  }
 }
 
 // Minimal, safe markdown: text is escaped first, then only these constructs
@@ -2944,8 +3027,7 @@ function messageCopyText(m) {
   return String(m.content || '');
 }
 
-function renderChat() {
-  const body = $('#chatBody');
+function renderChatInto(body) {
   if (!body) return;
   const note = chat.enabled === false
     ? `<div class="chat-note">The assistant is not configured. On the server set <span class="mono">AI_BASE_URL</span>, <span class="mono">AI_API_KEY</span> and <span class="mono">AI_MODEL</span>, then restart.</div>`
@@ -2964,13 +3046,47 @@ function renderChat() {
     </div>`;
   body.innerHTML = note + (msgs || emptyTpl);
   body.scrollTop = body.scrollHeight;
-  $$('#chatBody [data-apply]').forEach((b) => b.addEventListener('click', () => applyProposal(Number(b.dataset.apply))));
-  $$('#chatBody [data-copy]').forEach((b) => b.addEventListener('click', () => copyText(messageCopyText(chat.messages[Number(b.dataset.copy)]), b)));
-  $$('#chatBody [data-prompt]').forEach((b) => b.addEventListener('click', () => {
-    const input = $('#chatInput');
-    if (input) { input.value = b.dataset.prompt; input.focus(); }
+  const sel = body.id === 'aiBody' ? '#aiBody' : '#chatBody';
+  $$(sel + ' [data-apply]').forEach((b) => b.addEventListener('click', () => applyProposal(Number(b.dataset.apply))));
+  $$(sel + ' [data-copy]').forEach((b) => b.addEventListener('click', () => copyText(messageCopyText(chat.messages[Number(b.dataset.copy)]), b)));
+  $$(sel + ' [data-prompt]').forEach((b) => b.addEventListener('click', () => {
+    const main = $('#chatInput');
+    const page = $('#aiInput');
+    if (page && state.route === 'ai-chat') { page.value = b.dataset.prompt; page.focus(); } else if (main) { main.value = b.dataset.prompt; main.focus(); }
     if (!chat.streaming) sendChat();
   }));
+}
+
+function renderChat() {
+  renderChatInto($('#chatBody'));
+  renderChatInto($('#aiBody'));
+  renderChatSidebar();
+}
+
+function renderChatSidebar() {
+  const list = $('#aiList');
+  if (!list) return;
+  const sorted = convos.slice().sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+  list.innerHTML = sorted.map((c) => `
+    <button class="ai-item ${c.id === activeConvoId ? 'active' : ''}" data-ai-open="${esc(c.id)}">
+      <span class="t">${esc(c.title || 'New chat')}</span>
+      <span class="s">${c.messages.length} message(s) · ${new Date(c.updatedAt || Date.now()).toLocaleDateString()}</span>
+    </button>`).join('') || '<div class="muted small" style="padding:8px">No chats yet — start one.</div>';
+  $$('#aiList [data-ai-open]').forEach((b) => b.addEventListener('click', () => openChat(b.dataset.aiOpen)));
+  const del = $('#aiDelete');
+  if (del) del.style.display = convos.length > 1 ? '' : 'none';
+}
+
+function deleteChat() {
+  if (convos.length <= 1) return;
+  if (!confirm('Delete this chat? This removes it from your browser only.')) return;
+  convos = convos.filter((c) => c.id !== activeConvoId);
+  activeConvoId = convos[0].id;
+  chat.messages = convos[0].messages;
+  pendingFiles = [];
+  renderAttachments();
+  saveChatHistory();
+  renderChat();
 }
 
 // Re-render only the streaming bubble so token updates stay cheap.
@@ -2979,16 +3095,18 @@ function renderChatStream() {
   if (chatRaf) return;
   chatRaf = requestAnimationFrame(() => {
     chatRaf = 0;
-    const body = $('#chatBody');
-    if (!body) return;
+    const bodies = [$('#chatBody'), $('#aiBody')].filter(Boolean);
+    if (!bodies.length) return;
     const last = chat.messages[chat.messages.length - 1];
     if (!last || last.role !== 'assistant' || !last.streaming) { renderChat(); return; }
-    const bubbles = body.querySelectorAll('.chat-msg.bot');
-    const el = bubbles[bubbles.length - 1];
-    if (!el) { renderChat(); return; }
     const tool = last.tool ? `<div class="chat-tool">${esc(TOOL_LABELS[last.tool] || last.tool)}</div>` : '';
-    el.innerHTML = `${tool}<div class="chat-md">${md(last.content)}</div><span class="chat-caret"></span>`;
-    body.scrollTop = body.scrollHeight;
+    bodies.forEach((body) => {
+      const bubbles = body.querySelectorAll('.chat-msg.bot');
+      const el = bubbles[bubbles.length - 1];
+      if (!el) { renderChat(); return; }
+      el.innerHTML = `${tool}<div class="chat-md">${md(last.content)}</div><span class="chat-caret"></span>`;
+      body.scrollTop = body.scrollHeight;
+    });
   });
 }
 
@@ -2996,7 +3114,7 @@ async function applyProposal(idx) {
   const m = chat.messages[idx];
   if (!m || !m.proposal || !m.proposal.apply) return;
   const a = m.proposal.apply;
-  const btn = $$('#chatBody [data-apply]').find((b) => Number(b.dataset.apply) === idx);
+  const btn = $$('[data-apply]').find((b) => Number(b.dataset.apply) === idx);
   if (btn) btn.disabled = true;
   try {
     const out = await api(m.proposal.apply.method || 'POST', m.proposal.apply.url, m.proposal.apply.body);
@@ -3016,10 +3134,13 @@ async function applyProposal(idx) {
 // delta = a text fragment, done = reply + proposals, error = failure.
 // Falls back to the plain /ai/chat turn if the stream endpoint is missing.
 async function sendChat() {
-  const input = $('#chatInput');
-  const text = (input.value || '').trim();
+  const page = $('#aiInput');
+  const input = (page && state.route === 'ai-chat') ? page : $('#chatInput');
+  const text = (input ? (input.value || '') : '').trim();
   if ((!text && !pendingFiles.length) || chat.streaming) return;
-  input.value = '';
+  if (input) input.value = '';
+  const floating = $('#chatInput');
+  if (floating && floating !== input) floating.value = '';
   const files = pendingFiles.slice();
   const display = text || '📎 ' + files.map((f) => f.name).join(', ');
   const send = (text || '(see the attached files)') + attachmentsPrompt(files);
