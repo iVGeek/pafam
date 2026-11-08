@@ -23,12 +23,16 @@ function pct(n, d = 1) {
 }
 function dt(s) { return s ? String(s).replace('T', ' ').slice(0, 19) : '—'; }
 
-let toastTimer;
 function toast(msg, kind = '') {
-  const el = $('#toast');
-  el.innerHTML = `<div class="toast ${kind}">${esc(msg)}</div>`;
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => { el.innerHTML = ''; }, 4200);
+  const wrap = $('#toasts') || document.body;
+  const el = document.createElement('div');
+  el.className = 'toast ' + kind;
+  el.innerHTML = `<button class="x" aria-label="Dismiss">&#10005;</button>${esc(msg)}`;
+  el.querySelector('.x').addEventListener('click', () => el.remove());
+  wrap.appendChild(el);
+  const sticky = kind === 'err';
+  setTimeout(() => { if (el.isConnected) el.remove(); }, sticky ? 12000 : 4200);
+  while (wrap.children.length > 4) wrap.firstChild.remove();
 }
 
 async function api(method, url, body, isForm) {
@@ -299,6 +303,46 @@ function dealStepper(active) {
   ).join('')}</div>`;
 }
 
+function numCell(v) {
+  const n = Number(String(v || '').replace(/[^0-9.\-]/g, ''));
+  return Number.isFinite(n) && String(v || '').trim() !== '' ? n : null;
+}
+function installTableSorting() {
+  $$('#view table').forEach((t) => {
+    if (t.dataset.sortable === '1') return;
+    t.dataset.sortable = '1';
+    const head = t.tHead && t.tHead.rows[0];
+    if (!head) return;
+    Array.from(head.cells).forEach((th, col) => {
+      if (!th.textContent.trim() || th.classList.contains('num') === false && col === head.cells.length - 1) {
+        // leave the action (empty) column unsortable
+        if (!th.textContent.trim()) return;
+      }
+      if (!th.textContent.trim()) return;
+      th.classList.add('sortable');
+      th.title = 'Click to sort';
+      th.addEventListener('click', () => {
+        const body = t.tBodies[0];
+        if (!body) return;
+        const rows = Array.from(body.rows).filter((r) => !isPlaceholderRow(r));
+        const desc = th.classList.contains('sorted') && !th.classList.contains('desc');
+        Array.from(head.cells).forEach((h) => h.classList.remove('sorted', 'desc'));
+        th.classList.add('sorted');
+        if (desc) th.classList.add('desc');
+        const dir = desc ? -1 : 1;
+        rows.sort((a, b) => {
+          const av = a.cells[col] ? a.cells[col].textContent : '';
+          const bv = b.cells[col] ? b.cells[col].textContent : '';
+          const an = numCell(av), bn = numCell(bv);
+          if (an != null && bn != null) return (an - bn) * dir;
+          return String(av).localeCompare(String(bv)) * dir;
+        });
+        rows.forEach((r) => body.appendChild(r));
+      });
+    });
+  });
+}
+
 function wireView() {
   const root = $('#view');
   if (!root) return;
@@ -307,6 +351,7 @@ function wireView() {
   }
   installExportBar();
   installTableFilters();
+  installTableSorting();
   $$('#view [data-step]').forEach((b) => b.addEventListener('click', () => go(b.dataset.step)));
   const box = $('#globalSearch');
   if (box) box.value = '';
@@ -414,14 +459,14 @@ routes.dashboard = async () => {
   const wins = Object.entries(d.wins || {});
   const maxWin = Math.max(1, ...wins.map((w) => w[1]));
   const cards = [
-    ['Supplier offers', num(o.offers), `${o.suppliers} suppliers · ${o.uploads} uploads`],
-    ['Products', num(o.products), `${num(o.overlapProducts)} sourced from 2+ suppliers`],
-    ['Open exceptions', num(o.openExceptions), (o.exceptionsByType || []).map((e) => `${e.n} ${e.type.replace('_', ' ')}`).join(' · ')],
-    ['Customers', num(o.customers), `${o.openDemands} open demands`],
-    ['Inventory units', num(o.inventoryUnits), 'on hand'],
-    ['Orders', num(o.orders), `${o.ordersOpen} open`],
-    ['Realised margin', money(o.realisedMargin), 'from settled orders'],
-    ['Base currency', o.baseCurrency, 'normalised pricing'],
+    ['Supplier offers', num(o.offers), `${o.suppliers} suppliers · ${o.uploads} uploads`, 'offers'],
+    ['Products', num(o.products), `${num(o.overlapProducts)} sourced from 2+ suppliers`, 'products'],
+    ['Open exceptions', num(o.openExceptions), (o.exceptionsByType || []).map((e) => `${e.n} ${e.type.replace('_', ' ')}`).join(' · '), 'exceptions'],
+    ['Customers', num(o.customers), `${o.openDemands} open demands`, 'customers'],
+    ['Inventory units', num(o.inventoryUnits), 'on hand', 'inventory'],
+    ['Orders', num(o.orders), `${o.ordersOpen} open`, 'orders'],
+    ['Realised margin', money(o.realisedMargin), 'from settled orders', 'performance'],
+    ['Base currency', o.baseCurrency, 'normalised pricing', 'settings'],
   ];
   const oppRows = (d.opportunities || []).map((x) => `
     <tr data-pid="${x.productId}" style="cursor:pointer">
@@ -445,7 +490,7 @@ routes.dashboard = async () => {
     </div>`).join('');
 
   $('#view').innerHTML = `
-    <div class="grid cards">${cards.map((c) => `<div class="card"><div class="k">${esc(c[0])}</div><div class="v">${esc(c[1])}</div><div class="s">${esc(c[2])}</div></div>`).join('')}</div>
+    <div class="grid cards">${cards.map((c) => `<div class="card clickable" data-goto="${c[3]}" role="button" tabindex="0" title="Open ${esc(c[0])}"><div class="k">${esc(c[0])}</div><div class="v">${esc(c[1])}</div><div class="s">${esc(c[2])}</div><div class="go">Open →</div></div>`).join('')}</div>
     <div class="split" style="margin-top:16px">
       <div>
         <div class="panel">
@@ -466,6 +511,11 @@ routes.dashboard = async () => {
       </div>
     </div>`;
   $$('#view tr[data-pid]').forEach((tr) => tr.addEventListener('click', () => openCompare(Number(tr.dataset.pid))));
+  $$('#view [data-goto]').forEach((el) => {
+    const nav = () => go(el.dataset.goto);
+    el.addEventListener('click', nav);
+    el.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); nav(); } });
+  });
 };
 
 routes.imports = async () => {
@@ -2121,8 +2171,8 @@ routes.orders = async () => {
         <div class="field" style="margin-bottom:8px"><label>Product</label>
           <div data-pp><input data-pp-input placeholder="search product…" /><input type="hidden" data-pp-id /><div data-pp-results style="margin-top:6px;max-height:150px;overflow:auto"></div></div></div>
         <div class="grid" style="grid-template-columns:1fr 1fr;gap:10px">
-          <div class="field"><label>Quantity</label><input id="orQty" type="number" value="100" /></div>
-          <div class="field"><label>Currency</label><input id="orCur" value="USD" /></div>
+          <div class="field"><label>Quantity *</label><input id="orQty" type="number" value="100" data-req min="1" /></div>
+          <div class="field"><label>Currency *</label><input id="orCur" value="USD" data-req /></div>
           <div class="field"><label>Unit cost (forecast)</label><input id="orCost" type="number" step="0.01" /></div>
           <div class="field"><label>Unit price (forecast)</label><input id="orPrice" type="number" step="0.01" /></div>
         </div>
@@ -2134,9 +2184,12 @@ routes.orders = async () => {
       </div>
     </div>` : ''}`;
   if (canEdit) mountProductPicker($('#view'));
-  if (canEdit) $('#orAdd').addEventListener('click', async () => {
+  if (canEdit) $('#orAdd').addEventListener('click', async (ev) => {
+    if (!validateRequired($('#view'))) return;
     const productId = $('[data-pp-id]', $('#view')).value;
-    if (!productId) return toast('Pick a product', 'err');
+    if (!productId) { toast('Pick a product', 'err'); return; }
+    const btn = ev.currentTarget;
+    btn.classList.add('busy');
     try {
       await POST('/orders', {
         customerId: Number($('#orCust').value), productId, quantity: Number($('#orQty').value),
@@ -2144,11 +2197,33 @@ routes.orders = async () => {
       });
       toast('Order created', 'ok'); render();
     } catch (e) { toast(e.message, 'err'); }
+    btn.classList.remove('busy');
   });
   $$('#view [data-status]').forEach((sel) => sel.addEventListener('change', async () => {
-    try { await POST('/orders/' + sel.dataset.status + '/status', { status: sel.value }); toast('Status updated', 'ok'); }
-    catch (e) { toast(e.message, 'err'); }
+    const id = sel.dataset.status;
+    const next = sel.value;
+    const prev = sel.dataset.prev || '';
+    try {
+      await POST('/orders/' + id + '/status', { status: next });
+      sel.dataset.prev = next;
+      toast('Status updated to ' + next + ' — click ✕ toast to undo', 'ok');
+      // Undo: revert to previous status (kept for 8s in case of a misclick)
+      const undo = setTimeout(() => {}, 8000);
+      const wrap = $('#toasts');
+      const last = wrap && wrap.lastChild;
+      const x = last && last.querySelector('.x');
+      if (x) {
+        x.textContent = 'Undo';
+        x.onclick = async () => {
+          clearTimeout(undo);
+          if (prev) { try { await POST('/orders/' + id + '/status', { status: prev }); sel.value = prev; sel.dataset.prev = prev; toast('Reverted to ' + prev, 'ok'); } catch (e) { toast(e.message, 'err'); } }
+          last.remove();
+        };
+      }
+    }
+    catch (e) { toast(e.message, 'err'); sel.value = prev; }
   }));
+  $$('#view [data-status]').forEach((sel) => { sel.dataset.prev = sel.value; });
   $$('#view [data-pay]').forEach((b) => b.addEventListener('click', () => {
     modal('Record payment', `
       <div class="field" style="margin-bottom:8px"><label>Direction</label><select id="payDir"><option value="inbound">Inbound — customer paid us</option><option value="outbound">Outbound — we paid supplier</option></select></div>
@@ -2646,6 +2721,40 @@ $$('#nav a').forEach((a) => a.addEventListener('click', () => {
   go(a.dataset.route);
 }));
 $('#refreshBtn').addEventListener('click', () => { loadSettings().then(render); });
+(function initDensity() {
+  const btn = $('#densityBtn');
+  const apply = (compact) => {
+    document.body.classList.toggle('density-compact', compact);
+    if (btn) btn.textContent = compact ? 'Comfortable' : 'Compact';
+    try { localStorage.setItem('perfumes.density', compact ? 'compact' : 'comfortable'); } catch (_) {}
+  };
+  apply(localStorage.getItem('perfumes.density') === 'compact');
+  if (btn) btn.addEventListener('click', () => apply(!document.body.classList.contains('density-compact')));
+})();
+
+// Inline form validation: mark empty/invalid fields before submit.
+function markField(input, ok, msg) {
+  const field = input && input.closest('.field');
+  if (!field) return ok;
+  let err = field.querySelector('.errmsg');
+  if (!err) {
+    err = document.createElement('div');
+    err.className = 'errmsg';
+    field.appendChild(err);
+  }
+  field.classList.toggle('err', !ok);
+  err.textContent = ok ? '' : (msg || 'Required');
+  return ok;
+}
+function validateRequired(form) {
+  let good = true;
+  $$('[data-req]', form).forEach((inp) => {
+    const bad = !String(inp.value || '').trim();
+    if (!markField(inp, !bad)) good = false;
+  });
+  if (!good) { $$('.field.err input', form)[0]?.focus(); toast('Fix the highlighted fields', 'err'); }
+  return good;
+}
 
 async function doLogin() {
   const username = $('#loginUser').value.trim();

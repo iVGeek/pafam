@@ -111,6 +111,25 @@ tr:hover td { background: var(--panel-2); }
 td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .table-wrap { overflow: auto; max-height: 68vh; }
 .table-wrap thead th { position: sticky; top: 0; background: var(--panel); z-index: 2; box-shadow: 0 1px 0 var(--border); }
+.table-wrap th.sortable { cursor: pointer; user-select: none; }
+.table-wrap th.sortable:hover { color: var(--text); }
+.table-wrap th.sorted::after { content: ' ▲'; color: var(--accent); font-size: 10px; }
+.table-wrap th.sorted.desc::after { content: ' ▼'; }
+.table-wrap td:first-child, .table-wrap th:first-child { position: sticky; left: 0; background: var(--panel); z-index: 1; }
+.table-wrap thead th:first-child { z-index: 3; }
+.table-wrap tr:hover td:first-child { background: var(--panel-2); }
+body.density-compact th, body.density-compact td { padding: 5px 9px; font-size: 13px; }
+body.density-compact .card .v { font-size: 22px; }
+.card.clickable { cursor: pointer; transition: border-color .15s; }
+.card.clickable:hover { border-color: var(--accent-line); }
+.card.clickable .go { font-size: 11px; color: var(--accent); margin-top: 6px; font-weight: 700; }
+#toasts { position: fixed; bottom: 20px; right: 20px; z-index: 80; display: flex; flex-direction: column; gap: 8px; max-width: 360px; }
+#toasts .toast { position: static; }
+.toast .x { float: right; background: none; border: none; color: var(--muted); cursor: pointer; font-size: 15px; padding: 0 0 0 8px; }
+.field.err input, .field.err select { border-color: var(--danger); box-shadow: 0 0 0 2px rgba(232,131,122,.18); }
+.field .errmsg { color: var(--danger); font-size: 12px; display: none; }
+.field.err .errmsg { display: block; }
+button.busy { opacity: .6; pointer-events: none; }
 .modal.wide { width: min(880px, 96vw); }
 .skel { display: grid; gap: 12px; }
 .skel .bar { height: 18px; border-radius: 6px; background: linear-gradient(90deg, var(--panel-2), var(--panel-3), var(--panel-2)); background-size: 200% 100%; animation: skel 1.2s infinite; }
