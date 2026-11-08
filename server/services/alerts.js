@@ -2,6 +2,7 @@
 
 const { db, getSetting, audit } = require('../db');
 const trends = require('./trends');
+const thresholds = require('./alertThresholds');
 
 function toInt(v, d) {
   const n = Number(v);
@@ -25,18 +26,19 @@ function insertAlert(a, dedupeDays) {
   return true;
 }
 
-// Price movements beyond the configured threshold.
-function priceChangeAlerts(threshold, dedupeDays) {
+// Price movements beyond the configured threshold (per-brand/SKU aware, §13).
+function priceChangeAlerts(globalThreshold, dedupeDays) {
   let created = 0;
   for (const m of trends.allTrends({ onlyChanged: true })) {
-    if (m.changePct == null || Math.abs(m.changePct) < threshold) continue;
+    const eff = thresholds.thresholdFor({ brand: m.brand, productId: m.productId, supplierCode: m.supplierCode }).priceChangePct;
+    if (m.changePct == null || Math.abs(m.changePct) < eff) continue;
     const dir = m.changePct > 0 ? 'up' : 'down';
     const name = m.displayName || m.gtin;
     const ok = insertAlert({
       type: 'price_change',
-      severity: trends.severityForChange(m.changePct, threshold),
+      severity: trends.severityForChange(m.changePct, eff),
       title: `${m.supplierCode} price ${dir} ${Math.abs(m.changePct).toFixed(1)}% — ${name}`,
-      detail: `Per-bottle cost moved from ${m.previous.unitCostBase} to ${m.latest.unitCostBase} (base ccy). List date ${m.latest.listDate || 'n/a'}.`,
+      detail: `Per-bottle cost moved from ${m.previous.unitCostBase} to ${m.latest.unitCostBase} (base ccy). List date ${m.latest.listDate || 'n/a'}. Threshold ${eff}% (${thresholds.thresholdFor({ brand: m.brand, productId: m.productId, supplierCode: m.supplierCode }).source}).`,
       productId: m.productId,
       supplierCode: m.supplierCode,
       dedupeKey: `price_change:${m.supplierCode}:${m.gtin}`,
@@ -71,16 +73,22 @@ function expiredOfferAlerts(dedupeDays) {
 }
 
 // Matched offers with available stock at or below the low-stock threshold.
-function lowStockAlerts(threshold, dedupeDays, cap = 100) {
+// Per-brand/SKU aware: an offer alerts if its quantity is at/below its own
+// effective threshold (that needs a wider candidate set than one global cut).
+function lowStockAlerts(globalThreshold, dedupeDays, cap = 100) {
   const rows = db.prepare(
-    `SELECT o.id, o.supplier_code, o.gtin_canonical, o.available_quantity, o.product_id, p.display_name
+    `SELECT o.id, o.supplier_code, o.gtin_canonical, o.available_quantity, o.product_id, p.display_name, p.brand
      FROM offers o JOIN products p ON p.id = o.product_id
-     WHERE o.available_quantity IS NOT NULL AND o.available_quantity <= ?
+     WHERE o.available_quantity IS NOT NULL
+       AND o.available_quantity <= 500
        AND o.status != 'ignored'
      ORDER BY o.available_quantity ASC LIMIT ?`
-  ).all(threshold, cap);
+  ).all(Math.max(cap, 500));
   let created = 0;
   for (const o of rows) {
+    const eff = thresholds.thresholdFor({ brand: o.brand, productId: o.product_id, supplierCode: o.supplier_code }).lowStock;
+    if (Number(o.available_quantity) > eff) continue;
+    if (created >= cap) break;
     const ok = insertAlert({
       type: 'low_stock',
       severity: Number(o.available_quantity) <= 0 ? 'warning' : 'info',

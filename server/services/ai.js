@@ -815,6 +815,10 @@ function toolAutoPurchasePreview({ supplierCode } = {}) {
   };
 }
 
+function toolObservedSupply({ limit } = {}) {
+  return require('./pools').observedSupply({ limit: Math.min(Math.max(Number(limit) || 25, 1), 100) });
+}
+
 function toolRankOpportunities({ actionableOnly } = {}) {
   return { opportunities: require('./opportunityRanking').rankOpportunities({ actionableOnly: actionableOnly === true }).slice(0, 25) };
 }
@@ -1067,6 +1071,7 @@ const EXECUTORS = {
   list_pfi: toolListPfi,
   get_recommendations: toolGetRecommendations,
   rank_opportunities: toolRankOpportunities,
+  observed_supply: toolObservedSupply,
   price_calculate: toolPriceCalculate,
   deal_compute: toolDealCompute,
   compare_uploads: toolCompareUploads,
@@ -1441,6 +1446,14 @@ const TOOLS = [
       name: 'list_pfi',
       description: 'Proforma invoices reconciled against supplier placements. Pass placementId for one PO, or list the most recent PfIs across all placements.',
       parameters: { type: 'object', properties: { placementId: { type: 'integer' } } },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'observed_supply',
+      description: 'Deduplicated observed supply (brief section 11): the same physical lot offered by several brokers is one pool (quantity = MAX, never summed). Unverified offers (no owner/lot) are shown separately and never merged. Use this whenever quoting available stock.',
+      parameters: { type: 'object', properties: { limit: { type: 'integer' } } },
     },
   },
   {

@@ -2,10 +2,50 @@
 
 const express = require('express');
 const router = express.Router();
+const multer = require('multer');
 const { db, getSetting, audit } = require('../db');
 const auth = require('../services/auth');
 const { parseNote } = require('../../src/lib/notes');
 const tasks = require('../services/tasks');
+const memUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
+
+// Meeting naming convention (brief section 15):
+//   CUSTOMERCODE-YYYYMMDD-STAFF  (e.g. CUST42-20261010-AL)
+// Staff member and date are validated; unknown is flagged, never rejected.
+const MEETING_RE = /^([A-Z0-9]+)-(\d{8})-([A-Z]{2,})$/i;
+function meetingCheck(title) {
+  const t = String(title || '').trim();
+  const m = t.match(MEETING_RE);
+  if (m) return { ok: true, customerCode: m[1], date: m[2], staff: m[3], reason: null };
+  return { ok: false, customerCode: null, date: null, staff: null, reason: 'title should be CUSTOMER-YYYYMMDD-STAFF (e.g. CUST42-20261010-AL)' };
+}
+
+// Plaud exports are transcript + summary; SRT/VTT arrive as plain text.
+// Extract readable sentences (strip cue/timing lines).
+function plaudText(buffer, filename) {
+  const raw = buffer.toString('utf8');
+  const name = String(filename || '').toLowerCase();
+  if (name.endsWith('.json')) {
+    try {
+      const j = JSON.parse(raw);
+      const parts = [];
+      const collect = (v) => {
+        if (typeof v === 'string') parts.push(v);
+        else if (Array.isArray(v)) v.forEach(collect);
+        else if (v && typeof v === 'object') Object.values(v).forEach(collect);
+      };
+      collect(j);
+      const text = parts.filter((s) => s.length > 2).join('\n');
+      return text.slice(0, 200000) || raw.slice(0, 200000);
+    } catch (_) { return raw.slice(0, 200000); }
+  }
+  if (name.endsWith('.srt') || name.endsWith('.vtt')) {
+    return raw.split('\n')
+      .filter((l) => l.trim() && !/^\d+$/.test(l.trim()) && !/-->/.test(l) && !l.startsWith('WEBVTT'))
+      .join('\n').slice(0, 200000);
+  }
+  return raw.slice(0, 200000);
+}
 
 function insertCapture({ source, title, text, createdBy }) {
   const parsed = parseNote(text);
@@ -42,6 +82,29 @@ router.get('/captures', auth.requireAuth, (req, res) => {
   sql += ' ORDER BY captured_at DESC LIMIT 500';
   const rows = db.prepare(sql).all(...params).map((r) => ({ ...r, parsed: r.parsed_json ? JSON.parse(r.parsed_json) : null }));
   res.json(rows);
+});
+
+// Plaud transcript/summary file import (brief section 15).
+// Title defaults to the filename without extension; the meeting naming
+// convention is validated and reported but never blocks ingest — an
+// unconfirmed customer must not silently attach (flagged in the reply).
+router.post('/captures/import-plaud', auth.requireRole('analyst'), memUpload.single('file'), (req, res, next) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'Provide a transcript/summary file (field "file"): .txt, .srt, .vtt or .json' });
+    const title = (req.body && req.body.title) || req.file.originalname.replace(/\.[^.]+$/, '');
+    const text = plaudText(req.file.buffer, req.file.originalname);
+    if (!text.trim()) return res.status(400).json({ error: 'No readable text in that file — export the transcript (not just audio)' });
+    const check = meetingCheck(title);
+    const products = parseNote(text);
+    const { id, taskId } = insertCapture({ source: 'plaud-import', title, text, createdBy: req.user.username });
+    audit(req.user.username, 'capture-plaud-import', 'capture', id, `${req.file.originalname} (${check.ok ? check.customerCode : 'unconfirmed customer'})`);
+    res.json({
+      ok: true, id, taskId,
+      title, meeting: check,
+      parsed: { productHints: (products.productHints || []).length, quantities: (products.quantities || []).length, prices: (products.prices || []).length, barcodes: (products.barcodes || []).length },
+      hint: check.ok ? null : 'Confirm the customer before promoting this note to a demand.',
+    });
+  } catch (e) { next(e); }
 });
 
 router.post('/captures', auth.requireRole('analyst'), (req, res, next) => {

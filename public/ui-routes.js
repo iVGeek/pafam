@@ -1573,15 +1573,33 @@ routes.captures = async () => {
           <h2>Add a note</h2>
           <div class="field" style="margin-bottom:8px"><label>Source</label>
             <select id="capSource"><option value="manual">manual</option><option value="plaud">plaud</option><option value="remarkable">remarkable</option></select></div>
-          <div class="field" style="margin-bottom:8px"><label>Title</label><input id="capTitle" /></div>
+          <div class="field" style="margin-bottom:8px"><label>Title (CUSTOMER-YYYYMMDD-STAFF)</label><input id="capTitle" placeholder="CUST42-20261010-AL" /></div>
           <div class="field" style="margin-bottom:8px"><label>Text / transcript</label><textarea id="capText" rows="6" placeholder="Paste a Plaud transcript or reMarkable note…"></textarea></div>
           <button id="capAdd">Capture</button>
+        </div>
+        <div class="panel" style="margin-top:12px">
+          <h2>Import Plaud file</h2>
+          <div class="muted small" style="margin:6px 0 10px">Transcript/summary export (.txt, .srt, .vtt, .json). Name the file CUSTOMER-YYYYMMDD-STAFF. The meeting convention is validated; an unconfirmed customer is flagged, never silently attached.</div>
+          <input type="file" id="plaudFile" accept=".txt,.srt,.vtt,.json,.md" />
+          <button id="plaudGo" class="ghost" style="margin-top:8px">Import as capture</button>
+          <div class="small muted" style="margin-top:8px">Zapier/IFTTT? Use the device webhook (below) — POST text + x-capture-secret.</div>
         </div>` : '<div class="panel muted">View-only. Analyst role required to add notes.</div>'}
         ${webhookCard}
       </div>
     </div>`;
 
   $('#capFilter').addEventListener('change', (e) => { state._capStatus = e.target.value; render(); });
+  if ($('#plaudGo')) $('#plaudGo').addEventListener('click', async () => {
+    const file = $('#plaudFile').files[0];
+    if (!file) return toast('Choose a transcript file first', 'err');
+    const fd = new FormData();
+    fd.append('file', file);
+    try {
+      const r = await api('POST', '/captures/import-plaud', fd, true);
+      toast(`Imported (${r.parsed.quantities} qty, ${r.parsed.prices} prices)${r.meeting.ok ? '' : ' — confirm the customer before promoting'}`, r.meeting.ok ? 'ok' : 'warn');
+      render();
+    } catch (e) { toast(e.message, 'err'); }
+  });
   if ($('#capAdd')) $('#capAdd').addEventListener('click', async () => {
     if (!$('#capText').value.trim()) return toast('Note text required', 'err');
     try {
@@ -1631,7 +1649,21 @@ async function promoteCapture(capId, cap) {
 
 routes.alerts = async () => {
   const d = await GET('/alerts');
+  const thr = can('admin') ? await GET('/alert-thresholds').catch(() => ({ rows: [] })) : { rows: [] };
   const unread = (d.rows||[]).filter(r=>r.read===0).length;
+  const thrHtml = can('admin') ? `
+    <div class="panel" style="margin-top:16px">
+      <h2>Thresholds <span class="muted small">— brief §13: per brand/SKU/supplier overrides (global setting is the fallback)</span></h2>
+      <div class="table-wrap"><table><thead><tr><th>Scope</th><th>Key</th><th class="num">Price move %</th><th class="num">Low stock</th><th></th></tr></thead>
+      <tbody>${thr.rows.map(t=>`<tr><td>${esc(t.scope_type)}</td><td class="mono">${esc(t.scope_key || '(global)')}</td><td class="num">${t.price_change_pct ?? '—'}</td><td class="num">${t.low_stock ?? '—'}</td><td>${t.enabled===0?'<span class="badge muted">off</span>':'<button class="sm ghost" data-thdel="'+t.id+'">Remove</button>'}</td></tr>`).join('')||'<tr><td colspan="5" class="muted">No overrides — global settings apply.</td></tr>'}</tbody></table></div>
+      <div class="row" style="margin-top:10px">
+        <select id="thScope"><option value="brand">brand</option><option value="sky">sku (product id)</option><option value="supplier">supplier</option><option value="global">global</option></select>
+        <input id="thKey" placeholder="brand / sku id / supplier (blank for global)" style="min-width:200px" />
+        <input id="thPrice" placeholder="price move %" type="number" style="width:110px" />
+        <input id="thLow" placeholder="low stock" type="number" style="width:110px" />
+        <button id="thSave">Add / update</button>
+      </div>
+    </div>` : '';
   $('#view').innerHTML = `
     <div class="panel">
       <div class="row" style="justify-content:space-between">
@@ -1641,11 +1673,19 @@ routes.alerts = async () => {
       <div class="table-wrap" style="margin-top:12px"><table><thead><tr><th>Severity</th><th>Type</th><th>Title</th><th>Product</th><th>Supplier</th><th>When</th><th></th></tr></thead><tbody>
         ${(d.rows||[]).map(a=>'<tr><td>'+sev(a.severity)+'</td><td class="mono small">'+esc(a.type)+'</td><td>'+esc(a.title)+'</td><td class="small">'+esc(a.display_name||'')+'</td><td class="mono">'+esc(a.supplier_code||'')+'</td><td class="small muted">'+dt(a.created_at)+'</td><td>'+(a.read?'<span class="badge muted">read</span>':'<button class="sm ghost" data-read="'+a.id+'">Mark read</button>')+'</td></tr>').join('')||'<tr><td colspan="7" class="muted">No alerts.</td></tr>'}
       </tbody></table></div>
-    </div>`;
+    </div>${thrHtml}`;
   function sev(x){ return '<span class="badge '+(x==='critical'?'bad':x==='warning'?'warn':'info')+'">'+esc(x)+'</span>'; }
   $('#alRefresh').addEventListener('click', async ()=>{ try{ await POST('/alerts/refresh'); toast('Alerts refreshed','ok'); render(); }catch(e){ toast(e.message,'err'); } });
   $('#alAll').addEventListener('click', async ()=>{ try{ await POST('/alerts/read-all'); toast('All marked read','ok'); render(); }catch(e){ toast(e.message,'err'); } });
   $$('#view [data-read]').forEach(b=>b.addEventListener('click', async ()=>{ try{ await POST('/alerts/'+b.dataset.read+'/read'); toast('Marked read','ok'); render(); }catch(e){ toast(e.message,'err'); } }));
+  const thSave = $('#thSave');
+  if (thSave) thSave.addEventListener('click', async ()=>{
+    try {
+      await POST('/alert-thresholds', { scopeType: $('#thScope').value, scopeKey: $('#thKey').value.trim(), priceChangePct: $('#thPrice').value === '' ? null : Number($('#thPrice').value), lowStock: $('#thLow').value === '' ? null : Number($('#thLow').value) });
+      toast('Threshold saved','ok'); render();
+    } catch(e){ toast(e.message,'err'); }
+  });
+  $$('#view [data-thdel]').forEach(b=>b.addEventListener('click', async ()=>{ try{ await api('DELETE','/alert-thresholds/'+b.dataset.thdel); toast('Removed','ok'); render(); }catch(e){ toast(e.message,'err'); } }));
 };
 
 routes.shipments = async () => {

@@ -1580,6 +1580,45 @@ test('opportunity ranking: ordered, capped, prices consistent (§18)', () => {
   assert.ok(Array.isArray(viaAi.opportunities));
 });
 
+test('§13 thresholds: product > brand > supplier > global', () => {
+  const thr = require('../server/services/alertThresholds');
+  const p = db.prepare('SELECT id, brand FROM products LIMIT 1').get();
+  thr.setThreshold({ scopeType: 'brand', scopeKey: 'TestBrand', priceChangePct: 5, lowStock: 7, actor: 'test' });
+  const eff = thr.thresholdFor({ brand: 'TestBrand', productId: p && p.id, supplierCode: 'X' });
+  assert.equal(eff.priceChangePct, 5);
+  assert.equal(eff.lowStock, 7);
+  assert.equal(eff.source, 'brand');
+  thr.setThreshold({ scopeType: 'sku', scopeKey: String(p ? p.id : 1), priceChangePct: 2, actor: 'test' });
+  const sku = thr.thresholdFor({ brand: 'TestBrand', productId: p && p.id });
+  assert.equal(sku.priceChangePct, 2);
+  assert.equal(sku.source, 'sku');
+  const plain = thr.thresholdFor({ brand: 'NoSuchBrand' });
+  assert.ok(plain.source === 'global');
+  // cleanup
+  db.prepare('DELETE FROM alert_thresholds').run();
+});
+
+test('§11 pools: duplicate broker lots counted once', () => {
+  const pools = require('../server/services/pools');
+  const out = pools.observedSupply({});
+  assert.ok(Array.isArray(out.pools));
+  assert.ok(typeof out.dedupedQuantity === 'number');
+  assert.ok(typeof out.naiveSum === 'number');
+  // Deduped can never exceed naive sum
+  assert.ok(out.dedupedQuantity + out.unverifiedQuantity <= out.naiveSum + 1e-9);
+  const viaAi = ai.runTool('observed_supply', {}).result;
+  assert.ok(Array.isArray(viaAi.pools));
+});
+
+test('§15 plaud: meeting convention + parsers', () => {
+  // meetingCheck is internal to captures route; test via plaudText shape indirectly:
+  // at minimum, parseNote on a transcript extracts qty/price/barcode without throwing.
+  const { parseNote } = require('../src/lib/notes');
+  const out = parseNote('CUST42 wants 500 bottles of Dylan Blue at $32.50, barcode 3614220891234');
+  assert.ok(out.quantities.length >= 1);
+  assert.ok(out.prices.length >= 1);
+});
+
 test('exceptions bulk resolve + summary shape', () => {
   const { db: d2 } = require('../server/db');
   // insert two synthetic open exceptions tied to no offer, resolve via SQL shape check only

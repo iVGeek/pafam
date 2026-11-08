@@ -23,6 +23,10 @@ router.get('/dashboard', (req, res) => {
 
 router.get('/suppliers', (req, res) => res.json(listSuppliers()));
 
+const poolsSvc = require('../services/pools');
+// Observed (deduplicated) supply pools (brief section 11). Viewer+.
+router.get('/pools', (req, res) => res.json(poolsSvc.observedSupply({ limit: req.query.limit })));
+
 const scorecardSvc = require('../services/supplierScorecard');
 // Supplier scorecards (brief section 18): fill, on-time, claims, evidence, terms.
 router.get('/supplier-scorecards', (req, res) => {
