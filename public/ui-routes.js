@@ -2025,6 +2025,8 @@ routes.performance = async () => {
 
 routes.buying = async () => {
   const only = state._recActionable ? '?actionable=1' : '';
+  const ranked = await GET('/opportunities').catch(() => ({ opportunities: [] }));
+  state._opps = ranked.opportunities || [];
   const d = await GET('/recommendations' + only);
   state._recs = d.rows || [];
   const s = d.summary || {};
@@ -2072,6 +2074,27 @@ routes.buying = async () => {
           </tr>`;
         }).join('') || '<tr><td colspan="11" class="muted">No open demand to recommend against.</td></tr>'}
         </tbody></table></div>
+    </div>
+    <div class="panel" style="margin-top:16px">
+      <h2>Opportunity ranking <span class="muted small">— brief §18: contribution × sell-through × cash × credit × concentration, with exposure caps</span></h2>
+      <div class="table-wrap"><table>
+        <thead><tr><th class="num">#</th><th>Product</th><th class="num">Score</th><th>Supplier</th><th class="num">Contribution</th><th class="num">Cash</th><th class="num">Sell-through</th><th class="num">Credit headroom</th><th class="num">Max buy</th><th class="num">Min sell</th><th>Status</th></tr></thead>
+        <tbody>${(state._opps || []).map((o) => `
+          <tr>
+            <td class="num">${o.rank}</td>
+            <td>${esc((o.product.displayName || '').slice(0, 40))}<div class="muted small">${esc(o.product.brand || '')} · demand ${num(o.demandQuantity)}</div></td>
+            <td class="num"><strong>${o.score != null ? o.score : '—'}</strong></td>
+            <td>${o.supplier ? esc(o.supplier.code) : '—'} <span class="badge ${o.supplierGrade === 'A' || o.supplierGrade === 'B' ? 'good' : 'warn'}">${esc(o.supplierGrade || '—')}</span></td>
+            <td class="num">${money(o.contribution)}</td>
+            <td class="num">${money(o.cashRequirement)}</td>
+            <td class="num">${Math.round(o.sellThrough.probability * 100)}%</td>
+            <td class="num">${o.credit.score != null ? Math.round(o.credit.score * 100) + '%' : '—'}</td>
+            <td class="num">${money(o.maxBuyPrice)}</td>
+            <td class="num">${money(o.minSellPrice)}</td>
+            <td>${o.breached.length ? `<span class="badge bad" title="${esc(o.breached.join('; '))}">capped</span>` : (o.actionable ? '<span class="badge good">ready</span>' : '<span class="badge muted">blocked</span>')}</td>
+          </tr>`).join('') || '<tr><td colspan="11" class="muted">No open demand to rank.</td></tr>'}
+        </tbody></table></div>
+      <div class="muted small" style="margin-top:8px">Caps: per SKU/brand/supplier/customer (Settings). A deal over its cap sinks below uncapped deals even if its contribution is higher.</div>
     </div>`;
   if ($('#recOnly')) $('#recOnly').addEventListener('change', (e) => { state._recActionable = e.target.checked; render(); });
   $$('#view [data-recdetail]').forEach((b) => b.addEventListener('click', () => showRecDetail(Number(b.dataset.recdetail))));

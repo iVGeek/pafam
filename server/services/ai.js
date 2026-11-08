@@ -815,6 +815,10 @@ function toolAutoPurchasePreview({ supplierCode } = {}) {
   };
 }
 
+function toolRankOpportunities({ actionableOnly } = {}) {
+  return { opportunities: require('./opportunityRanking').rankOpportunities({ actionableOnly: actionableOnly === true }).slice(0, 25) };
+}
+
 function toolGetRecommendations({ actionableOnly, limit } = {}) {
   const rows = recommendSvc.recommendations({
     actionableOnly: actionableOnly === true,
@@ -1062,6 +1066,7 @@ const EXECUTORS = {
   list_users: toolListUsers,
   list_pfi: toolListPfi,
   get_recommendations: toolGetRecommendations,
+  rank_opportunities: toolRankOpportunities,
   price_calculate: toolPriceCalculate,
   deal_compute: toolDealCompute,
   compare_uploads: toolCompareUploads,
@@ -1436,6 +1441,14 @@ const TOOLS = [
       name: 'list_pfi',
       description: 'Proforma invoices reconciled against supplier placements. Pass placementId for one PO, or list the most recent PfIs across all placements.',
       parameters: { type: 'object', properties: { placementId: { type: 'integer' } } },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'rank_opportunities',
+      description: 'Ranked buying opportunities (brief section 18): for each open demand, contribution, sell-through estimate, cash cycle/return, customer credit headroom, concentration exposure vs caps, max buy price and min sell price. Use this to answer "what should we buy first" — a capped or unprofitable deal ranks low even if its contribution is high.',
+      parameters: { type: 'object', properties: { actionableOnly: { type: 'boolean' } } },
     },
   },
   {

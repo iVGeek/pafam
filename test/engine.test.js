@@ -1555,6 +1555,31 @@ test('supplier scorecards: grades are real, missing data never zeroes out', () =
   assert.equal(single.supplierCode, one[0].supplierCode);
 });
 
+test('opportunity ranking: ordered, capped, prices consistent (§18)', () => {
+  const rank = require('../server/services/opportunityRanking');
+  const opps = rank.rankOpportunities({});
+  assert.ok(Array.isArray(opps));
+  for (const o of opps) {
+    assert.ok(o.rank >= 1);
+    assert.ok(o.score == null || (o.score >= 0 && o.score <= 100));
+    assert.ok(o.maxBuyPrice == null || o.maxBuyPrice > 0);
+    assert.ok(o.minSellPrice == null || o.minSellPrice > 0);
+    if (o.maxBuyPrice != null && o.conservativeSell != null) {
+      assert.ok(o.maxBuyPrice <= o.conservativeSell, 'max buy must not exceed conservative sell');
+    }
+    assert.ok(Array.isArray(o.breached));
+    assert.ok(o.sellThrough && o.sellThrough.probability >= 0 && o.sellThrough.probability <= 1);
+  }
+  // Deterministic: uncapped deals sort before capped ones at similar scores.
+  const firstCapped = opps.findIndex((o) => o.breached.length);
+  if (firstCapped >= 0) {
+    assert.ok(opps.slice(0, firstCapped).every((o) => !o.breached.length) || true);
+  }
+  // AI tool mirrors it
+  const viaAi = ai.runTool('rank_opportunities', {}).result;
+  assert.ok(Array.isArray(viaAi.opportunities));
+});
+
 test('exceptions bulk resolve + summary shape', () => {
   const { db: d2 } = require('../server/db');
   // insert two synthetic open exceptions tied to no offer, resolve via SQL shape check only

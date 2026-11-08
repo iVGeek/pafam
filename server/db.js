@@ -631,6 +631,11 @@ function init() {
     low_stock_threshold: '10',
     alert_dedupe_days: '7',
     capital_limit: '250000',
+    // Brief section 18: concentration caps (share of capital_limit).
+    exposure_cap_sku_pct: '25',
+    exposure_cap_brand_pct: '40',
+    exposure_cap_supplier_pct: '50',
+    exposure_cap_customer_pct: '50',
     require_offer_approval: '0',
     auto_clean_imports: '1',
     followup_days: '2',

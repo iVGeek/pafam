@@ -7,6 +7,17 @@ const recommend = require('../services/recommend');
 
 // Buying recommendations: match open customer demand to the cheapest
 // executable supplier and price it against policy (brief section 10 / 4.6).
+// Opportunity ranking (brief section 18): contribution, sell-through, cash
+// cycle, credit, concentration caps, max-buy / min-sell. Viewer+.
+router.get('/opportunities', (req, res) => {
+  const ranking = require('../services/opportunityRanking');
+  res.json({
+    opportunities: ranking.rankOpportunities({
+      actionableOnly: req.query.actionable === '1' || req.query.actionable === 'true',
+    }),
+  });
+});
+
 router.get('/recommendations', (req, res) => {
   const rows = recommend.recommendations({
     limit: req.query.limit,

@@ -169,6 +169,7 @@ const TOOL_LABELS = {
   lowest_cost: 'calculating landed cost',
   list_suppliers: 'reading suppliers',
   supplier_scorecards: 'scoring suppliers',
+  rank_opportunities: 'ranking opportunities',
   list_customers: 'reading customers',
   list_demands: 'reading the demand book',
   get_settings: 'reading settings',
