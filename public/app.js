@@ -154,7 +154,14 @@ const ROUTE_MIN = {
   exceptions: 'viewer', imports: 'buyer', captures: 'analyst', alerts: 'viewer', trends: 'viewer', orders: 'viewer', placements: 'viewer', shipments: 'viewer', buying: 'viewer', forecast: 'viewer', performance: 'viewer', reports: 'viewer', settings: 'admin', users: 'admin', audit: 'admin',
 };
 
-function showLogin() { $('#login').classList.remove('hidden'); }
+function showLogin() {
+  $('#login').classList.remove('hidden');
+  // Demo credentials are a local-dev convenience only — never on a real host.
+  const host = location.hostname;
+  const local = host === 'localhost' || host === '127.0.0.1' || host === '::1' || host.endsWith('.local');
+  const el = $('#demoCreds');
+  if (el) el.classList.toggle('hidden', !local);
+}
 function hideLogin() { $('#login').classList.add('hidden'); }
 
 /* ======================= in-window search ======================= */
