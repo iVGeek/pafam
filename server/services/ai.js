@@ -166,6 +166,15 @@ function toolListSuppliers() {
   return { suppliers: db.prepare('SELECT code, name, currency, incoterm, default_discount_pct FROM suppliers ORDER BY name').all() };
 }
 
+function toolSupplierScorecards({ supplierCode } = {}) {
+  const scorecards = require('./supplierScorecard');
+  if (supplierCode) {
+    const r = scorecards.scorecard(String(supplierCode));
+    return r.error ? { error: r.error } : r;
+  }
+  return { scorecards: scorecards.scorecards() };
+}
+
 function toolListCustomers() {
   return { customers: db.prepare('SELECT id, code, name, region, currency, payment_terms FROM customers ORDER BY name LIMIT 200').all() };
 }
@@ -1018,6 +1027,7 @@ const EXECUTORS = {
   product_prices: toolProductPrices,
   lowest_cost: toolLowestCost,
   list_suppliers: toolListSuppliers,
+  supplier_scorecards: toolSupplierScorecards,
   list_customers: toolListCustomers,
   list_demands: toolListDemands,
   get_settings: toolGetSettings,
@@ -1330,6 +1340,14 @@ const TOOLS = [
         },
         required: ['title'],
       },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'supplier_scorecards',
+      description: 'Supplier scorecards (brief section 18): executable fill rate, on-time delivery, PFI confirmation accuracy (claims), data quality/approval rate, cheapest-wins competitiveness, payment terms, and a composite grade. Pass supplierCode for one supplier, or list all ranked. Use this whenever comparing or choosing suppliers — cheapest quoted price alone is not enough.',
+      parameters: { type: 'object', properties: { supplierCode: { type: 'string' } } },
     },
   },
   {

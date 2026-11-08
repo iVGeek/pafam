@@ -1378,7 +1378,26 @@ function openQuoteCompare(r) {
 
 routes.suppliers = async () => {
   const rows = await GET('/suppliers');
-  $('#view').innerHTML = `<div class="panel"><h2>Suppliers &amp; commercial terms</h2>
+  const cards = await GET('/supplier-scorecards').catch(() => []);
+  const cardsHtml = (cards && cards.length) ? `
+    <div class="panel" style="margin-bottom:16px">
+      <h2>Supplier scorecards <span class="muted small">— brief §18: fill, on-time, confirmation accuracy, quality, terms — cheapest alone is not enough</span></h2>
+      <div class="table-wrap"><table><thead><tr><th>Supplier</th><th class="num">Score</th><th>Grade</th><th class="num">Fill %</th><th class="num">On-time %</th><th class="num">PFI match %</th><th class="num">Approved %</th><th class="num">Cheapest wins</th><th>Terms</th><th></th></tr></thead>
+      <tbody>${cards.slice().sort((a, b) => (b.score || 0) - (a.score || 0)).map((c) => {
+        const part = (k) => { const p = (c.scoredParts || []).find((x) => x.key === k); return p ? p.value : '—'; };
+        return `<tr>
+          <td><strong>${esc(c.supplierName)}</strong><div class="muted small mono">${esc(c.supplierCode)}</div></td>
+          <td class="num"><strong>${c.score != null ? c.score : '—'}</strong></td>
+          <td><span class="badge ${c.grade === 'A' || c.grade === 'B' ? 'good' : c.grade === 'C' ? 'warn' : 'bad'}">${esc(c.grade)}</span></td>
+          <td class="num">${part('fillRate')}</td><td class="num">${part('onTime')}</td><td class="num">${part('confirmationAccuracy')}</td>
+          <td class="num">${part('quality')}</td><td class="num">${c.cheapestWins}</td>
+          <td class="small">${esc(c.paymentTerms || '—')}</td>
+          <td><button class="sm ghost" data-score="${esc(c.supplierCode)}">Why</button></td>
+        </tr>`; }).join('')}
+      </tbody></table></div>
+      <div class="muted small" style="margin-top:8px">Missing metrics use no data from that supplier (weights redistribute, never zero-filled). Click Why for the breakdown.</div>
+    </div>` : '';
+  $('#view').innerHTML = cardsHtml + `<div class="panel"><h2>Suppliers &amp; commercial terms</h2>
     <div class="table-wrap"><table><thead><tr><th>Code</th><th>Name</th><th>Currency</th><th>Price type</th><th class="num">Trade disc %</th><th>Incoterm</th><th>Stock ctry</th><th>Origin</th><th class="num">Duty %</th><th class="num">Freight/u</th><th class="num">Ins %</th><th class="num">Brok/u</th><th class="num">Hand/u</th><th class="num">Other tax %</th><th class="num">Recoverable tax %</th><th></th></tr></thead>
     <tbody>${rows.map((s) => `
       <tr data-code="${esc(s.code)}">
@@ -1411,6 +1430,23 @@ routes.suppliers = async () => {
     body.stockCountry = body.stock_country;
     try { await POST('/suppliers/' + b.dataset.save, body); toast('Saved', 'ok'); await loadSettings(); }
     catch (e) { toast(e.message, 'err'); }
+  }));
+  $$('#view [data-score]').forEach((b) => b.addEventListener('click', async () => {
+    try {
+      const c = await GET('/supplier-scorecards?code=' + encodeURIComponent(b.dataset.score));
+      const bars = (c.scoredParts || []).map((p) => `<div class="row" style="align-items:center;gap:10px;margin-bottom:6px"><div style="width:180px" class="small">${esc(p.label)}</div><div class="progress" style="flex:1"><i style="width:${p.value}%"></i></div><div class="small num" style="width:60px">${p.value} (w${p.weight})</div></div>`).join('');
+      modal(`${c.supplierName} — scorecard`, `
+        <div class="kpi-inline" style="margin-bottom:12px">
+          <div class="item"><div class="k">Score</div><div class="v">${c.score != null ? c.score : '—'} (${esc(c.grade)})</div></div>
+          <div class="item"><div class="k">Offers</div><div class="v">${num(c.offers)}</div></div>
+          <div class="item"><div class="k">CHEAPEST WINS</div><div class="v">${num(c.cheapestWins)}</div></div>
+          <div class="item"><div class="k">ORDERS</div><div class="v">${num(c.orders)}</div></div>
+        </div>
+        ${bars || '<div class="muted small">No scored metrics yet.</div>'}
+        ${(c.missingParts || []).length ? `<div class="small muted" style="margin-top:8px">No data: ${c.missingParts.map(esc).join(' · ')}</div>` : ''}
+        <div class="small muted" style="margin-top:8px">PFIs: ${c.pfiCount} · changed lines ${c.pfiChanged} · avg variance ${c.avgVariancePct != null ? c.avgVariancePct + '%' : '—'} · last upload ${dt(c.lastUpload)}</div>
+      `, null, { wide: true });
+    } catch (e) { toast(e.message, 'err'); }
   }));
 };
 

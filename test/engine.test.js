@@ -1530,6 +1530,31 @@ test('auto-purchasing: generateFromPlan creates draft POs per supplier', () => {
   }
 });
 
+test('supplier scorecards: grades are real, missing data never zeroes out', () => {
+  const sc = require('../server/services/supplierScorecard');
+  assert.equal(sc.termsDays('Net 30'), 30);
+  assert.equal(sc.termsDays('Prepay'), 0);
+  assert.equal(sc.termsDays(null), null);
+  const one = sc.scorecards();
+  assert.ok(Array.isArray(one) && one.length >= 1);
+  for (const c of one) {
+    assert.ok(c.supplierCode);
+    assert.ok(c.score == null || (c.score >= 0 && c.score <= 100));
+    assert.ok(c.grade);
+    // A new supplier with no orders must not be scored 0 for fill rate.
+    if (c.posFill == null && c.orders === 0) {
+      assert.ok(!c.scoredParts.some((p) => p.key === 'fillRate'));
+    }
+  }
+  const err = sc.scorecard('NOPE');
+  assert.ok(err.error);
+  // AI tool mirrors it
+  const viaAi = ai.runTool('supplier_scorecards', {}).result;
+  assert.ok(Array.isArray(viaAi.scorecards));
+  const single = ai.runTool('supplier_scorecards', { supplierCode: one[0].supplierCode }).result;
+  assert.equal(single.supplierCode, one[0].supplierCode);
+});
+
 test('exceptions bulk resolve + summary shape', () => {
   const { db: d2 } = require('../server/db');
   // insert two synthetic open exceptions tied to no offer, resolve via SQL shape check only

@@ -23,6 +23,17 @@ router.get('/dashboard', (req, res) => {
 
 router.get('/suppliers', (req, res) => res.json(listSuppliers()));
 
+const scorecardSvc = require('../services/supplierScorecard');
+// Supplier scorecards (brief section 18): fill, on-time, claims, evidence, terms.
+router.get('/supplier-scorecards', (req, res) => {
+  if (req.query.code) {
+    const r = scorecardSvc.scorecard(String(req.query.code));
+    if (r.error) return res.status(404).json(r);
+    return res.json(r);
+  }
+  res.json(scorecardSvc.scorecards());
+});
+
 router.post('/suppliers/:code', auth.requireRole('admin'), (req, res) => {
   const code = req.params.code;
   const b = req.body || {};
