@@ -542,7 +542,9 @@ routes.offers = async () => {
 routes.products = async () => {
   const q = state._prodQ || '';
   const multi = state._prodMulti ? '1' : '';
-  const data = await GET(`/products?limit=60&q=${encodeURIComponent(q)}&multi=${multi}`);
+  const limit = state._prodLimit || 60;
+  const offset = state._prodOffset || 0;
+  const data = await GET(`/products?limit=${limit}&offset=${offset}&q=${encodeURIComponent(q)}&multi=${multi}`);
   $('#view').innerHTML = `
     <div class="panel">
       <div class="row" style="margin-bottom:12px">
@@ -566,40 +568,83 @@ routes.products = async () => {
           </tr>`).join('') || '<tr><td colspan="7" class="muted">No products.</td></tr>'}
         </tbody>
       </table></div>
+      <div class="row" style="margin-top:12px">
+        <button class="ghost sm" id="pdPrev" ${offset <= 0 ? 'disabled' : ''}>‹ Prev</button>
+        <span class="muted small">${offset + 1}–${Math.min(offset + limit, data.total)} of ${num(data.total)}</span>
+        <button class="ghost sm" id="pdNext" ${offset + limit >= data.total ? 'disabled' : ''}>Next ›</button>
+        <span class="spacer"></span>
+        <label class="small muted">Per page
+          <select id="pdLimit">${[30, 60, 100, 200].map((n) => `<option ${n === limit ? 'selected' : ''}>${n}</option>`).join('')}</select>
+        </label>
+      </div>
     </div>`;
-  const run = () => { state._prodQ = $('#pdQ').value.trim(); state._prodMulti = $('#pdMulti').checked; render(); };
+  const run = () => { state._prodQ = $('#pdQ').value.trim(); state._prodMulti = $('#pdMulti').checked; state._prodOffset = 0; render(); };
   $('#pdGo').addEventListener('click', run);
   $('#pdQ').addEventListener('keydown', (e) => { if (e.key === 'Enter') run(); });
+  $('#pdPrev').addEventListener('click', () => { state._prodOffset = Math.max(0, offset - limit); render(); });
+  $('#pdNext').addEventListener('click', () => { state._prodOffset = offset + limit; render(); });
+  $('#pdLimit').addEventListener('change', (e) => { state._prodLimit = Number(e.target.value); state._prodOffset = 0; render(); });
   $$('#view [data-cmp]').forEach((b) => b.addEventListener('click', () => openCompare(Number(b.dataset.cmp))));
 };
 
 routes.exceptions = async () => {
   const resolved = state._excResolved ? 1 : 0;
-  const rows = await GET('/exceptions?resolved=' + resolved);
+  const sup = state._excSupplier || '';
+  const type = state._excType || '';
+  const qs = new URLSearchParams({ resolved: String(resolved) });
+  if (sup) qs.set('supplier', sup);
+  if (type) qs.set('type', type);
+  const rows = await GET('/exceptions?' + qs.toString());
+  const summary = await GET('/exceptions/summary').catch(() => null);
+  const supOpts = summary && summary.bySupplier ? summary.bySupplier.map((s) => `<option value="${esc(s.supplier)}" ${s.supplier === sup ? 'selected' : ''}>${esc(s.supplier)} (${s.n})</option>`).join('') : '';
+  const typeOpts = summary && summary.byType ? summary.byType.map((t) => `<option value="${esc(t.type)}" ${t.type === type ? 'selected' : ''}>${esc(t.type)} (${t.n})</option>`).join('') : '';
   $('#view').innerHTML = `
+    <div class="grid cards" style="margin-bottom:16px">
+      <div class="card"><div class="k">Open</div><div class="v">${summary ? num(summary.open) : '—'}</div><div class="s">need triage</div></div>
+      <div class="card"><div class="k">Resolved</div><div class="v">${summary ? num(summary.resolved) : '—'}</div></div>
+      ${(summary && summary.byType ? summary.byType.slice(0, 4) : []).map((t) => `<div class="card"><div class="k">${esc(t.type.replace('_', ' '))}</div><div class="v">${num(t.n)}</div></div>`).join('')}
+    </div>
     <div class="panel">
       <div class="row" style="margin-bottom:12px">
         <h2 style="margin:0">Exceptions</h2>
         <label class="row small"><input type="checkbox" id="exRes" ${resolved ? 'checked' : ''} style="width:auto" /> show resolved</label>
-        <span class="spacer"></span><span class="muted small">${rows.length} shown</span>
+        <label class="small muted">Supplier <select id="exSupplier"><option value="">All</option>${supOpts}</select></label>
+        <label class="small muted">Type <select id="exType"><option value="">All</option>${typeOpts}</select></label>
+        <span class="spacer"></span>
+        <button id="exBulk" class="ghost sm" ${can('analyst') ? '' : 'disabled title="Analyst role required"'}>Resolve selected (<span id="exCount">0</span>)</button>
+        <span class="muted small">${rows.length} shown</span>
       </div>
       <div class="table-wrap"><table>
-        <thead><tr><th>Type</th><th>Supplier</th><th>Row</th><th>Barcode</th><th>Detail</th><th></th></tr></thead>
+        <thead><tr><th style="width:32px"><input type="checkbox" id="exAll" style="width:auto" aria-label="Select all on page" /></th><th>Type</th><th>Supplier</th><th>Row</th><th>Barcode</th><th>Detail</th><th></th></tr></thead>
         <tbody>${rows.map((e) => `
           <tr>
+            <td>${e.resolved ? '' : `<input type="checkbox" data-ex="${e.id}" style="width:auto" aria-label="Select exception ${e.id}" />`}</td>
             <td><span class="badge ${e.type === 'invalid_barcode' ? 'bad' : 'warn'}">${esc(e.type.replace('_', ' '))}</span></td>
             <td>${esc(e.supplier_code || '')}</td>
             <td class="num">${e.source_row || ''}</td>
             <td class="mono">${esc(e.gtin_source || '')}</td>
             <td class="small">${esc(e.detail || '')}</td>
             <td>${e.resolved ? '<span class="badge muted">resolved</span>' : `<button class="sm ghost" data-res="${e.id}">Resolve</button>`}</td>
-          </tr>`).join('') || '<tr><td colspan="6" class="muted">No exceptions.</td></tr>'}
+          </tr>`).join('') || '<tr><td colspan="7" class="muted">No exceptions.</td></tr>'}
         </tbody>
       </table></div>
     </div>`;
+  const syncCount = () => { const n = $$('#view [data-ex]:checked').length; const el = $('#exCount'); if (el) el.textContent = String(n); };
   $('#exRes').addEventListener('change', (e) => { state._excResolved = e.target.checked; render(); });
+  $('#exSupplier').addEventListener('change', (e) => { state._excSupplier = e.target.value; render(); });
+  $('#exType').addEventListener('change', (e) => { state._excType = e.target.value; render(); });
+  $$('#view [data-ex]').forEach((c) => c.addEventListener('change', syncCount));
+  $('#exAll').addEventListener('change', (e) => { $$('#view [data-ex]').forEach((c) => { c.checked = e.target.checked; }); syncCount(); });
+  syncCount();
+  $('#exBulk').addEventListener('click', async () => {
+    const ids = $$('#view [data-ex]:checked').map((c) => Number(c.dataset.ex));
+    if (!ids.length) return toast('Select at least one exception', 'err');
+    if (!confirm(`Mark ${ids.length} exception(s) as resolved? This cannot be undone from here.`)) return;
+    try { const r = await POST('/exceptions/resolve-many', { ids, actor: state.user && state.user.username || 'user' }); toast(`Resolved ${r.resolved} exception(s)`, 'ok'); render(); }
+    catch (e) { toast(e.message, 'err'); }
+  });
   $$('#view [data-res]').forEach((b) => b.addEventListener('click', async () => {
-    try { await POST('/exceptions/' + b.dataset.res + '/resolve', { actor: 'user' }); toast('Resolved', 'ok'); render(); }
+    try { await POST('/exceptions/' + b.dataset.res + '/resolve', { actor: state.user && state.user.username || 'user' }); toast('Resolved', 'ok'); render(); }
     catch (e) { toast(e.message, 'err'); }
   }));
 };
@@ -1223,7 +1268,8 @@ routes.placements = async () => {
           <div class="field"><label>Incoterm</label><input id="plInco" placeholder="FOB" /></div>
           <div class="field"><label>Order date</label><input id="plDate" type="date" value="${today}" /></div>
         </div>
-        <div class="row" style="margin-top:8px"><button id="plPlan" class="ghost" type="button">Load from purchase plan</button></div>
+        <div class="row" style="margin-top:8px"><button id="plPlan" class="ghost" type="button">Load from purchase plan</button>
+        ${can('buyer') ? '<button id="plAuto" class="ghost" type="button" title="Create one draft PO per supplier in the plan, in one click">⚡ Auto-generate all supplier orders</button>' : ''}</div>
         <div class="row" style="gap:10px;margin-top:14px;align-items:flex-end">
           <div class="field" style="flex:2"><label>Add a product</label>
             <div>
@@ -1255,6 +1301,22 @@ routes.placements = async () => {
         `<option value="${o.offerId}">${esc(o.supplier)} · ${money(o.perBottle, o.currency)}/btl${o.unitsPerCase > 1 ? ' · ' + o.unitsPerCase + '/case' : ''}</option>`
       ).join('') : '<option value="">— no priced offers —</option>';
     } catch (e) { toast(e.message, 'err'); }
+  });
+
+  const autoBtn = $('#plAuto');
+  if (autoBtn) autoBtn.addEventListener('click', async (e) => {
+    if (!can('buyer')) return toast('Buyer role required', 'err');
+    if (!confirm('Create a draft supplier order for every supplier in the purchase plan?\n\nEach PO is saved as a draft only — you review and send it yourself.')) return;
+    autoBtn.disabled = true; autoBtn.textContent = 'Generating…';
+    try {
+      const r = await POST('/placements/from-plan', {});
+      const created = (r.created || []).map((c) => `${c.ref} (${c.supplierCode}, ${c.lines} lines, ${money(c.total, c.currency)})`).join('\n');
+      const blocked = (r.blocked || []).map((b) => `Blocked: ${b.supplierCode} — ${b.reason}`).join('\n');
+      toast(`Created ${r.created.length} draft order(s), ${r.lineCount} lines, capital ${money(r.totalCapital)}${blocked ? '\n' + blocked : ''}`, r.created.length ? 'ok' : 'err');
+      if (created) alert(`Draft orders created:\n\n${created}${blocked ? '\n\n' + blocked : ''}\n\nReview them in Saved placements, then export to send.`);
+      loadList();
+    } catch (err) { toast(err.message, 'err'); }
+    finally { autoBtn.disabled = false; autoBtn.textContent = '⚡ Auto-generate all supplier orders'; }
   });
 
   $('#plPlan').addEventListener('click', async () => {
@@ -2542,6 +2604,25 @@ const TOOL_LABELS = {
   draft_demand: 'preparing a demand draft',
   draft_order: 'preparing an order draft',
   draft_task: 'preparing a task draft',
+  list_quotes: 'reading quotes',
+  auto_purchase_preview: 'previewing auto-purchase',
+  list_placements: 'reading supplier orders',
+  list_shipments: 'reading shipments',
+  list_reservations: 'checking reservations',
+  get_kpis: 'reading performance KPIs',
+  list_uploads: 'reading import history',
+  list_audit: 'reading the audit log',
+  list_fx: 'reading FX rates',
+  list_users: 'reading users',
+  list_pfi: 'reading PFIs',
+  get_recommendations: 'checking buying recommendations',
+  price_calculate: 'running the pricing calculator',
+  deal_compute: 'computing deal economics',
+  compare_uploads: 'comparing supplier lists',
+  draft_reservation: 'preparing a reservation draft',
+  draft_shipment: 'preparing a shipment draft',
+  draft_exception: 'preparing an exception resolution',
+  ai_diagnose: 'checking AI provider health',
 };
 
 // ---- conversations: start a new chat and switch back to previous ones ----
@@ -2728,28 +2809,46 @@ function md(s) {
     if (inUl) { out += '</ul>'; inUl = false; }
     if (inOl) { out += '</ol>'; inOl = false; }
   };
+  let inTable = false;
+  const tableCells = (row) => row.replace(/^\||\|$/g, '').split('|').map((c) => c.trim());
+  const closeTable = () => { if (inTable) { out += '</tbody></table>'; inTable = false; } };
   for (const line of lines) {
     const ul = line.match(/^\s*[-*]\s+(.*)$/);
     const ol = line.match(/^\s*\d+[.)]\s+(.*)$/);
+    const isTableRow = /^\s*\|.*\|\s*$/.test(line);
+    const isTableSep = /^\s*\|[\s:|-]+\|\s*$/.test(line);
+    if (isTableSep) continue;
+    if (isTableRow) {
+      closeLists();
+      const cells = tableCells(line).map((c) => c.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>'));
+      if (!inTable) { out += '<table><tbody>'; inTable = true; }
+      const tag = out.includes('<tbody>') && out.lastIndexOf('<tr>') === -1 ? 'th' : 'td';
+      out += '<tr>' + cells.map((c) => `<${tag}>${c}</${tag}>`).join('') + '</tr>';
+      continue;
+    }
+    closeTable();
     if (ul) { if (!inUl) { closeLists(); out += '<ul>'; inUl = true; } out += '<li>' + ul[1] + '</li>'; }
     else if (ol) { if (!inOl) { closeLists(); out += '<ol>'; inOl = true; } out += '<li>' + ol[1] + '</li>'; }
     else { closeLists(); out += line + '<br>'; }
   }
   closeLists();
+  closeTable();
   return out;
 }
 
+const PROPOSAL_MIN_ROLE = { quote: 'buyer', placement: 'buyer', demand: 'buyer', order: 'buyer', task: 'analyst', reservation: 'buyer', shipment: 'analyst', exception: 'analyst', setting: 'admin' };
 function proposalCard(p, idx) {
   const rows = (p.fields || []).map((f) => `<div class="cf"><span class="k">${esc(f.label)}</span><span class="v">${esc(String(f.value))}</span></div>`).join('');
-  const applyBtn = can('buyer')
+  const need = PROPOSAL_MIN_ROLE[p.type] || 'buyer';
+  const applyBtn = can(need)
     ? `<button class="sm" data-apply="${idx}">${esc((p.apply && p.apply.label) || 'Apply')}</button>`
-    : '<span class="badge warn">buyer role required to save</span>';
+    : `<span class="badge warn">${need} role required to save</span>`;
   return `<div class="chat-proposal">
     <div class="cp-title">${esc(p.title || 'Draft')}</div>
     ${p.summary ? `<div class="small muted">${esc(p.summary)}</div>` : ''}
     <div class="cp-fields">${rows}</div>
     ${p.note ? `<div class="small" style="color:var(--warn);margin-top:6px">${esc(p.note)}</div>` : ''}
-    <div class="row" style="margin-top:10px">${applyBtn}</div>
+    <div class="row" style="margin-top:10px">${applyBtn}<button class="ghost sm" data-copy="${idx}" title="Copy the draft details">Copy</button></div>
   </div>`;
 }
 
@@ -2759,7 +2858,7 @@ function chatBubble(m, idx) {
     const chips = (m.files && m.files.length)
       ? `<div class="chat-files">${m.files.map((f) => `<span class="chat-file">📎 ${esc(f.name)}</span>`).join('')}</div>`
       : '';
-    return `<div class="chat-msg user">${esc(m.content)}${chips}</div>`;
+    return `<div class="chat-msg user">${esc(m.content)}${chips}<div class="chat-actions"><button class="ghost sm" data-copy="${idx}" title="Copy this message">Copy</button></div></div>`;
   }
   if (m.streaming && !m.content) {
     const tool = m.tool ? `<span class="chat-tool">${esc(TOOL_LABELS[m.tool] || m.tool)}</span>` : '';
@@ -2767,7 +2866,41 @@ function chatBubble(m, idx) {
   }
   const tool = m.tool ? `<div class="chat-tool">${esc(TOOL_LABELS[m.tool] || m.tool)}</div>` : '';
   const caret = m.streaming ? '<span class="chat-caret"></span>' : '';
-  return `<div class="chat-msg bot">${tool}<div class="chat-md">${md(m.content)}</div>${caret}</div>`;
+  const copyBtn = m.streaming ? '' : `<div class="chat-actions"><button class="ghost sm" data-copy="${idx}" title="Copy this message">Copy</button></div>`;
+  return `<div class="chat-msg bot">${tool}<div class="chat-md">${md(m.content)}</div>${caret}${copyBtn}</div>`;
+}
+
+async function copyText(text, btn) {
+  const done = () => {
+    if (btn) { const old = btn.textContent; btn.textContent = 'Copied ✓'; setTimeout(() => { btn.textContent = old; }, 1600); }
+    toast('Copied to clipboard', 'ok');
+  };
+  try {
+    await navigator.clipboard.writeText(text);
+    done();
+    return;
+  } catch (_) { /* clipboard API needs focus/permission: fall back */ }
+  const ta = document.createElement('textarea');
+  ta.value = text;
+  ta.style.position = 'fixed'; ta.style.opacity = '0';
+  document.body.appendChild(ta);
+  ta.focus(); ta.select();
+  try { document.execCommand('copy'); done(); }
+  catch (_) { toast('Copy failed — select the text manually', 'err'); }
+  ta.remove();
+}
+
+function messageCopyText(m) {
+  if (!m) return '';
+  if (m.role === 'proposal' && m.proposal) {
+    const p = m.proposal;
+    const lines = [p.title || 'Draft'];
+    if (p.summary) lines.push(p.summary);
+    (p.fields || []).forEach((f) => lines.push(`${f.label}: ${f.value}`));
+    if (p.note) lines.push(p.note);
+    return lines.join('\n');
+  }
+  return String(m.content || '');
 }
 
 function renderChat() {
@@ -2777,9 +2910,26 @@ function renderChat() {
     ? `<div class="chat-note">The assistant is not configured. On the server set <span class="mono">AI_BASE_URL</span>, <span class="mono">AI_API_KEY</span> and <span class="mono">AI_MODEL</span>, then restart.</div>`
     : '';
   const msgs = chat.messages.map((m, i) => chatBubble(m, i)).join('');
-  body.innerHTML = note + (msgs || `<div class="chat-empty">Ask me to find prices, name the cheapest supplier, or prepare a quote or supplier order — e.g. “prepare a quote of &lt;product&gt; at 35% margin, cost 12.50”. You can also ask what needs attention today, or how to export a report.</div>`);
+  const emptyTpl = `<div class="chat-empty">I can read the whole system and prepare drafts for you to confirm — prices, landed cost, what to buy, open exceptions, orders, stock, shipments, quotes and exports. Tap a prompt or type your own:</div>
+    <div class="chat-chips">
+      <button class="chat-chip" data-prompt="What needs my attention today?">What needs attention?</button>
+      <button class="chat-chip" data-prompt="What should we buy? Show the purchase plan.">What should we buy?</button>
+      <button class="chat-chip" data-prompt="List open exceptions by supplier">Open exceptions</button>
+      <button class="chat-chip" data-prompt="Show the latest supplier uploads">Latest uploads</button>
+      <button class="chat-chip" data-prompt="Show performance KPIs">Performance KPIs</button>
+      <button class="chat-chip" data-prompt="Find products by name">Find a product</button>
+      <button class="chat-chip" data-prompt="Prepare a quote of Versace Dylan Blue 100ml, 24 bottles, at 35% margin for our first customer, cost 12.50">Draft a quote</button>
+      <button class="chat-chip" data-prompt="Prepare a supplier placement for Alcodis: 2 boxes of Versace Dylan Blue EDT 100ml">Draft a placement</button>
+    </div>`;
+  body.innerHTML = note + (msgs || emptyTpl);
   body.scrollTop = body.scrollHeight;
   $$('#chatBody [data-apply]').forEach((b) => b.addEventListener('click', () => applyProposal(Number(b.dataset.apply))));
+  $$('#chatBody [data-copy]').forEach((b) => b.addEventListener('click', () => copyText(messageCopyText(chat.messages[Number(b.dataset.copy)]), b)));
+  $$('#chatBody [data-prompt]').forEach((b) => b.addEventListener('click', () => {
+    const input = $('#chatInput');
+    if (input) { input.value = b.dataset.prompt; input.focus(); }
+    if (!chat.streaming) sendChat();
+  }));
 }
 
 // Re-render only the streaming bubble so token updates stay cheap.
@@ -2962,6 +3112,7 @@ async function initAssistant() {
       <div class="row" style="gap:6px">
         <select id="chatHistory" title="Previous chats" aria-label="Previous chats"></select>
         <button class="ghost sm" id="chatNew" title="Start a new chat">New</button>
+        <button class="ghost sm" id="chatExpand" title="Make the window larger or smaller">&#8599;</button>
         <button class="ghost sm" id="chatClose" aria-label="Close">&#10005;</button>
       </div>
     </div>
@@ -2970,7 +3121,7 @@ async function initAssistant() {
     <div class="chat-foot">
       <button id="chatAttachBtn" class="ghost sm" title="Attach files (any type)">📎</button>
       <input id="chatFile" type="file" accept="*/*" multiple hidden />
-      <textarea id="chatInput" rows="1" placeholder="Ask or instruct… (📎 to attach any file)" aria-label="Message the assistant"></textarea>
+      <textarea id="chatInput" rows="1" placeholder="Ask or instruct… Paste with Ctrl+V, 📎 to attach any file" aria-label="Message the assistant"></textarea>
       <button id="chatSend">Send</button>
     </div>`;
   document.body.appendChild(btn);
@@ -2980,11 +3131,19 @@ async function initAssistant() {
     if (!panel.classList.contains('hidden')) $('#chatInput').focus();
   });
   $('#chatClose').addEventListener('click', () => panel.classList.add('hidden'));
+  $('#chatExpand').addEventListener('click', () => {
+    panel.classList.toggle('expanded');
+    const input = $('#chatInput');
+    if (input) input.focus();
+  });
   $('#chatNew').addEventListener('click', newChat);
   $('#chatHistory').addEventListener('change', (e) => openChat(e.target.value));
   $('#chatAttachBtn').addEventListener('click', () => $('#chatFile').click());
   $('#chatFile').addEventListener('change', (e) => { addFiles(e.target.files); e.target.value = ''; });
   $('#chatSend').addEventListener('click', () => { if (chat.streaming) stopChat(); else sendChat(); });
+  const fitInput = () => { const ta = $('#chatInput'); if (!ta) return; ta.style.height = 'auto'; ta.style.height = Math.min(ta.scrollHeight, 180) + 'px'; };
+  $('#chatInput').addEventListener('input', fitInput);
+  $('#chatInput').addEventListener('paste', () => setTimeout(fitInput, 0));
   $('#chatInput').addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); if (!chat.streaming) sendChat(); } });
   loadChatHistory();
   try {

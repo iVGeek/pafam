@@ -9,10 +9,35 @@ router.get('/auth/me', (req, res) => {
   res.json({ user: req.user || null });
 });
 
+// Login brute-force guard: 10 failed attempts per username+IP per 5 minutes.
+const FAILS = new Map();
+const LOGIN_WINDOW_MS = 5 * 60 * 1000;
+const LOGIN_MAX = 10;
+function loginKey(req, username) {
+  const ip = req.ip || req.socket.remoteAddress || 'unknown';
+  return ip + '|' + String(username || '').toLowerCase();
+}
+function loginBlocked(key) {
+  const arr = (FAILS.get(key) || []).filter((t) => Date.now() - t < LOGIN_WINDOW_MS);
+  FAILS.set(key, arr);
+  return arr.length >= LOGIN_MAX;
+}
+function recordFail(key) {
+  const arr = (FAILS.get(key) || []).filter((t) => Date.now() - t < LOGIN_WINDOW_MS);
+  arr.push(Date.now());
+  FAILS.set(key, arr);
+}
+
 router.post('/auth/login', (req, res) => {
   const { username, password } = req.body || {};
+  const key = loginKey(req, username);
+  if (loginBlocked(key)) {
+    res.setHeader('Retry-After', String(Math.ceil(LOGIN_WINDOW_MS / 1000)));
+    return res.status(429).json({ error: 'Too many failed login attempts. Retry in a few minutes.' });
+  }
   const user = auth.authenticate(username, password);
-  if (!user) return res.status(401).json({ error: 'invalid username or password' });
+  if (!user) { recordFail(key); return res.status(401).json({ error: 'invalid username or password' }); }
+  FAILS.delete(key);
   auth.pruneSessions();
   const { token, maxAgeMs } = auth.createSession(user.id);
   auth.setSessionCookie(res, token, maxAgeMs);

@@ -63,16 +63,35 @@ router.get('/uploads', (req, res) => {
   res.json(db.prepare('SELECT * FROM uploads ORDER BY uploaded_at DESC').all());
 });
 
+router.get('/exceptions/summary', (req, res) => {
+  // Counts by type + supplier for triage (dashboard chips + bulk filters).
+  const open = db.prepare('SELECT COUNT(*) n FROM exceptions WHERE resolved = 0').get().n;
+  const resolved = db.prepare('SELECT COUNT(*) n FROM exceptions WHERE resolved = 1').get().n;
+  const byType = db.prepare(
+    'SELECT type, COUNT(*) n FROM exceptions WHERE resolved = 0 GROUP BY type ORDER BY n DESC'
+  ).all();
+  const bySupplier = db.prepare(
+    `SELECT COALESCE(o.supplier_code, '(unknown)') supplier, COUNT(*) n
+       FROM exceptions e LEFT JOIN offers o ON o.id = e.offer_id
+      WHERE e.resolved = 0 GROUP BY supplier ORDER BY n DESC`
+  ).all();
+  res.json({ open, resolved, byType, bySupplier });
+});
+
 router.get('/exceptions', (req, res) => {
   const resolved = req.query.resolved === '1' ? 1 : 0;
   const supplier = req.query.supplier;
+  const type = req.query.type;
+  const limit = Math.min(Math.max(Number(req.query.limit) || 200, 1), 500);
+  const offset = Math.max(0, Number(req.query.offset) || 0);
   let sql = `SELECT e.*, o.description, o.gtin_source, o.source_row, o.supplier_code
              FROM exceptions e LEFT JOIN offers o ON o.id = e.offer_id
              WHERE e.resolved = ?`;
   const params = [resolved];
   if (supplier) { sql += ' AND o.supplier_code = ?'; params.push(supplier); }
-  sql += ' ORDER BY e.created_at DESC LIMIT 500';
-  res.json(db.prepare(sql).all(...params));
+  if (type) { sql += ' AND e.type = ?'; params.push(type); }
+  sql += ' ORDER BY e.created_at DESC LIMIT ? OFFSET ?';
+  res.json(db.prepare(sql).all(...params, limit, offset));
 });
 
 router.post('/exceptions/:id/resolve', auth.requireRole('analyst'), (req, res) => {
@@ -81,6 +100,30 @@ router.post('/exceptions/:id/resolve', auth.requireRole('analyst'), (req, res) =
     .run(req.body && req.body.actor || 'user', id);
   audit(req.body && req.body.actor || 'user', 'resolve-exception', 'exception', id);
   res.json({ ok: true });
+});
+
+// Bulk triage: resolve many at once (selected ids, or all matching
+// supplier+type). Capped at 500. Analyst+.
+router.post('/exceptions/resolve-many', auth.requireRole('analyst'), (req, res) => {
+  const b = req.body || {};
+  const actor = b.actor || 'user';
+  let ids = Array.isArray(b.ids) ? b.ids.map(Number).filter((n) => n > 0).slice(0, 500) : [];
+  if (!ids.length && (b.supplier || b.type)) {
+    const where = ['resolved = 0'];
+    const params = [];
+    if (b.supplier) { where.push('o.supplier_code = ?'); params.push(String(b.supplier)); }
+    if (b.type) { where.push('e.type = ?'); params.push(String(b.type)); }
+    ids = db.prepare(
+      `SELECT e.id FROM exceptions e LEFT JOIN offers o ON o.id = e.offer_id
+        WHERE ${where.join(' AND ')} LIMIT 500`
+    ).all(...params).map((r) => r.id);
+  }
+  if (!ids.length) return res.status(400).json({ error: 'No open exceptions match (pass ids, or supplier/type)' });
+  const stmt = db.prepare('UPDATE exceptions SET resolved = 1, resolved_by = ?, resolved_at = datetime(\'now\') WHERE id = ?');
+  let n = 0;
+  for (const id of ids) { stmt.run(actor, id); n += 1; }
+  audit(actor, 'resolve-exceptions-bulk', 'exception', null, `${n} resolved` + (b.supplier ? ` (${b.supplier})` : '') + (b.type ? ` (${b.type})` : ''));
+  res.json({ ok: true, resolved: n });
 });
 
 router.get('/settings', (req, res) => {

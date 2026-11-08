@@ -15,10 +15,11 @@ const DATA_DIR = process.env.PTP_DATA_DIR || path.join(__dirname, '..', 'data');
 const DB_PATH = process.env.PTP_DB || path.join(DATA_DIR, 'ptp.db');
 
 function main() {
-  const out = process.argv[2];
+  let out = process.argv[2];
   if (!out) {
-    console.error('usage: node scripts/backup-db.js <output.db>');
-    process.exit(2);
+    // No arg: timestamped file in data/backups (used by the scheduled task).
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+    out = path.join(DATA_DIR, 'backups', `ptp-${stamp}.db`);
   }
   if (!fs.existsSync(DB_PATH)) {
     console.error(`database not found: ${DB_PATH}`);

@@ -1,0 +1,1934 @@
+{
+  "summaries": [
+    {
+      "label": "Alcodis",
+      "rows": 1372,
+      "withBarcode": 1336,
+      "blankBarcode": 36,
+      "validBarcode": 1280,
+      "invalidBarcode": 56,
+      "distinctCanonical": 1225,
+      "duplicateRows": 55,
+      "lengthDistribution": {
+        "8": 10,
+        "10": 1,
+        "11": 13,
+        "12": 86,
+        "13": 1219,
+        "14": 7
+      },
+      "typeDistribution": {
+        "EAN-13": 1219,
+        "UPC-A": 86,
+        "GTIN-14": 7,
+        "UNKNOWN": 14,
+        "EAN-8": 10
+      },
+      "withCaseBarcode": 1320,
+      "rowsWithUnitsPerCase": 0,
+      "currencies": {
+        "EUR": 1372
+      },
+      "missingPrice": 0,
+      "missingDescription": 0,
+      "profile": "ALCODIS",
+      "sheet": "Tarifas Alcodis",
+      "headerRow": 7
+    },
+    {
+      "label": "Igan",
+      "rows": 1244,
+      "withBarcode": 1204,
+      "blankBarcode": 40,
+      "validBarcode": 1151,
+      "invalidBarcode": 53,
+      "distinctCanonical": 1121,
+      "duplicateRows": 30,
+      "lengthDistribution": {
+        "7": 1,
+        "8": 16,
+        "11": 21,
+        "12": 104,
+        "13": 1056,
+        "14": 6
+      },
+      "typeDistribution": {
+        "EAN-13": 1056,
+        "EAN-8": 16,
+        "UPC-A": 104,
+        "UNKNOWN": 22,
+        "GTIN-14": 6
+      },
+      "withCaseBarcode": 0,
+      "rowsWithUnitsPerCase": 1242,
+      "currencies": {
+        "EUR": 1244
+      },
+      "missingPrice": 2,
+      "missingDescription": 1,
+      "profile": "IGAN",
+      "sheet": "Igan-Tarifa",
+      "headerRow": 29
+    }
+  ],
+  "overlap": {
+    "overlapSkus": 251,
+    "matches": [
+      {
+        "canonical14": "05202795130046",
+        "description": "Brandy Metaxa 7 Star 1,00 Litro 40º (R) + Estuche 1.00 L.",
+        "alcodisPrice": 13.9,
+        "iganPrice": 13.09,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "04062400485135",
+        "description": "Brandy Papidoux Calvados XO 0,70 Litros 40º (R) 0.70 L.",
+        "alcodisPrice": 15.89,
+        "iganPrice": 14.79,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "08410036009090",
+        "description": "Cava Freixenet Cordon Negro Brut 0,75 Litros 11,5º (R) 0.75 L.",
+        "alcodisPrice": 4.97,
+        "iganPrice": 4.12,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "08410036805807",
+        "description": "Cava Freixenet Ice 0,75 Litros 11,5º (R) 0.75 L.",
+        "alcodisPrice": 4.85,
+        "iganPrice": 4.8,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "08410036806521",
+        "description": "Cava Freixenet Ice Rose 0,75 Litros 11,5º (R) 0.75 L.",
+        "alcodisPrice": 5.46,
+        "iganPrice": 4.8,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "00000075032715",
+        "description": "Cerveza Corona Botella 6 Pack  0,355 Litros 4,5º (R) 0.36 L.",
+        "alcodisPrice": 16.78,
+        "iganPrice": 0.63,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "08412598024214",
+        "description": "Cerveza Estrella Galicia  Botella 0,33 Litros 5,5º (R) 0.33 L.",
+        "alcodisPrice": 17.85,
+        "iganPrice": 0.68,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "00000087120158",
+        "description": "Cerveza Heineken  Lata 0,33 Litros 5º (R) 0.33 L.",
+        "alcodisPrice": 11.7,
+        "iganPrice": 0.49,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "00000080067986",
+        "description": "Cerveza Peroni Nastro Azzurro 0,33 Litros 5º (R) 0.33 L.",
+        "alcodisPrice": 17.58,
+        "iganPrice": 0.68,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "03049197210790",
+        "description": "Cognac Courvoisier VSOP 1,00 Litro 40º (R) + Estuche 1.00 L.",
+        "alcodisPrice": 32.7,
+        "iganPrice": 33.34,
+        "cheaper": "ALCODIS"
+      },
+      {
+        "canonical14": "03049197800083",
+        "description": "Cognac Courvoisier Xo 1,00 Litro 40º (R) + Estuche 1.00 L.",
+        "alcodisPrice": 107.43,
+        "iganPrice": 93.74,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "03245990250203",
+        "description": "Cognac Hennessy V.s. 0,70 Litros 40º (R) 0.70 L.",
+        "alcodisPrice": 24.58,
+        "iganPrice": 31.19,
+        "cheaper": "ALCODIS"
+      },
+      {
+        "canonical14": "03245990255307",
+        "description": "Cognac Hennessy V.s. 1,00 Litro 40º (R) 1.00 L.",
+        "alcodisPrice": 31.13,
+        "iganPrice": 38.79,
+        "cheaper": "ALCODIS"
+      },
+      {
+        "canonical14": "03219820000054",
+        "description": "Cognac Martell V.s. Single Distillery 1,00 Litro 40º (R) 1.00 L.",
+        "alcodisPrice": 34.85,
+        "iganPrice": 24.04,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "03024482270109",
+        "description": "Cognac Remy Martin VSOP 0,70 Litros 40º (R) 0.70 L.",
+        "alcodisPrice": 26.48,
+        "iganPrice": 31.09,
+        "cheaper": "ALCODIS"
+      },
+      {
+        "canonical14": "03024482295102",
+        "description": "Cognac Remy Martin VSOP 1,00 Litro 40º (R) 1.00 L.",
+        "alcodisPrice": 43.05,
+        "iganPrice": 42.74,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "08437013863018",
+        "description": "Gin Alkkemist 0,70 Litros 40º (R) 0.70 L.",
+        "alcodisPrice": 24.05,
+        "iganPrice": 25.34,
+        "cheaper": "ALCODIS"
+      },
+      {
+        "canonical14": "00853507000123",
+        "description": "Gin Aviation 0,70 Litros 42º (R) 0.70 L.",
+        "alcodisPrice": 17.22,
+        "iganPrice": 18.82,
+        "cheaper": "ALCODIS"
+      },
+      {
+        "canonical14": "05000329001400",
+        "description": "Gin Beefeater 0,05 Litros 40º (R) 0.05 L.",
+        "alcodisPrice": 1.14,
+        "iganPrice": 0.9,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "05000329002278",
+        "description": "Gin Beefeater 1,00 Litro 40º (R) 1.00 L.",
+        "alcodisPrice": 11.93,
+        "iganPrice": 11.79,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "05000299618240",
+        "description": "Gin Beefeater Blood Orange 0,70 Litros 37,5º (R) 0.70 L.",
+        "alcodisPrice": 10.77,
+        "iganPrice": 10.02,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "08710631120184",
+        "description": "Gin Bobby´s Schiedam 1,00 Litro 42º (R) 1.00 L.",
+        "alcodisPrice": 23.29,
+        "iganPrice": 23.43,
+        "cheaper": "ALCODIS"
+      },
+      {
+        "canonical14": "05010677714006",
+        "description": "Gin Bombay Sapphire 0,70 Litros 40º (R) 0.70 L.",
+        "alcodisPrice": 11.29,
+        "iganPrice": 11.89,
+        "cheaper": "ALCODIS"
+      },
+      {
+        "canonical14": "07640175745554",
+        "description": "Gin Bombay Sapphire 1,00 Litro 40º (R) 1.00 L.",
+        "alcodisPrice": 15.73,
+        "iganPrice": 15.19,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "05010296169164",
+        "description": "Gin Brockmans 0,70 Litros 40º (R) 0.70 L.",
+        "alcodisPrice": 18,
+        "iganPrice": 18.99,
+        "cheaper": "ALCODIS"
+      },
+      {
+        "canonical14": "05033931603694",
+        "description": "Gin Brockmans 1,00 Litro 40º (R) 1.00 L.",
+        "alcodisPrice": 20.18,
+        "iganPrice": 23.04,
+        "cheaper": "ALCODIS"
+      },
+      {
+        "canonical14": "05060017740011",
+        "description": "Gin Brokers 0,70 Litros 40º (R) 0.70 L.",
+        "alcodisPrice": 9.41,
+        "iganPrice": 8.84,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "08436572051218",
+        "description": "Gin Cannagin 0,70 Litros 38º (R) 0.70 L.",
+        "alcodisPrice": 14.92,
+        "iganPrice": 14.44,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "08410028901586",
+        "description": "Gin Cubical Kiss 0,70 Litros 37,5º (I) 0.70 L.",
+        "alcodisPrice": 15.6,
+        "iganPrice": 16.17,
+        "cheaper": "ALCODIS"
+      },
+      {
+        "canonical14": "08410028902293",
+        "description": "Gin Cubical Mango 0,70 Litros 37,5º (I) 0.70 L.",
+        "alcodisPrice": 15.6,
+        "iganPrice": 16.02,
+        "cheaper": "ALCODIS"
+      },
+      {
+        "canonical14": "08410028900442",
+        "description": "Gin Cubical Ultra Premium 0,70 Litros 45º (R) 0.70 L.",
+        "alcodisPrice": 17.86,
+        "iganPrice": 23.22,
+        "cheaper": "ALCODIS"
+      },
+      {
+        "canonical14": "00086785056784",
+        "description": "Gin Drumshanbo Gunpowder Irish 1,00 Litro 43º (R) 1.00 L.",
+        "alcodisPrice": 23.49,
+        "iganPrice": 25.02,
+        "cheaper": "ALCODIS"
+      },
+      {
+        "canonical14": "04971980260776",
+        "description": "Gin Etsu 0,70 Litros 43º (R) + Estuche 0.70 L.",
+        "alcodisPrice": 24.52,
+        "iganPrice": 22.56,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "08410161202250",
+        "description": "Gin Fifty Pounds 0,70 Litros 43,5º (R) 0.70 L.",
+        "alcodisPrice": 11.7,
+        "iganPrice": 13.77,
+        "cheaper": "ALCODIS"
+      },
+      {
+        "canonical14": "08423426000959",
+        "description": "Gin Ginraw 0,70 Litros 42,3º (R) 0.70 L.",
+        "alcodisPrice": 20.15,
+        "iganPrice": 23.34,
+        "cheaper": "ALCODIS"
+      },
+      {
+        "canonical14": "05000289021203",
+        "description": "Gin Gordons 0,20 Litros 43º (R) 0.20 L.",
+        "alcodisPrice": 3.27,
+        "iganPrice": 3.07,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "05000289925440",
+        "description": "Gin Gordons 0,70 Litros 37,5º (I) 0.70 L.",
+        "alcodisPrice": 7.97,
+        "iganPrice": 7.72,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "05000289925440",
+        "description": "Gin Gordons 0,70 Litros 37,5º (R) 0.70 L.",
+        "alcodisPrice": 8.1,
+        "iganPrice": 7.72,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "05000289925433",
+        "description": "Gin Gordons 1,00 Litro 37,5º (R) 1.00 L.",
+        "alcodisPrice": 9.38,
+        "iganPrice": 9.7,
+        "cheaper": "ALCODIS"
+      },
+      {
+        "canonical14": "05000289020107",
+        "description": "Gin Gordons Pet 0,05 Litros 37,5º (R) 0.05 L.",
+        "alcodisPrice": 0.9,
+        "iganPrice": 0.84,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "05000289929417",
+        "description": "Gin Gordons Pink Rose 0,70 Litros 37,5º (R) 0.70 L.",
+        "alcodisPrice": 7.97,
+        "iganPrice": 8.49,
+        "cheaper": "ALCODIS"
+      },
+      {
+        "canonical14": "05000289934800",
+        "description": "Gin Gordons Tropical Passionfruit 0,70 Litros 37,5º (R) 0.70 L.",
+        "alcodisPrice": 9.83,
+        "iganPrice": 8.51,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "05010327703053",
+        "description": "Gin Hendricks 1,00 Litro 44º (R) 1.00 L.",
+        "alcodisPrice": 25.56,
+        "iganPrice": 27.97,
+        "cheaper": "ALCODIS"
+      },
+      {
+        "canonical14": "05010327755106",
+        "description": "Gin Hendricks Amazonia 1,00 Litro 43,4º (R) 1.00 L.",
+        "alcodisPrice": 30.65,
+        "iganPrice": 31.16,
+        "cheaper": "ALCODIS"
+      },
+      {
+        "canonical14": "05010327705910",
+        "description": "Gin Hendricks Grand Cabaret 0,70 Litros 43,4º (R) 0.70 L.",
+        "alcodisPrice": 24.56,
+        "iganPrice": 25.41,
+        "cheaper": "ALCODIS"
+      },
+      {
+        "canonical14": "05010327703541",
+        "description": "Gin Hendricks Sunspell 1,00 Litro 43,4º (R) 1.00 L.",
+        "alcodisPrice": 28.78,
+        "iganPrice": 29.66,
+        "cheaper": "ALCODIS"
+      },
+      {
+        "canonical14": "08411144100242",
+        "description": "Gin Larios 12 1,00 Litro 40º (R) 1.00 L.",
+        "alcodisPrice": 11.75,
+        "iganPrice": 11.49,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "08411144100822",
+        "description": "Gin Larios Provenzal 1,00 Litro 37,5º (I) 1.00 L.",
+        "alcodisPrice": 11.65,
+        "iganPrice": 8.85,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "08437011073020",
+        "description": "Gin Macaronesian 0,70 Litros 37,5º (R) 0.70 L.",
+        "alcodisPrice": 16.46,
+        "iganPrice": 17.47,
+        "cheaper": "ALCODIS"
+      },
+      {
+        "canonical14": "08411640000459",
+        "description": "Gin Mare 0,70 Litros 42,7º (R) 0.70 L.",
+        "alcodisPrice": 21.05,
+        "iganPrice": 22.67,
+        "cheaper": "ALCODIS"
+      },
+      {
+        "canonical14": "08411640000480",
+        "description": "Gin Mare 1,00 Litro 42,7º (R) 1.00 L.",
+        "alcodisPrice": 25.15,
+        "iganPrice": 26.69,
+        "cheaper": "ALCODIS"
+      },
+      {
+        "canonical14": "00698929000395",
+        "description": "Gin Martin Millers 0,70 Litros 40º (R) 0.70 L.",
+        "alcodisPrice": 15.96,
+        "iganPrice": 16.09,
+        "cheaper": "ALCODIS"
+      },
+      {
+        "canonical14": "00698929000418",
+        "description": "Gin Martin Millers 1,00 Litro 40º (R) 1.00 L.",
+        "alcodisPrice": 19.15,
+        "iganPrice": 20.04,
+        "cheaper": "ALCODIS"
+      },
+      {
+        "canonical14": "00698929000319",
+        "description": "Gin Martin Millers Westbourne 0,70 Litros 45,2º (R) 0.70 L.",
+        "alcodisPrice": 22.83,
+        "iganPrice": 23.23,
+        "cheaper": "ALCODIS"
+      },
+      {
+        "canonical14": "00000042213277",
+        "description": "Gin Monkey 47 0,50 Litros 47º (R) 0.50 L.",
+        "alcodisPrice": 25.68,
+        "iganPrice": 26.15,
+        "cheaper": "ALCODIS"
+      },
+      {
+        "canonical14": "08435449500040",
+        "description": "Gin Nordes 1,00 Litro 40º (R) 1.00 L.",
+        "alcodisPrice": 18.29,
+        "iganPrice": 19.79,
+        "cheaper": "ALCODIS"
+      },
+      {
+        "canonical14": "05010296002270",
+        "description": "Gin Opihr 1,00 Litro 42,5º (R) 1.00 L.",
+        "alcodisPrice": 16.81,
+        "iganPrice": 16.03,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "07640175740481",
+        "description": "Gin Oxley 1,00 Litro 47º (R) 1.00 L.",
+        "alcodisPrice": 23.15,
+        "iganPrice": 29.51,
+        "cheaper": "ALCODIS"
+      },
+      {
+        "canonical14": "08437004142757",
+        "description": "Gin Puerto De Indias Pure Black Edition 1,00 Litro 40º (R) 1.00 L.",
+        "alcodisPrice": 11.35,
+        "iganPrice": 13.04,
+        "cheaper": "ALCODIS"
+      },
+      {
+        "canonical14": "04901777305359",
+        "description": "Gin Roku 0,70 Litros 43º (I) 0.70 L.",
+        "alcodisPrice": 16.17,
+        "iganPrice": 16.89,
+        "cheaper": "ALCODIS"
+      },
+      {
+        "canonical14": "04901903074623",
+        "description": "Gin Sakurao Classic 0,70 Litros 40º (R) 0.70 L.",
+        "alcodisPrice": 24.03,
+        "iganPrice": 23.64,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "05000291021857",
+        "description": "Gin Tanqueray 1,00 Litro 43,1º (R) 1.00 L.",
+        "alcodisPrice": 14.01,
+        "iganPrice": 14.08,
+        "cheaper": "ALCODIS"
+      },
+      {
+        "canonical14": "05000291022663",
+        "description": "Gin Tanqueray Rangpur 1,00 Litro 41,3º (R) 1.00 L.",
+        "alcodisPrice": 15.2,
+        "iganPrice": 15.26,
+        "cheaper": "ALCODIS"
+      },
+      {
+        "canonical14": "05000291023660",
+        "description": "Gin Tanqueray Sevilla 1,00 Litro 41,3º (R) 1.00 L.",
+        "alcodisPrice": 14.75,
+        "iganPrice": 17.61,
+        "cheaper": "ALCODIS"
+      },
+      {
+        "canonical14": "05000281016689",
+        "description": "Gin Tanqueray Ten 1,00 Litro 47,3º (R) 1.00 L.",
+        "alcodisPrice": 21.8,
+        "iganPrice": 21.64,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "05011166065623",
+        "description": "Gin Whitley Neill Connoisseurs Cut 0,70 Litros 47º (R) 0.70 L.",
+        "alcodisPrice": 14.53,
+        "iganPrice": 12.75,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "08001110016303",
+        "description": "Licor Amaretto Disaronno 0,70 Litros 28º (R) 0.70 L.",
+        "alcodisPrice": 10.45,
+        "iganPrice": 10.38,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "08001110016341",
+        "description": "Licor Amaretto Disaronno 1,00 Litro 28º (R) 1.00 L.",
+        "alcodisPrice": 12.55,
+        "iganPrice": 12.64,
+        "cheaper": "ALCODIS"
+      },
+      {
+        "canonical14": "08006550301040",
+        "description": "Licor Amaro Ramazzotti 0,70 Litros 30º (R) 0.70 L.",
+        "alcodisPrice": 9.94,
+        "iganPrice": 9.25,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "08006550302016",
+        "description": "Licor Amaro Ramazzotti 1,00 Litro 30º (R) 1.00 L.",
+        "alcodisPrice": 11.9,
+        "iganPrice": 11.03,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "08002230000012",
+        "description": "Licor Aperol Spritz (aperol 1l + Prosecco 0,75l) 1,00 Litro 11º (R) 1.00 L.",
+        "alcodisPrice": 15.58,
+        "iganPrice": 9.55,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "05011013100156",
+        "description": "Licor Baileys 0,70 Litros 17º (R) 0.70 L.",
+        "alcodisPrice": 8.82,
+        "iganPrice": 8.5,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "05011013100118",
+        "description": "Licor Baileys 1,00 Litro 17º (R) 1.00 L.",
+        "alcodisPrice": 12.05,
+        "iganPrice": 11.98,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "08714432000607",
+        "description": "Licor Boswandeling 0,70 Litros 15º (R) 0.70 L.",
+        "alcodisPrice": 11.08,
+        "iganPrice": 12.8,
+        "cheaper": "ALCODIS"
+      },
+      {
+        "canonical14": "00813497006192",
+        "description": "Licor Bumbu Cream 0,70 Litros 15º (R) 0.70 L.",
+        "alcodisPrice": 23.04,
+        "iganPrice": 18.21,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "08004027034361",
+        "description": "Licor Chambord Royal 0,50 Litros 16,5º (R) 0.50 L.",
+        "alcodisPrice": 11.44,
+        "iganPrice": 12.24,
+        "cheaper": "ALCODIS"
+      },
+      {
+        "canonical14": "03035542004206",
+        "description": "Licor Cointreau 0,70 Litros 40º (R) 0.70 L.",
+        "alcodisPrice": 11.41,
+        "iganPrice": 11.59,
+        "cheaper": "ALCODIS"
+      },
+      {
+        "canonical14": "03035542001908",
+        "description": "Licor Cointreau 1,00 Litro 40º (R) 1.00 L.",
+        "alcodisPrice": 15.17,
+        "iganPrice": 15.15,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "08002240001009",
+        "description": "Licor Cynar 1,00 Litro 16,5º (R) 1.00 L.",
+        "alcodisPrice": 9.71,
+        "iganPrice": 9.45,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "05010391101007",
+        "description": "Licor Drambuie 1,00 Litro 40º (R) 1.00 L.",
+        "alcodisPrice": 17.24,
+        "iganPrice": 18.44,
+        "cheaper": "ALCODIS"
+      },
+      {
+        "canonical14": "08716000966575",
+        "description": "Licor Galliano Vanilla 0,70 Litros 30º (R) 0.70 L.",
+        "alcodisPrice": 10.24,
+        "iganPrice": 10.41,
+        "cheaper": "ALCODIS"
+      },
+      {
+        "canonical14": "08436534140004",
+        "description": "Licor Hierbas Ibicencas Sin Rama 0,70 Litros 26º (I) 0.70 L.",
+        "alcodisPrice": 9.16,
+        "iganPrice": 10.99,
+        "cheaper": "ALCODIS"
+      },
+      {
+        "canonical14": "04067700011022",
+        "description": "Licor Jagermeister 0,35 Litros 35º (R) 0.35 L.",
+        "alcodisPrice": 5.71,
+        "iganPrice": 5.32,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "08410221110006",
+        "description": "Licor Licor 43 1,00 Litro 31º (I) 1.00 L.",
+        "alcodisPrice": 13.15,
+        "iganPrice": 12.92,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "08410221110006",
+        "description": "Licor Licor 43 1,00 Litro 31º (I) 1.00 L.",
+        "alcodisPrice": 13.15,
+        "iganPrice": 12.92,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "08410024710601",
+        "description": "Licor Malibu 0,70 Litros 18º (R) 0.70 L.",
+        "alcodisPrice": 8.85,
+        "iganPrice": 8.5,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "05010262100030",
+        "description": "Licor Pimms Nº1 1,00 Litro 25º (R) 1.00 L.",
+        "alcodisPrice": 11.16,
+        "iganPrice": 10.6,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "05010262100030",
+        "description": "Licor Pimms Nº1 1,00 Litro 25º (R) 1.00 L.",
+        "alcodisPrice": 11.05,
+        "iganPrice": 10.6,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "05011013500604",
+        "description": "Licor Sheridans 1,00 Litro 15,5º (R) 1.00 L.",
+        "alcodisPrice": 14.35,
+        "iganPrice": 14.34,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "05060045582447",
+        "description": "Licor Sourz Raspberry 0,70 Litros 15º (R) 0.70 L.",
+        "alcodisPrice": 5.82,
+        "iganPrice": 5.91,
+        "cheaper": "ALCODIS"
+      },
+      {
+        "canonical14": "01210000100504",
+        "description": "Licor Southern Comfort 1,00 Litro 35º (R) 1.00 L.",
+        "alcodisPrice": 11.15,
+        "iganPrice": 11.55,
+        "cheaper": "ALCODIS"
+      },
+      {
+        "canonical14": "05014271796161",
+        "description": "Licor St Germain Elderflower 0,70 Litros 20º (R) 0.70 L.",
+        "alcodisPrice": 20.75,
+        "iganPrice": 19.84,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "05012523231958",
+        "description": "Licor Tia Maria 1,00 Litro 20º (R) 1.00 L.",
+        "alcodisPrice": 12.05,
+        "iganPrice": 11.92,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "08414037215344",
+        "description": "Licor Tunel Ron Miel Tobacco 1,00 Litro 22º (I) 1.00 L.",
+        "alcodisPrice": 6.46,
+        "iganPrice": 6.96,
+        "cheaper": "ALCODIS"
+      },
+      {
+        "canonical14": "05000281020297",
+        "description": "Licor Ursus Roter (vodka) 0,70 Litros 21º (R) 0.70 L.",
+        "alcodisPrice": 8,
+        "iganPrice": 7.91,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "08410614001003",
+        "description": "Pacharan Zoco 1,00 Litro 25º (I) 1.00 L.",
+        "alcodisPrice": 7.92,
+        "iganPrice": 7.8,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "05060108450003",
+        "description": "Refrescos Fever-tree Indian Tonic Botella 0,20 Litros (R) 0.20 L.",
+        "alcodisPrice": 15.7,
+        "iganPrice": 0.78,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "00075496331969",
+        "description": "Ron Angostura 1919 0,70 Litros 40º (R) + Estuche 0.70 L.",
+        "alcodisPrice": 19.73,
+        "iganPrice": 20.59,
+        "cheaper": "ALCODIS"
+      },
+      {
+        "canonical14": "05010677015738",
+        "description": "Ron Bacardi 1,00 Litro 40º (R) 1.00 L.",
+        "alcodisPrice": 13.13,
+        "iganPrice": 11,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "07610113028186",
+        "description": "Ron Bacardi Limon 1,00 Litro 27º (R) 1.00 L.",
+        "alcodisPrice": 12.31,
+        "iganPrice": 10.49,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "07610113028148",
+        "description": "Ron Bacardi Razz 1,00 Litro 27º (R) 1.00 L.",
+        "alcodisPrice": 11.52,
+        "iganPrice": 10.8,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "07610113007495",
+        "description": "Ron Bacardi Spiced 1,00 Litro 35º (R) 1.00 L.",
+        "alcodisPrice": 13.03,
+        "iganPrice": 11.66,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "07460855209141",
+        "description": "Ron Brugal 1888 Gran Reserva Familiar 0,70 Litros 40º (R) 0.70 L.",
+        "alcodisPrice": 20.63,
+        "iganPrice": 21.44,
+        "cheaper": "ALCODIS"
+      },
+      {
+        "canonical14": "05000281034980",
+        "description": "Ron Captain Morgan Black Spiced 1,00 Litro 40º (R) 1.00 L.",
+        "alcodisPrice": 11.35,
+        "iganPrice": 11.99,
+        "cheaper": "ALCODIS"
+      },
+      {
+        "canonical14": "05000299223055",
+        "description": "Ron Captain Morgan Spiced Gold 1,00 Litro 35º (R) 1.00 L.",
+        "alcodisPrice": 9.1,
+        "iganPrice": 9.36,
+        "cheaper": "ALCODIS"
+      },
+      {
+        "canonical14": "08715151120799",
+        "description": "Ron El Dorado 12 años 0,70 Litros 40º (R) 0.70 L.",
+        "alcodisPrice": 19.41,
+        "iganPrice": 21.19,
+        "cheaper": "ALCODIS"
+      },
+      {
+        "canonical14": "08715151150734",
+        "description": "Ron El Dorado 15 años 0,70 Litros 43º (R) + Estuche 0.70 L.",
+        "alcodisPrice": 29.4,
+        "iganPrice": 29.39,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "08715151150734",
+        "description": "Ron El Dorado 15 años 0,70 Litros 43º (R) 0.70 L.",
+        "alcodisPrice": 26.67,
+        "iganPrice": 29.39,
+        "cheaper": "ALCODIS"
+      },
+      {
+        "canonical14": "05391338002398",
+        "description": "Ron Goslings Black Seal 151 Proof 0,70 Litros 75,5º (R) 0.70 L.",
+        "alcodisPrice": 20.28,
+        "iganPrice": 18.02,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "00811538010689",
+        "description": "Ron Kraken Black Spiced 1,00 Litro 40º (R) + Vela 1.00 L.",
+        "alcodisPrice": 16.2,
+        "iganPrice": 15.44,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "00811538010689",
+        "description": "Ron Kraken Black Spiced 1,00 Litro 40º (R) 1.00 L.",
+        "alcodisPrice": 17.05,
+        "iganPrice": 15.44,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "00766094010058",
+        "description": "Ron Matusalem 15 años Gran Reserva 0,70 Litros 40º (R) + Estuche 0.70 L.",
+        "alcodisPrice": 16.75,
+        "iganPrice": 16.19,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "00766094110055",
+        "description": "Ron Matusalem 23 años 0,70 Litros 40º (R) + Estuche 0.70 L.",
+        "alcodisPrice": 29.16,
+        "iganPrice": 33.59,
+        "cheaper": "ALCODIS"
+      },
+      {
+        "canonical14": "03460410529053",
+        "description": "Ron Plantation 3 Stars 0,70 Litros 41,2º (R) 0.70 L.",
+        "alcodisPrice": 11.21,
+        "iganPrice": 8.7,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "03460410524423",
+        "description": "Ron Plantation Original Dark 0,70 Litros 40º (R) 0.70 L.",
+        "alcodisPrice": 12.31,
+        "iganPrice": 9.19,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "00721733100088",
+        "description": "Ron Pyrat XO Reserve 0,70 Litros 40º (R) 0.70 L.",
+        "alcodisPrice": 20.7,
+        "iganPrice": 19.49,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "07591156404949",
+        "description": "Ron Santa Teresa 1796 1,00 Litro 40º (R) + Estuche 1.00 L.",
+        "alcodisPrice": 32.03,
+        "iganPrice": 31.2,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "07401005008603",
+        "description": "Ron Zacapa Solera Gran Reserva 1,00 Litro 40º (R) + Estuche 1.00 L.",
+        "alcodisPrice": 37.11,
+        "iganPrice": 41.34,
+        "cheaper": "ALCODIS"
+      },
+      {
+        "canonical14": "07401005008610",
+        "description": "Ron Zacapa Xo 25yo 0,70 Litros 40º (R) + Estuche 0.70 L.",
+        "alcodisPrice": 69.98,
+        "iganPrice": 75.19,
+        "cheaper": "ALCODIS"
+      },
+      {
+        "canonical14": "05035766043768",
+        "description": "Sidra Strongbow Botella 0,33 Litros 5º (R) 0.33 L.",
+        "alcodisPrice": 17.36,
+        "iganPrice": 0.67,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "05035766045489",
+        "description": "Sidra Strongbow Lata 0,44 Litros 5º (R) 0.44 L.",
+        "alcodisPrice": 17.76,
+        "iganPrice": 0.69,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "07503023613248",
+        "description": "Tequila Cenote Blanco 0,70 Litros 40º (R) 0.70 L.",
+        "alcodisPrice": 22.8,
+        "iganPrice": 24.19,
+        "cheaper": "ALCODIS"
+      },
+      {
+        "canonical14": "07503023613255",
+        "description": "Tequila Cenote Reposado 0,70 Litros 40º (R) 0.70 L.",
+        "alcodisPrice": 25.35,
+        "iganPrice": 29.59,
+        "cheaper": "ALCODIS"
+      },
+      {
+        "canonical14": "00812021003232",
+        "description": "Tequila Clase Azul Gold 0,70 Litros 40º (R) + Estuche 0.70 L.",
+        "alcodisPrice": 349.2,
+        "iganPrice": 451.69,
+        "cheaper": "ALCODIS"
+      },
+      {
+        "canonical14": "07506064300191",
+        "description": "Tequila Don Julio 1942 Añejo 0,70 Litros 38º (R) + Estuche 0.70 L.",
+        "alcodisPrice": 99.1,
+        "iganPrice": 157.55,
+        "cheaper": "ALCODIS"
+      },
+      {
+        "canonical14": "07506064300184",
+        "description": "Tequila Don Julio Añejo 0,70 Litros 38º (R) 0.70 L.",
+        "alcodisPrice": 33.88,
+        "iganPrice": 35.55,
+        "cheaper": "ALCODIS"
+      },
+      {
+        "canonical14": "05000281055848",
+        "description": "Tequila Don Julio Añejo 70 Th 0,70 Litros 35º (R) + Estuche 0.70 L.",
+        "alcodisPrice": 61.2,
+        "iganPrice": 67.35,
+        "cheaper": "ALCODIS"
+      },
+      {
+        "canonical14": "00721059701006",
+        "description": "Tequila Espolon Blanco 1,00 Litro 40º (R) 1.00 L.",
+        "alcodisPrice": 20.68,
+        "iganPrice": 17.04,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "07501035013483",
+        "description": "Tequila Jose Cuervo 1800 Cristalino 0,70 Litros 35º (I) + Estuche 0.70 L.",
+        "alcodisPrice": 40.17,
+        "iganPrice": 25.95,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "07501035013483",
+        "description": "Tequila Jose Cuervo 1800 Cristalino 0,70 Litros 35º (R) 0.70 L.",
+        "alcodisPrice": 36.13,
+        "iganPrice": 25.95,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "00811538010245",
+        "description": "Tequila Jose Cuervo 1800 Reposado 1,00 Litro 40º (R) 1.00 L.",
+        "alcodisPrice": 25.69,
+        "iganPrice": 22.74,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "00811538010146",
+        "description": "Tequila Jose Cuervo 1800 Silver 1,00 Litro 40º (R) 1.00 L.",
+        "alcodisPrice": 23.74,
+        "iganPrice": 21.79,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "07501035042131",
+        "description": "Tequila Jose Cuervo Especial Gold 0,70 Litros 38º (I) 0.70 L.",
+        "alcodisPrice": 11.52,
+        "iganPrice": 9.95,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "07501035042131",
+        "description": "Tequila Jose Cuervo Especial Gold 0,70 Litros 38º (R) 0.70 L.",
+        "alcodisPrice": 11.58,
+        "iganPrice": 9.95,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "07501035042315",
+        "description": "Tequila Jose Cuervo Especial Silver 1,00 Litro 38º (R) 1.00 L.",
+        "alcodisPrice": 13.46,
+        "iganPrice": 13.4,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "07501035042315",
+        "description": "Tequila Jose Cuervo Especial Silver Limited Edition 1,00 Litro 38º (R) 1.00 L.",
+        "alcodisPrice": 12.72,
+        "iganPrice": 13.4,
+        "cheaper": "ALCODIS"
+      },
+      {
+        "canonical14": "05029977341003",
+        "description": "Tequila Jose Cuervo Reserva Familia 0,70 Litros 38º (R) + Estuche 0.70 L.",
+        "alcodisPrice": 77.31,
+        "iganPrice": 72.55,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "00721733002573",
+        "description": "Tequila Patron Añejo 1,00 Litro 40º (R) + Estuche 1.00 L.",
+        "alcodisPrice": 36.42,
+        "iganPrice": 40.84,
+        "cheaper": "ALCODIS"
+      },
+      {
+        "canonical14": "00721733000722",
+        "description": "Tequila Patron Reposado 0,70 Litros 40º (R) + Estuche 0.70 L.",
+        "alcodisPrice": 35.02,
+        "iganPrice": 35.19,
+        "cheaper": "ALCODIS"
+      },
+      {
+        "canonical14": "00721733002566",
+        "description": "Tequila Patron Reposado 1,00 Litro 40º (R) + Estuche 1.00 L.",
+        "alcodisPrice": 35.49,
+        "iganPrice": 37.79,
+        "cheaper": "ALCODIS"
+      },
+      {
+        "canonical14": "00721733002634",
+        "description": "Tequila Patron Silver 1,00 Litro 40º (R) + Estuche 1.00 L.",
+        "alcodisPrice": 31.84,
+        "iganPrice": 38.34,
+        "cheaper": "ALCODIS"
+      },
+      {
+        "canonical14": "00085592140358",
+        "description": "Tequila Rose Strawberry Cream 0,70 Litros 15º (R) 0.70 L.",
+        "alcodisPrice": 12.17,
+        "iganPrice": 10.21,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "00085592140556",
+        "description": "Tequila Rose Strawberry Cream 1,00 Litro 15º (R) 1.00 L.",
+        "alcodisPrice": 14.88,
+        "iganPrice": 14.64,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "04062400542074",
+        "description": "Tequila Sierra Silver 1,00 Litro 38º (R) 1.00 L.",
+        "alcodisPrice": 12.49,
+        "iganPrice": 10.59,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "03163933575001",
+        "description": "Vermouth Dubonet Rojo 0,75 Litros 14,8º (R) 0.75 L.",
+        "alcodisPrice": 6.05,
+        "iganPrice": 5.24,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "03057230000277",
+        "description": "Vermouth Lillet Rose 0,75 Litros 17º (R) 0.75 L.",
+        "alcodisPrice": 10.63,
+        "iganPrice": 9.73,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "03023010003585",
+        "description": "Vermouth Noilly Prat Seco (dry) 1,00 Litro 18º (R) 1.00 L.",
+        "alcodisPrice": 8.94,
+        "iganPrice": 9.34,
+        "cheaper": "ALCODIS"
+      },
+      {
+        "canonical14": "08436024580013",
+        "description": "Vino Galicia Mar De Frades Albariño 2024 0,75 Litros 12,5º (R) 0.75 L.",
+        "alcodisPrice": 10.29,
+        "iganPrice": 13.69,
+        "cheaper": "ALCODIS"
+      },
+      {
+        "canonical14": "05010867410220",
+        "description": "Vino Oporto Graham's 10 años Old Tawny Port 0,75 Litros 20º (R) + Estuche 0.75 L.",
+        "alcodisPrice": 15.42,
+        "iganPrice": 14.38,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "07312040017034",
+        "description": "Vodka Absolut Blue 1,00 Litro 40º (R) 1.00 L.",
+        "alcodisPrice": 11.81,
+        "iganPrice": 12,
+        "cheaper": "ALCODIS"
+      },
+      {
+        "canonical14": "07312040551682",
+        "description": "Vodka Absolut Lime 1,00 Litro 40º (R) 1.00 L.",
+        "alcodisPrice": 12.93,
+        "iganPrice": 12.1,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "07312040050109",
+        "description": "Vodka Absolut Mandarin 1,00 Litro 40º (R) 1.00 L.",
+        "alcodisPrice": 12.54,
+        "iganPrice": 12.1,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "05010103997652",
+        "description": "Vodka Ciroc 0,20 Litros 40º (R) 0.20 L.",
+        "alcodisPrice": 8.09,
+        "iganPrice": 8.27,
+        "cheaper": "ALCODIS"
+      },
+      {
+        "canonical14": "05010103916738",
+        "description": "Vodka Ciroc 0,70 Litros 40º (R) 0.70 L.",
+        "alcodisPrice": 18.93,
+        "iganPrice": 17.89,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "05010103938235",
+        "description": "Vodka Ciroc Apple 0,70 Litros 37,5º (R) 0.70 L.",
+        "alcodisPrice": 18.85,
+        "iganPrice": 19.12,
+        "cheaper": "ALCODIS"
+      },
+      {
+        "canonical14": "05010103947718",
+        "description": "Vodka Ciroc Limonata 0,70 Litros 37,5º (R) 0.70 L.",
+        "alcodisPrice": 18.66,
+        "iganPrice": 19.12,
+        "cheaper": "ALCODIS"
+      },
+      {
+        "canonical14": "05010103939874",
+        "description": "Vodka Ciroc Mango 0,70 Litros 37,5º (R) 0.70 L.",
+        "alcodisPrice": 19.44,
+        "iganPrice": 19.12,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "05010103937146",
+        "description": "Vodka Ciroc Pineapple 0,70 Litros 37,5º (R) 0.70 L.",
+        "alcodisPrice": 17.95,
+        "iganPrice": 19.12,
+        "cheaper": "ALCODIS"
+      },
+      {
+        "canonical14": "05010103999991",
+        "description": "Vodka Ciroc Red Berry 0,70 Litros 37,5º (R) 0.70 L.",
+        "alcodisPrice": 18.88,
+        "iganPrice": 19.12,
+        "cheaper": "ALCODIS"
+      },
+      {
+        "canonical14": "05010103933209",
+        "description": "Vodka Ciroc Red Berry 1,00 Litro 37,5º (R) 1.00 L.",
+        "alcodisPrice": 27.02,
+        "iganPrice": 25.3,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "05010103943574",
+        "description": "Vodka Ciroc Summer Watermelon 0,70 Litros 37,5º (R) 0.70 L.",
+        "alcodisPrice": 19.36,
+        "iganPrice": 19.12,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "05903983402098",
+        "description": "Vodka Debowa Military (botella Bala) 0,05 Litros 40º (R) 0.05 L.",
+        "alcodisPrice": 6.54,
+        "iganPrice": 7.19,
+        "cheaper": "ALCODIS"
+      },
+      {
+        "canonical14": "00000087296020",
+        "description": "Vodka Flugel 0,02 Litros 10º (R) 0.02 L.",
+        "alcodisPrice": 6.02,
+        "iganPrice": 0.75,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "00000087296020",
+        "description": "Vodka Flugel 0,02 Litros 10º (R) 0.02 L.",
+        "alcodisPrice": 26.01,
+        "iganPrice": 0.75,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "05010677850100",
+        "description": "Vodka Grey Goose 0,70 Litros 40º (R) 0.70 L.",
+        "alcodisPrice": 23.9,
+        "iganPrice": 24.8,
+        "cheaper": "ALCODIS"
+      },
+      {
+        "canonical14": "05901617004649",
+        "description": "Vodka Kalaschnikov Red Army (granada  Y 6 Chupitos) 1,20 Litros 40º (R) + Caja Madera 1.20 L.",
+        "alcodisPrice": 85.65,
+        "iganPrice": 79.94,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "05410316501675",
+        "description": "Vodka Smirnoff Blue 1,00 Litro 50º (R) 1.00 L.",
+        "alcodisPrice": 11.78,
+        "iganPrice": 11.29,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "05410316983730",
+        "description": "Vodka Smirnoff Ice Red 0,70 Litros 4º (R) 0.70 L.",
+        "alcodisPrice": 2.4,
+        "iganPrice": 2.75,
+        "cheaper": "ALCODIS"
+      },
+      {
+        "canonical14": "05410316959476",
+        "description": "Vodka Smirnoff Mango & Passionfruit 1,00 Litro 35º (R) 1.00 L.",
+        "alcodisPrice": 9.92,
+        "iganPrice": 8.86,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "05410316100373",
+        "description": "Vodka Smirnoff Red 1,00 Litro 37,5º (I) 1.00 L.",
+        "alcodisPrice": 9.3,
+        "iganPrice": 8.85,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "05410316100373",
+        "description": "Vodka Smirnoff Red 1,00 Litro 37,5º (R) 1.00 L.",
+        "alcodisPrice": 8.67,
+        "iganPrice": 8.85,
+        "cheaper": "ALCODIS"
+      },
+      {
+        "canonical14": "05410316233446",
+        "description": "Vodka Smirnoff Red Pet 0,20 Litros 37,5º (R) 0.20 L.",
+        "alcodisPrice": 2.85,
+        "iganPrice": 2.65,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "05410316960281",
+        "description": "Vodka Smirnoff Spicy Tamarind 0,70 Litros 30º (R) 0.70 L.",
+        "alcodisPrice": 8.62,
+        "iganPrice": 6.91,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "04750021000805",
+        "description": "Vodka Stolichnaya Elit 1,00 Litro 40º (R) 1.00 L.",
+        "alcodisPrice": 29.16,
+        "iganPrice": 25.34,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "05900343003537",
+        "description": "Vodka Zubrowka 1,00 Litro 40º (R) 1.00 L.",
+        "alcodisPrice": 8.76,
+        "iganPrice": 9.14,
+        "cheaper": "ALCODIS"
+      },
+      {
+        "canonical14": "05010494938531",
+        "description": "Whisky Ardbeg An Oa Islay Single Malt 1,00 Litro 46,6º (R) + Estuche 1.00 L.",
+        "alcodisPrice": 43.36,
+        "iganPrice": 47.97,
+        "cheaper": "ALCODIS"
+      },
+      {
+        "canonical14": "05010494296280",
+        "description": "Whisky Ardbeg Corryvreckan 0,70 Litros 57,1º (R) + Estuche 0.70 L.",
+        "alcodisPrice": 58.56,
+        "iganPrice": 59.33,
+        "cheaper": "ALCODIS"
+      },
+      {
+        "canonical14": "05010494982527",
+        "description": "Whisky Ardbeg Smoketrails Côte-rôtie 1,00 Litro 46º (R) 1.00 L.",
+        "alcodisPrice": 55.33,
+        "iganPrice": 58.41,
+        "cheaper": "ALCODIS"
+      },
+      {
+        "canonical14": "05010494220278",
+        "description": "Whisky Ardbeg Uigeadail 0,70 Litros 54,2º (R) + Estuche 0.70 L.",
+        "alcodisPrice": 55.33,
+        "iganPrice": 53.64,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "05010019638052",
+        "description": "Whisky Ardmore Tradition Peated 1,00 Litro 40º (R) + Estuche 1.00 L.",
+        "alcodisPrice": 26.91,
+        "iganPrice": 24.34,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "05060044480638",
+        "description": "Whisky Arran 10 años 0,70 Litros 46º (R) + Estuche 0.70 L.",
+        "alcodisPrice": 28.14,
+        "iganPrice": 27.79,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "05060044483738",
+        "description": "Whisky Arran Barrel Reserve 0,70 Litros 43º (R) + Estuche 0.70 L.",
+        "alcodisPrice": 23.05,
+        "iganPrice": 23.89,
+        "cheaper": "ALCODIS"
+      },
+      {
+        "canonical14": "05010496005439",
+        "description": "Whisky Auchentoshan 14 años Blood Oak 1,00 Litro 46º (R) + Estuche 1.00 L.",
+        "alcodisPrice": 39.69,
+        "iganPrice": 36.91,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "05010496005378",
+        "description": "Whisky Auchentoshan American Oak 1,00 Litro 40º (R) + Estuche 1.00 L.",
+        "alcodisPrice": 26.36,
+        "iganPrice": 20.04,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "05010496005392",
+        "description": "Whisky Auchentoshan Dark Oak 1,00 Litro 43º (R) + Estuche 1.00 L.",
+        "alcodisPrice": 28.09,
+        "iganPrice": 31.62,
+        "cheaper": "ALCODIS"
+      },
+      {
+        "canonical14": "05010327515892",
+        "description": "Whisky Balvenie 25 años Rare Marriage 0,70 Litros 48º (R) + Estuche 0.70 L.",
+        "alcodisPrice": 559.97,
+        "iganPrice": 598.22,
+        "cheaper": "ALCODIS"
+      },
+      {
+        "canonical14": "05010327525396",
+        "description": "Whisky Balvenie Stories The Creation Of A Classic 0,70 Litros 43º (R) + Estuche 0.70 L.",
+        "alcodisPrice": 42,
+        "iganPrice": 48.79,
+        "cheaper": "ALCODIS"
+      },
+      {
+        "canonical14": "05010496004548",
+        "description": "Whisky Bowmore 15 años Gold & Elegant 1,00 Litro 43º (R) + Estuche 1.00 L.",
+        "alcodisPrice": 37.92,
+        "iganPrice": 42.12,
+        "cheaper": "ALCODIS"
+      },
+      {
+        "canonical14": "05000196002807",
+        "description": "Whisky Buchanan 12 años De Luxe 1,00 Litro 40º (I) + Estuche 1.00 L.",
+        "alcodisPrice": 26.2,
+        "iganPrice": 25.79,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "05055966810069",
+        "description": "Whisky Bushmills Black Bush 0,70 Litros 40º (R) 0.70 L.",
+        "alcodisPrice": 14.14,
+        "iganPrice": 13.19,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "05055966800022",
+        "description": "Whisky Bushmills Original 0,70 Litros 40º (R) 0.70 L.",
+        "alcodisPrice": 10.49,
+        "iganPrice": 9.19,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "05055966801081",
+        "description": "Whisky Bushmills Original 1,00 Litro 40º (R) + Vaso 1.00 L.",
+        "alcodisPrice": 13.45,
+        "iganPrice": 12.64,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "05055966801081",
+        "description": "Whisky Bushmills Original 1,00 Litro 40º (R) 1.00 L.",
+        "alcodisPrice": 13.11,
+        "iganPrice": 12.64,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "05055966820129",
+        "description": "Whisky Bushmills Steamship Bourbon Cask 1,00 Litro 40º (R) + Estuche 1.00 L.",
+        "alcodisPrice": 26.36,
+        "iganPrice": 24.84,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "05000281016283",
+        "description": "Whisky Caol Ila 12 años 0,70 Litros 43º (R) + Estuche 0.70 L.",
+        "alcodisPrice": 33.67,
+        "iganPrice": 32.39,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "05000281019390",
+        "description": "Whisky Caol Ila 12 años 1,00 Litro 43º (R) + Estuche 1.00 L.",
+        "alcodisPrice": 46.77,
+        "iganPrice": 42.07,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "05099357002305",
+        "description": "Whisky Connemara Peated Single Malt 0,70 Litros 40º (R) + Estuche 0.70 L.",
+        "alcodisPrice": 18.4,
+        "iganPrice": 16.99,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "05000281005430",
+        "description": "Whisky Cragganmore 12 años Speyside Single Malt 0,70 Litros 40º (R) + Estuche 0.70 L.",
+        "alcodisPrice": 26.84,
+        "iganPrice": 26.89,
+        "cheaper": "ALCODIS"
+      },
+      {
+        "canonical14": "05010196111010",
+        "description": "Whisky Dalmore 12 años 0,70 Litros 40º (R) + Estuche 0.70 L.",
+        "alcodisPrice": 43.69,
+        "iganPrice": 50.19,
+        "cheaper": "ALCODIS"
+      },
+      {
+        "canonical14": "05013967016316",
+        "description": "Whisky Dalmore The Quintet Five Cask Finishes 0,70 Litros 44,5º (R) + Estuche 0.70 L.",
+        "alcodisPrice": 82.24,
+        "iganPrice": 61.89,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "05010739261981",
+        "description": "Whisky Edradour 10 años 0,70 Litros 40º (R) + Estuche 0.70 L.",
+        "alcodisPrice": 35.33,
+        "iganPrice": 29.59,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "05010314101015",
+        "description": "Whisky Famous Grouse 1,00 Litro 40º (I) 1.00 L.",
+        "alcodisPrice": 10.96,
+        "iganPrice": 11.04,
+        "cheaper": "ALCODIS"
+      },
+      {
+        "canonical14": "00088004144678",
+        "description": "Whisky Fireball 1,00 Litro 33º (R) 1.00 L.",
+        "alcodisPrice": 9.49,
+        "iganPrice": 11.51,
+        "cheaper": "ALCODIS"
+      },
+      {
+        "canonical14": "05060399686761",
+        "description": "Whisky Glendronach 10 años Forgue 1,00 Litro 43º (R) + Estuche 1.00 L.",
+        "alcodisPrice": 34.3,
+        "iganPrice": 35.62,
+        "cheaper": "ALCODIS"
+      },
+      {
+        "canonical14": "05010327000176",
+        "description": "Whisky Glenfiddich 12 años 0,70 Litros 40º (R) + Estuche 0.70 L.",
+        "alcodisPrice": 23.87,
+        "iganPrice": 24.19,
+        "cheaper": "ALCODIS"
+      },
+      {
+        "canonical14": "05010327325125",
+        "description": "Whisky Glenfiddich 15 años Solera 0,70 Litros 40º (R) + Estuche 0.70 L.",
+        "alcodisPrice": 35.95,
+        "iganPrice": 38.79,
+        "cheaper": "ALCODIS"
+      },
+      {
+        "canonical14": "05010327325781",
+        "description": "Whisky Glenfiddich Vat 3 15yo 0,70 Litros 50,2º (R) + Estuche 0.70 L.",
+        "alcodisPrice": 50.04,
+        "iganPrice": 49.87,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "05010494560121",
+        "description": "Whisky Glenmorangie 10 años 1,00 Litro 40º (R) + Estuche 1.00 L.",
+        "alcodisPrice": 32.15,
+        "iganPrice": 30.34,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "05010494955385",
+        "description": "Whisky Glenmorangie 14 años Elementa 1,00 Litro 43º (R) + Estuche 1.00 L.",
+        "alcodisPrice": 41.37,
+        "iganPrice": 46.62,
+        "cheaper": "ALCODIS"
+      },
+      {
+        "canonical14": "00080686934073",
+        "description": "Whisky Hibiki Harmony Master's Select 0,70 Litros 43º (R) + Estuche 0.70 L.",
+        "alcodisPrice": 70.01,
+        "iganPrice": 88.89,
+        "cheaper": "ALCODIS"
+      },
+      {
+        "canonical14": "05010314306397",
+        "description": "Whisky Highland Park Spirit Of The Bear 1,00 Litro 40º (R) + Estuche 1.00 L.",
+        "alcodisPrice": 30,
+        "iganPrice": 27.79,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "05010103800051",
+        "description": "Whisky J.b. 0,20 Litros 40º (R) 0.20 L.",
+        "alcodisPrice": 3.64,
+        "iganPrice": 3.57,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "05010103800457",
+        "description": "Whisky J.b. 1,00 Litro 40º (I) 1.00 L.",
+        "alcodisPrice": 13.01,
+        "iganPrice": 11.94,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "05010103800457",
+        "description": "Whisky J.b. 1,00 Litro 40º (R) 1.00 L.",
+        "alcodisPrice": 11.58,
+        "iganPrice": 11.94,
+        "cheaper": "ALCODIS"
+      },
+      {
+        "canonical14": "05099873045367",
+        "description": "Whisky Jack Daniels 1,00 Litro 40º (R) 1.00 L.",
+        "alcodisPrice": 19.23,
+        "iganPrice": 17.84,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "05099873045367",
+        "description": "Whisky Jack Daniels 1,00 Litro 40º (R) 1.00 L.",
+        "alcodisPrice": 18.37,
+        "iganPrice": 17.84,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "05099873017647",
+        "description": "Whisky Jack Daniels Apple 1,00 Litro 35º (R) 1.00 L.",
+        "alcodisPrice": 17.23,
+        "iganPrice": 18.56,
+        "cheaper": "ALCODIS"
+      },
+      {
+        "canonical14": "05099873023365",
+        "description": "Whisky Jack Daniels Bonded Triple Mash 0,70 Litros 50º (R) 0.70 L.",
+        "alcodisPrice": 24.02,
+        "iganPrice": 19.26,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "05099873046296",
+        "description": "Whisky Jack Daniels Cristal 0,05 Litros 40º (R) 0.05 L.",
+        "alcodisPrice": 1.33,
+        "iganPrice": 1.24,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "05099873006498",
+        "description": "Whisky Jack Daniels Fire 1,00 Litro 35º (R) 1.00 L.",
+        "alcodisPrice": 20.45,
+        "iganPrice": 18.56,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "05099873019887",
+        "description": "Whisky Jack Daniels Fire Pet 0,20 Litros 35º (R) 0.20 L.",
+        "alcodisPrice": 4.26,
+        "iganPrice": 4.67,
+        "cheaper": "ALCODIS"
+      },
+      {
+        "canonical14": "05099873038758",
+        "description": "Whisky Jack Daniels Gentleman 0,70 Litros 40º (R) 0.70 L.",
+        "alcodisPrice": 18.2,
+        "iganPrice": 18.19,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "05099873038772",
+        "description": "Whisky Jack Daniels Gentleman 1,00 Litro 40º (R) 1.00 L.",
+        "alcodisPrice": 21.88,
+        "iganPrice": 21.84,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "05099873019870",
+        "description": "Whisky Jack Daniels Honey 0,20 Litros 35º (R) 0.20 L.",
+        "alcodisPrice": 5.21,
+        "iganPrice": 4.77,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "05099873001370",
+        "description": "Whisky Jack Daniels Honey 0,70 Litros 35º (I) 0.70 L.",
+        "alcodisPrice": 14.87,
+        "iganPrice": 13.85,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "05099873046968",
+        "description": "Whisky Jack Daniels Honey 1,00 Litro 35º (R) 1.00 L.",
+        "alcodisPrice": 17.62,
+        "iganPrice": 18.86,
+        "cheaper": "ALCODIS"
+      },
+      {
+        "canonical14": "05099873026045",
+        "description": "Whisky Jack Daniels Mclaren Limited Edition 2024 0,70 Litros 40º (R) + Estuche 0.70 L.",
+        "alcodisPrice": 17.78,
+        "iganPrice": 18.59,
+        "cheaper": "ALCODIS"
+      },
+      {
+        "canonical14": "05099873080061",
+        "description": "Whisky Jack Daniels Single Barrel 0,05 Litros 45º (R) 0.05 L.",
+        "alcodisPrice": 1.93,
+        "iganPrice": 2.51,
+        "cheaper": "ALCODIS"
+      },
+      {
+        "canonical14": "05099873020784",
+        "description": "Whisky Jack Daniels Tennesee Sweet & Oaky 0,50 Litros 53,5º (R) 0.50 L.",
+        "alcodisPrice": 17.57,
+        "iganPrice": 22.27,
+        "cheaper": "ALCODIS"
+      },
+      {
+        "canonical14": "05099873020982",
+        "description": "Whisky Jack Daniels Tennessee Bold & Spicy 0,50 Litros 53,5º (R) 0.50 L.",
+        "alcodisPrice": 17.88,
+        "iganPrice": 22.27,
+        "cheaper": "ALCODIS"
+      },
+      {
+        "canonical14": "05011007003227",
+        "description": "Whisky Jameson 1,00 Litro 40º (R) 1.00 L.",
+        "alcodisPrice": 16.2,
+        "iganPrice": 16.44,
+        "cheaper": "ALCODIS"
+      },
+      {
+        "canonical14": "05010196092142",
+        "description": "Whisky Jim Beam 1,00 Litro 40º (R) 1.00 L.",
+        "alcodisPrice": 11.09,
+        "iganPrice": 11.89,
+        "cheaper": "ALCODIS"
+      },
+      {
+        "canonical14": "05000267165783",
+        "description": "Whisky Johnnie Walker 18 años Ultimate 0,70 Litros 40º (R) + Estuche 0.70 L.",
+        "alcodisPrice": 50.4,
+        "iganPrice": 52.19,
+        "cheaper": "ALCODIS"
+      },
+      {
+        "canonical14": "05000267165844",
+        "description": "Whisky Johnnie Walker 18 años Ultimate 1,00 Litro 40º (R) + Estuche 1.00 L.",
+        "alcodisPrice": 62.92,
+        "iganPrice": 60.79,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "05000267116426",
+        "description": "Whisky Johnnie Walker Double Black 0,70 Litros 40º (R) 0.70 L.",
+        "alcodisPrice": 20.74,
+        "iganPrice": 21.44,
+        "cheaper": "ALCODIS"
+      },
+      {
+        "canonical14": "05000267117560",
+        "description": "Whisky Johnnie Walker Gold Reserve 0,70 Litros 40º (R) + Estuche 0.70 L.",
+        "alcodisPrice": 24.9,
+        "iganPrice": 27.59,
+        "cheaper": "ALCODIS"
+      },
+      {
+        "canonical14": "05000267013602",
+        "description": "Whisky Johnnie Walker Red 1,00 Litro 40º (R) 1.00 L.",
+        "alcodisPrice": 11.62,
+        "iganPrice": 11.84,
+        "cheaper": "ALCODIS"
+      },
+      {
+        "canonical14": "05010103940610",
+        "description": "Whisky Knockando 12 años 0,70 Litros 43º (R) + Estuche 0.70 L.",
+        "alcodisPrice": 23.64,
+        "iganPrice": 24.49,
+        "cheaper": "ALCODIS"
+      },
+      {
+        "canonical14": "05010019640260",
+        "description": "Whisky Laphroaig 10 años 0,70 Litros 40º (R) + Estuche 0.70 L.",
+        "alcodisPrice": 26.6,
+        "iganPrice": 32.19,
+        "cheaper": "ALCODIS"
+      },
+      {
+        "canonical14": "05010019638144",
+        "description": "Whisky Laphroaig Four Oak 1,00 Litro 40º (R) + Estuche 1.00 L.",
+        "alcodisPrice": 33.77,
+        "iganPrice": 34.14,
+        "cheaper": "ALCODIS"
+      },
+      {
+        "canonical14": "05010019637291",
+        "description": "Whisky Laphroaig Px Cask Triple Matured 1,00 Litro 48º (R) + Estuche 1.00 L.",
+        "alcodisPrice": 52.8,
+        "iganPrice": 52.05,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "05010019637604",
+        "description": "Whisky Laphroaig Select 0,70 Litros 40º (R) + Estuche 0.70 L.",
+        "alcodisPrice": 21.01,
+        "iganPrice": 25.64,
+        "cheaper": "ALCODIS"
+      },
+      {
+        "canonical14": "05010314301712",
+        "description": "Whisky Macallan Rare Cask Red 0,70 Litros 43º (R) + Estuche 0.70 L.",
+        "alcodisPrice": 251.51,
+        "iganPrice": 243.89,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "04904230042242",
+        "description": "Whisky Miyagikyo Single Malt 0,70 Litros 45º (R) + Estuche 0.70 L.",
+        "alcodisPrice": 44.12,
+        "iganPrice": 44.52,
+        "cheaper": "ALCODIS"
+      },
+      {
+        "canonical14": "05010327105215",
+        "description": "Whisky Monkey Shoulder Smokey 0,70 Litros 40º (R) 0.70 L.",
+        "alcodisPrice": 22.62,
+        "iganPrice": 18.64,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "05000281054698",
+        "description": "Whisky Mortlach 16 años 0,70 Litros 43,4º (R) + Estuche 0.70 L.",
+        "alcodisPrice": 54.65,
+        "iganPrice": 51.91,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "05000281004020",
+        "description": "Whisky Old Parr 12 años 1,00 Litro 40º (I) 1.00 L.",
+        "alcodisPrice": 23.9,
+        "iganPrice": 25.74,
+        "cheaper": "ALCODIS"
+      },
+      {
+        "canonical14": "05000281004020",
+        "description": "Whisky Old Parr 12 años 1,00 Litro 40º (R) + Estuche 1.00 L.",
+        "alcodisPrice": 27.06,
+        "iganPrice": 25.74,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "01210000100771",
+        "description": "Whisky Paddy Old Irish 0,70 Litros 40º (R) 0.70 L.",
+        "alcodisPrice": 9.44,
+        "iganPrice": 8.59,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "00811538019576",
+        "description": "Whisky Proper No. Twelve 0,70 Litros 40º (R) 0.70 L.",
+        "alcodisPrice": 14.84,
+        "iganPrice": 15.59,
+        "cheaper": "ALCODIS"
+      },
+      {
+        "canonical14": "05011007008345",
+        "description": "Whisky Redbreast 12yo 0,70 Litros 40º (R) + Estuche 0.70 L.",
+        "alcodisPrice": 38.5,
+        "iganPrice": 34.19,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "05010509881463",
+        "description": "Whisky Speyburn 16 años 1,00 Litro 43º (R) + Estuche 1.00 L.",
+        "alcodisPrice": 35.26,
+        "iganPrice": 31.62,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "05010509881289",
+        "description": "Whisky Speyburn Hopkins Reserve 1,00 Litro 46º (R) + Estuche 1.00 L.",
+        "alcodisPrice": 17.57,
+        "iganPrice": 17.36,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "04901777303553",
+        "description": "Whisky Suntory Toki 0,70 Litros 43º (R) 0.70 L.",
+        "alcodisPrice": 19,
+        "iganPrice": 20.79,
+        "cheaper": "ALCODIS"
+      },
+      {
+        "canonical14": "05000281003641",
+        "description": "Whisky Talisker 10 años 1,00 Litro 45,8º (R) + Estuche 1.00 L.",
+        "alcodisPrice": 39.16,
+        "iganPrice": 31.39,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "05000281033631",
+        "description": "Whisky Talisker Dark Storm 1,00 Litro 45,8º (R) + Estuche 1.00 L.",
+        "alcodisPrice": 40.64,
+        "iganPrice": 38.89,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "05000281071572",
+        "description": "Whisky Talisker Surge 0,70 Litros 45,8º (R) + Estuche 0.70 L.",
+        "alcodisPrice": 47.95,
+        "iganPrice": 37.57,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "04582410703284",
+        "description": "Whisky Tenjaku 0,70 Litros 40º (R) 0.70 L.",
+        "alcodisPrice": 15.73,
+        "iganPrice": 17.48,
+        "cheaper": "ALCODIS"
+      },
+      {
+        "canonical14": "04901903064150",
+        "description": "Whisky Togouchi 15 años Japanese Blended 0,70 Litros 43,8º (R) + Estuche 0.70 L.",
+        "alcodisPrice": 80.33,
+        "iganPrice": 79.94,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "04901903064136",
+        "description": "Whisky Togouchi 9 años Japanese Blended 0,70 Litros 40º (R) + Estuche 0.70 L.",
+        "alcodisPrice": 42.12,
+        "iganPrice": 44.69,
+        "cheaper": "ALCODIS"
+      },
+      {
+        "canonical14": "05011026108033",
+        "description": "Whisky Tullamore Dew 0,70 Litros 40º (R) 0.70 L.",
+        "alcodisPrice": 11.09,
+        "iganPrice": 10.19,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "05011026108019",
+        "description": "Whisky Tullamore Dew 1,00 Litro 40º (R) 1.00 L.",
+        "alcodisPrice": 14.26,
+        "iganPrice": 13.04,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "05000265001335",
+        "description": "Whisky White Horse 1,00 Litro 40º (R) 1.00 L.",
+        "alcodisPrice": 11.65,
+        "iganPrice": 10.79,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "05099873006092",
+        "description": "Whisky Woodford Distillers Reserve 1,00 Litro 43,2º (R) 1.00 L.",
+        "alcodisPrice": 26.45,
+        "iganPrice": 24.04,
+        "cheaper": "IGAN"
+      },
+      {
+        "canonical14": "04901777020313",
+        "description": "Whisky Yamazaki 12yo 0,70 Litros 43º (R) + Estuche 0.70 L.",
+        "alcodisPrice": 125.2,
+        "iganPrice": 147.39,
+        "cheaper": "ALCODIS"
+      }
+    ]
+  }
+}

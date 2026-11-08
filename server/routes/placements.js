@@ -35,6 +35,18 @@ router.post('/placements', auth.requireRole('buyer'), (req, res) => {
   res.json(placements.getPlacement(out.id));
 });
 
+// Auto-purchasing: one draft PO per supplier from the purchase plan.
+// Declared before /placements/:id so "from-plan" is not read as an id.
+// Buyer+ (same as saving a placement). All drafts, none sent automatically.
+router.post('/placements/from-plan', auth.requireRole('buyer'), (req, res) => {
+  const out = placements.generateFromPlan({
+    actor: actor(req),
+    supplierCode: req.body && req.body.supplierCode ? String(req.body.supplierCode) : null,
+  });
+  if (!out.created.length) return res.status(400).json({ error: 'No orderable lines in the purchase plan', blocked: out.blocked });
+  res.json(out);
+});
+
 /* ---------- PFI reconciliation (order placement vs supplier proforma) ---------- */
 
 // List the PFI comparisons recorded against a placement.

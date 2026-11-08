@@ -519,11 +519,11 @@ test('a stale configured model is replaced by the built-in chain without discove
   });
   const out = await ai.chat({ messages: [{ role: 'user', content: 'hi' }] });
   assert.strictEqual(out.reply, 'builtin ok');
-  assert.strictEqual(out.model, 'openai/gpt-4o-mini');
+  assert.strictEqual(out.model, 'mistralai/mistral-small-3.2-24b-instruct');
   // A known-good model answers before the slower catalogue lookup.
-  assert.deepStrictEqual(seen, ['retired:free', 'openai/gpt-4o-mini']);
+  assert.deepStrictEqual(seen, ['retired:free', 'mistralai/mistral-small-3.2-24b-instruct']);
   assert.strictEqual(catalogFetched, false);
-  assert.strictEqual(ai.status().lastGoodModel, 'openai/gpt-4o-mini');
+  assert.strictEqual(ai.status().lastGoodModel, 'mistralai/mistral-small-3.2-24b-instruct');
 });
 
 test('diagnose reports missing configured models and suggests free alternatives', async () => {

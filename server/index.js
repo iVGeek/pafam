@@ -16,6 +16,23 @@ const HOST = process.env.HOST || '0.0.0.0';
 app.set('trust proxy', 1);
 
 app.use(express.json({ limit: '5mb' }));
+
+// CSRF guard for cookie-authenticated writes: SameSite=Lax already blocks most
+// cross-site posts, but reject explicitly cross-origin writes when the
+// browser tells us where the request came from.
+app.use((req, res, next) => {
+  if (!['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method)) return next();
+  const origin = req.headers.origin;
+  if (!origin) return next();
+  try {
+    const o = new URL(origin);
+    if (o.host !== req.headers.host) return res.status(403).json({ error: 'cross-origin request rejected' });
+  } catch (_) {
+    return res.status(403).json({ error: 'cross-origin request rejected' });
+  }
+  next();
+});
+
 app.use(auth.parseCookies);
 app.use(auth.attachUser);
 

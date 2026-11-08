@@ -18,6 +18,15 @@ const purchasePlan = require('./purchasePlan');
 const trends = require('./trends');
 const forecast = require('./forecast');
 const quoteCompare = require('./quoteCompare');
+const reservations = require('./reservations');
+const shipments = require('./shipments');
+const placements = require('./placements');
+const pfiSvc = require('./pfi');
+const fxSvc = require('./fx');
+const recommendSvc = require('./recommend');
+const authSvc = require('./auth');
+const fs = require('fs');
+const { parseList, diffLists } = require('./listdiff');
 const { SYSTEM_PROMPT } = require('./aiKnowledge');
 
 const MAX_STEPS_DEFAULT = 12;
@@ -41,16 +50,16 @@ function apiKey() { return process.env.AI_API_KEY || ''; }
 
 // A working chain the app can fall back on with no configuration at all, so a
 // stale dashboard value (a retired model, an exhausted free tier) cannot leave
-// the assistant dead. Only slugs that are valid on the configured provider are
-// listed — everything here is an OpenRouter slug.
+// the assistant dead. Only tools-capable OpenRouter slugs are listed:
+// openai/gpt-4o-mini is deliberately absent — the provider reports no tool
+// support for it, so it can only ever fail a tools request.
 const BUILTIN_FALLBACKS = {
   openrouter: [
-    'openai/gpt-4o-mini',
     'mistralai/mistral-small-3.2-24b-instruct',
     'google/gemini-2.5-flash',
     'meta-llama/llama-3.3-70b-instruct',
   ],
-  github: ['openai/gpt-4o-mini'],
+  github: [],
 };
 
 function builtinFallbacks() {
@@ -230,7 +239,7 @@ function toolListInventory({ productId, limit } = {}) {
 }
 
 function toolListExceptions({ resolved, supplier, limit } = {}) {
-  const n = Math.min(Math.max(Number(limit) || 50, 1), 300);
+  const n = Math.min(Math.max(Number(limit) || 200, 1), 500);
   const where = ['e.resolved = ?'];
   const params = [resolved ? 1 : 0];
   if (supplier) { where.push('o.supplier_code = ?'); params.push(String(supplier)); }
@@ -679,6 +688,329 @@ function toolDraftTask({ title, detail, dueDate, owner, priority, customerId, de
   };
 }
 
+/* --------------------------- full-system read tools ------------------------ */
+// Everything below closes the gap between "can describe the system" and
+// "can run the whole desk": quotes, placements, shipments, reservations,
+// KPIs, imports, audit, FX, users, PFIs, buying recommendations, the pricing
+// calculators, and list-vs-list comparisons. All read-only; writers are the
+// draft_* tools further down.
+
+function toolListQuotes({ status, customerId, limit } = {}) {
+  const n = Math.min(Math.max(Number(limit) || 50, 1), 300);
+  const where = [];
+  const params = [];
+  if (status) { where.push('q.status = ?'); params.push(String(status)); }
+  if (customerId) { where.push('q.customer_id = ?'); params.push(Number(customerId)); }
+  const rows = db.prepare(
+    `SELECT q.id, q.status, q.quantity, q.unit_price, q.selling_unit_price, q.landed_unit_cost,
+            q.margin_pct, q.contribution_total, q.roi_pct, q.currency, q.validity_date, q.created_at,
+            c.name AS customer, p.display_name AS product
+       FROM quotes q JOIN customers c ON c.id = q.customer_id JOIN products p ON p.id = q.product_id
+      ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY q.id DESC LIMIT ?`
+  ).all(...params, n);
+  return { count: rows.length, quotes: rows };
+}
+
+function toolListPlacements({ limit } = {}) {
+  const n = Math.min(Math.max(Number(limit) || 50, 1), 300);
+  return { count: placements.listPlacements(n).length, placements: placements.listPlacements(n) };
+}
+
+function toolListShipments({ status, direction, limit } = {}) {
+  const n = Math.min(Math.max(Number(limit) || 25, 1), 100);
+  const rows = shipments.list({ status, direction, limit: n });
+  return { drivers: shipments.drivers(), count: rows.length, shipments: rows };
+}
+
+function toolListReservations({ status, limit } = {}) {
+  const n = Math.min(Math.max(Number(limit) || 50, 1), 300);
+  return {
+    reservations: reservations.list({ status: status || 'active', limit: n }),
+    lots: reservations.lotAvailability().slice(0, 25),
+  };
+}
+
+function toolGetKpis({ approvedOnly } = {}) {
+  return analytics.kpis({ approvedOnly: approvedOnly === true });
+}
+
+function toolListUploads({ supplierCode, limit } = {}) {
+  const n = Math.min(Math.max(Number(limit) || 25, 1), 100);
+  const where = [];
+  const params = [];
+  if (supplierCode) { where.push('supplier_code = ?'); params.push(String(supplierCode)); }
+  const rows = db.prepare(
+    `SELECT id, supplier_code, filename, rows_total, rows_imported, rows_blank_barcode,
+            rows_invalid_barcode, is_duplicate, cleaned_rows, uploaded_at
+       FROM uploads ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
+      ORDER BY uploaded_at DESC, id DESC LIMIT ?`
+  ).all(...params, n);
+  return { count: rows.length, uploads: rows };
+}
+
+function toolListAudit({ actor, action, limit } = {}) {
+  const n = Math.min(Math.max(Number(limit) || 50, 1), 300);
+  const where = [];
+  const params = [];
+  if (actor) { where.push('actor = ?'); params.push(String(actor)); }
+  if (action) { where.push('action LIKE ?'); params.push('%' + String(action) + '%'); }
+  const rows = db.prepare(
+    `SELECT id, actor, action, entity, entity_id, detail, created_at
+       FROM audit_log ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
+      ORDER BY id DESC LIMIT ?`
+  ).all(...params, n);
+  return { count: rows.length, entries: rows };
+}
+
+function toolListFx() {
+  return { rates: fxSvc.listRates().slice(0, 50) };
+}
+
+function toolListUsers() {
+  // Never expose hashes: only identity + role.
+  const rows = db.prepare('SELECT id, username, display_name, email, role, active, last_login FROM users ORDER BY username').all();
+  return { count: rows.length, users: rows.map((u) => ({ id: u.id, username: u.username, display_name: u.display_name, role: u.role, active: !!u.active, last_login: u.last_login })) };
+}
+
+function toolListPfi({ placementId } = {}) {
+  if (placementId) {
+    return { placementId: Number(placementId), pfis: pfiSvc.listPfi(Number(placementId)) };
+  }
+  const rows = db.prepare('SELECT * FROM pfi_documents ORDER BY id DESC LIMIT 25').all();
+  return { count: rows.length, pfis: rows };
+}
+
+function toolAutoPurchasePreview({ supplierCode } = {}) {
+  const plan = placements.planForSupplier(supplierCode || null);
+  const suppliers = supplierCode ? [supplierCode] : (plan.suppliers || []);
+  const out = [];
+  for (const code of suppliers) {
+    const p = placements.planForSupplier(code);
+    if (!p.lines.length) { out.push({ supplierCode: code, lines: 0 }); continue; }
+    const orderable = p.lines.filter((l) => l.executable !== false);
+    const total = orderable.reduce((s, l) => s + ((Number(l.unitCost) || 0) * Number(l.suggestedUnits || 0)), 0);
+    out.push({
+      supplierCode: code,
+      lines: orderable.length,
+      skipped: p.lines.length - orderable.length,
+      units: orderable.reduce((s, l) => s + Number(l.suggestedUnits || 0), 0),
+      estTotal: Math.round(total * 10000) / 10000,
+      currency: orderable[0] ? orderable[0].currency : null,
+    });
+  }
+  return {
+    suppliers: out,
+    orderableSuppliers: out.filter((s) => s.lines > 0).length,
+    totalCapital: Math.round(out.reduce((s, x) => s + (x.estTotal || 0), 0) * 10000) / 10000,
+    note: 'Preview only. To actually create the draft POs, the user clicks "⚡ Auto-generate all supplier orders" on the Order Placement screen (or asks for a placement per supplier with draft_placement).',
+  };
+}
+
+function toolGetRecommendations({ actionableOnly, limit } = {}) {
+  const rows = recommendSvc.recommendations({
+    actionableOnly: actionableOnly === true,
+    limit: Math.min(Math.max(Number(limit) || 25, 1), 100),
+  });
+  return {
+    count: rows.length,
+    actionable: rows.filter((r) => r.actionable).length,
+    totalContribution: Math.round(rows.reduce((s, r) => s + (r.contribution || 0), 0) * 100) / 100,
+    totalCapital: Math.round(rows.reduce((s, r) => s + (r.cashRequirement || 0), 0) * 100) / 100,
+    rows: rows.slice(0, 25),
+  };
+}
+
+// The pricing calculator, server-side: landed cost + full deal metrics,
+// exactly as the Deal Calculator screen computes them.
+function toolPriceCalculate(b = {}) {
+  const landed = pricing.landedUnitCost({
+    purchaseUnitPrice: b.purchaseUnitPrice != null ? b.purchaseUnitPrice : b.price,
+    dutyPct: b.dutyPct,
+    freightPerUnit: b.freightPerUnit,
+    insurancePerUnit: b.insurancePerUnit,
+    brokeragePerUnit: b.brokeragePerUnit,
+    handlingPerUnit: b.handlingPerUnit,
+    otherTaxesPerUnit: b.otherTaxesPerUnit,
+  });
+  const metrics = pricing.dealMetrics({
+    quantity: b.quantity,
+    landedUnitCost: landed.total,
+    sellingUnitPrice: b.sellingUnitPrice,
+    discountPct: b.discountPct,
+    rebatePct: b.rebatePct,
+    returnsAllowancePct: b.returnsAllowancePct,
+    customerDeductionPct: b.customerDeductionPct,
+    paymentTermsCostPct: b.paymentTermsCostPct,
+    daysToCash: b.daysToCash,
+    minMarginPct: Number(getSetting('min_margin_pct', '15')),
+    minMarkup: Number(getSetting('min_markup', '0.75')),
+  });
+  return { landed, metrics, baseCurrency: getSetting('base_currency', 'USD') };
+}
+
+function toolDealCompute(b = {}) {
+  // Scenarios: base / conservative / upside / stress for one deal.
+  const base = pricing.computeDeal ? null : null;
+  if (typeof pricing.computeDeal !== 'function') return { error: 'deal engine unavailable' };
+  return { deal: pricing.computeDeal(b) };
+}
+
+// Compare two earlier imports by their cleaned snapshots (no re-upload needed).
+function toolCompareUploads({ aId, bId, limit } = {}) {
+  const a = db.prepare('SELECT id, supplier_code, filename, cleaned_path FROM uploads WHERE id = ?').get(Number(aId));
+  const b = db.prepare('SELECT id, supplier_code, filename, cleaned_path FROM uploads WHERE id = ?').get(Number(bId));
+  if (!a || !b) return { error: 'both aId and bId must be existing upload ids (see list_uploads)' };
+  if (!a.cleaned_path || !b.cleaned_path || !fs.existsSync(a.cleaned_path) || !fs.existsSync(b.cleaned_path)) {
+    return { error: 'one of those uploads has no cleaned snapshot on disk — re-import it first', aId: a.id, bId: b.id };
+  }
+  const pa = parseList(fs.readFileSync(a.cleaned_path));
+  const pb = parseList(fs.readFileSync(b.cleaned_path));
+  const diff = diffLists(pa, pb);
+  const cap = Math.min(Math.max(Number(limit) || 100, 1), 500);
+  const trim = (arr) => arr.slice(0, cap);
+  return {
+    a: { id: a.id, supplier: a.supplier_code, filename: a.filename, rows: pa.rows.length },
+    b: { id: b.id, supplier: b.supplier_code, filename: b.filename, rows: pb.rows.length },
+    summary: diff.summary,
+    added: trim(diff.added),
+    removed: trim(diff.removed),
+    priceChanges: trim(diff.priceChanges),
+    quantityChanges: trim(diff.quantityChanges),
+  };
+}
+
+function toolAiDiagnose() {
+  // Sync snapshot only: diagnose() probes the network and cannot run inside
+  // the sync tool loop. The full live probe lives at GET /api/ai/diagnose.
+  const s = status();
+  return {
+    enabled: s.enabled,
+    provider: s.provider,
+    model: s.model,
+    models: s.models,
+    lastGoodModel: s.lastGoodModel,
+    discoveredModel: s.discoveredModel,
+    hasKey: s.hasKey,
+    note: 'Live provider probe (does the model still exist, is there credit) is at GET /api/ai/diagnose or `npm run check:ai`.',
+  };
+}
+
+/* --------------------------- new draft builders ---------------------------- */
+// Each returns { proposal } with apply.{method,url,body} so the human's click
+// runs the same role-checked route the UI uses today.
+
+function toolDraftReservation({ lotId, quantity, demandId, customerId, notes } = {}) {
+  const lot = lotId ? db.prepare('SELECT * FROM inventory_lots WHERE id = ?').get(Number(lotId)) : null;
+  if (!lot) return { error: 'lotId is required and must exist (see list_reservations lots)' };
+  const qty = Number(quantity);
+  if (!(qty > 0)) return { error: 'quantity is required and must be greater than zero' };
+  const avail = reservations.availableToSell(Number(lotId));
+  const product = db.prepare('SELECT display_name FROM products WHERE id = ?').get(lot.product_id);
+  let customer = null;
+  if (demandId) {
+    customer = db.prepare('SELECT c.name FROM demands d JOIN customers c ON c.id = d.customer_id WHERE d.id = ?').get(Number(demandId));
+  }
+  return {
+    proposal: {
+      type: 'reservation',
+      title: 'Stock reservation',
+      summary: `${qty} x ${product ? product.display_name : 'product #' + lot.product_id} (lot ${lotId})`,
+      fields: [
+        { label: 'Lot', value: lotId + (lot.lot_reference ? ' — ' + lot.lot_reference : '') },
+        { label: 'Product', value: product ? product.display_name : lot.product_id },
+        { label: 'Quantity', value: qty },
+        { label: 'Available to sell', value: avail },
+        { label: 'For demand', value: demandId || '(none)' },
+        { label: 'Customer', value: customer ? customer.name : (customerId || '(none)') },
+        { label: 'Notes', value: notes || '(none)' },
+      ],
+      note: avail != null && qty > avail ? `Warning: only ${avail} available — the system will refuse if the lot goes negative.` : undefined,
+      apply: {
+        label: 'Reserve stock',
+        method: 'POST',
+        url: '/reservations',
+        body: { lotId: Number(lotId), quantity: qty, demandId: demandId ? Number(demandId) : undefined, customerId: customerId ? Number(customerId) : undefined, notes },
+      },
+    },
+  };
+}
+
+function toolDraftShipment({ totalCost, driver, direction, supplierCode, customerId, currency, lines, ref, incoterm, notes } = {}) {
+  if (!(Number(totalCost) > 0)) return { error: 'totalCost is required and must be greater than zero' };
+  const drv = driver || 'value';
+  if (!shipments.validDriver(drv)) return { error: 'driver must be one of ' + Object.keys(shipments.DRIVERS).join(', ') };
+  const input = Array.isArray(lines) ? lines : [];
+  if (!input.length) return { error: 'at least one line with basisValue is required (see list_shipments drivers)' };
+  const totalBasis = input.reduce((s, l) => s + (Number(l.basisValue) || 0), 0);
+  if (!(totalBasis > 0)) return { error: 'basisValue must sum to more than zero across the lines' };
+  return {
+    proposal: {
+      type: 'shipment',
+      title: 'Shipment cost allocation',
+      summary: `${totalCost} ${currency || 'USD'} split by ${drv} across ${input.length} line(s)`,
+      fields: [
+        { label: 'Total cost', value: `${totalCost} ${currency || 'USD'}` },
+        { label: 'Driver', value: shipments.DRIVERS[drv].label },
+        { label: 'Direction', value: direction === 'outbound' ? 'outbound' : 'inbound' },
+        { label: 'Supplier', value: supplierCode || '(none)' },
+        { label: 'Lines', value: input.length },
+        { label: 'Reference', value: ref || '(auto)' },
+        { label: 'Incoterm', value: incoterm || '(none)' },
+        { label: 'Notes', value: notes || '(none)' },
+      ],
+      apply: {
+        label: 'Create shipment',
+        method: 'POST',
+        url: '/shipments',
+        body: {
+          totalCost: Number(totalCost),
+          driver: drv,
+          direction: direction === 'outbound' ? 'outbound' : 'inbound',
+          supplierCode: supplierCode || undefined,
+          customerId: customerId ? Number(customerId) : undefined,
+          currency: currency || 'USD',
+          ref: ref || undefined,
+          incoterm: incoterm || undefined,
+          notes: notes || undefined,
+          lines: input.map((l) => ({
+            productId: l.productId ? Number(l.productId) : undefined,
+            quantity: l.quantity != null ? Number(l.quantity) : undefined,
+            basisValue: Number(l.basisValue),
+          })),
+        },
+      },
+    },
+  };
+}
+
+function toolDraftException({ exceptionId } = {}) {
+  const row = db.prepare(
+    `SELECT e.id, e.type, e.detail, e.created_at, o.supplier_code, o.description
+       FROM exceptions e LEFT JOIN offers o ON o.id = e.offer_id WHERE e.id = ?`
+  ).get(Number(exceptionId));
+  if (!row) return { error: 'exception not found (' + exceptionId + ' — see list_exceptions)' };
+  return {
+    proposal: {
+      type: 'exception',
+      title: 'Resolve exception #' + row.id,
+      summary: row.type + ' — ' + (row.detail || ''),
+      fields: [
+        { label: 'Exception', value: '#' + row.id + ' · ' + row.type },
+        { label: 'Detail', value: row.detail || '(none)' },
+        { label: 'Supplier', value: row.supplier_code || '(none)' },
+        { label: 'Offer', value: row.description || '(none)' },
+        { label: 'Created', value: row.created_at || '(unknown)' },
+      ],
+      apply: {
+        label: 'Mark resolved',
+        method: 'POST',
+        url: '/exceptions/' + row.id + '/resolve',
+        body: {},
+      },
+    },
+  };
+}
+
 /* ------------------------------- tool registry ----------------------------- */
 
 const EXECUTORS = {
@@ -708,6 +1040,25 @@ const EXECUTORS = {
   draft_demand: toolDraftDemand,
   draft_order: toolDraftOrder,
   draft_task: toolDraftTask,
+  list_quotes: toolListQuotes,
+  auto_purchase_preview: toolAutoPurchasePreview,
+  list_placements: toolListPlacements,
+  list_shipments: toolListShipments,
+  list_reservations: toolListReservations,
+  get_kpis: toolGetKpis,
+  list_uploads: toolListUploads,
+  list_audit: toolListAudit,
+  list_fx: toolListFx,
+  list_users: toolListUsers,
+  list_pfi: toolListPfi,
+  get_recommendations: toolGetRecommendations,
+  price_calculate: toolPriceCalculate,
+  deal_compute: toolDealCompute,
+  compare_uploads: toolCompareUploads,
+  ai_diagnose: toolAiDiagnose,
+  draft_reservation: toolDraftReservation,
+  draft_shipment: toolDraftShipment,
+  draft_exception: toolDraftException,
 };
 
 const TOOLS = [
@@ -979,6 +1330,203 @@ const TOOLS = [
         },
         required: ['title'],
       },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'list_quotes',
+      description: 'Saved customer quotes/deals, newest first. Filter by status (draft|sent|accepted|rejected|expired) or customerId. Use with compare_quotes for head-to-head.',
+      parameters: { type: 'object', properties: { status: { type: 'string' }, customerId: { type: 'integer' }, limit: { type: 'integer' } } },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'auto_purchase_preview',
+      description: 'Preview auto-purchasing: for each supplier in the purchase plan, how many orderable lines, boxes/units, estimated total and skipped (non-executable) lines. Read-only; actual draft creation happens via the Order Placement button or draft_placement.',
+      parameters: { type: 'object', properties: { supplierCode: { type: 'string' } } },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'list_placements',
+      description: 'Supplier order placements: every PO we prepared, with supplier, line count and total. Pair with list_pfi to reconcile against proformas.',
+      parameters: { type: 'object', properties: { limit: { type: 'integer' } } },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'list_shipments',
+      description: 'Shipment cost allocations: every shipment, its driver, total and reconciliation state. Also returns the valid allocation drivers (weight|volume|value). Filter by status or direction.',
+      parameters: { type: 'object', properties: { status: { type: 'string' }, direction: { type: 'string', enum: ['inbound', 'outbound'] }, limit: { type: 'integer' } } },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'list_reservations',
+      description: 'Active stock reservations plus per-lot availability (usable / reserved / available to sell). Use to answer "can we sell this?" and to pick a lotId for draft_reservation.',
+      parameters: { type: 'object', properties: { status: { type: 'string' }, limit: { type: 'integer' } } },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'get_kpis',
+      description: 'Performance KPIs: realised revenue, gross profit, margins, working capital, inventory turns, capital utilisation and blocks. Set approvedOnly to count only signed-off deals.',
+      parameters: { type: 'object', properties: { approvedOnly: { type: 'boolean' } } },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'list_uploads',
+      description: 'Import history: every supplier list upload with row counts, barcode quality counters and whether a cleaned snapshot exists. Filter by supplierCode. Use to get ids for compare_uploads.',
+      parameters: { type: 'object', properties: { supplierCode: { type: 'string' }, limit: { type: 'integer' } } },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'list_audit',
+      description: 'Audit log: who did what, newest first. Filter by actor or action substring. Use to answer "who changed that?" questions.',
+      parameters: { type: 'object', properties: { actor: { type: 'string' }, action: { type: 'string' }, limit: { type: 'integer' } } },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'list_fx',
+      description: 'Stored FX rates (quote units per base unit), newest first. Needed before converting any non-base currency figure.',
+      parameters: { type: 'object', properties: {} },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'list_users',
+      description: 'Registered users with role and last login (passwords never exposed). Use with get_settings to reason about who can do what.',
+      parameters: { type: 'object', properties: {} },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'list_pfi',
+      description: 'Proforma invoices reconciled against supplier placements. Pass placementId for one PO, or list the most recent PfIs across all placements.',
+      parameters: { type: 'object', properties: { placementId: { type: 'integer' } } },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'get_recommendations',
+      description: 'Buying recommendations: open customer demand matched to the cheapest executable supplier, priced against policy, with capital and contribution. Set actionableOnly to hide blocked lines.',
+      parameters: { type: 'object', properties: { actionableOnly: { type: 'boolean' }, limit: { type: 'integer' } } },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'price_calculate',
+      description: 'Pricing calculator: landed unit cost (purchase + duty + freight + insurance + brokerage + handling + other taxes) and full deal metrics (margin, markup, contribution, ROI, policy pass). All inputs optional except a price to start from; discounts/rebates/terms are percentages.',
+      parameters: {
+        type: 'object',
+        properties: {
+          purchaseUnitPrice: { type: 'number' },
+          price: { type: 'number', description: 'Alias for purchaseUnitPrice' },
+          dutyPct: { type: 'number' },
+          freightPerUnit: { type: 'number' },
+          insurancePerUnit: { type: 'number' },
+          brokeragePerUnit: { type: 'number' },
+          handlingPerUnit: { type: 'number' },
+          otherTaxesPerUnit: { type: 'number' },
+          quantity: { type: 'number' },
+          sellingUnitPrice: { type: 'number' },
+          discountPct: { type: 'number' },
+          rebatePct: { type: 'number' },
+          returnsAllowancePct: { type: 'number' },
+          customerDeductionPct: { type: 'number' },
+          paymentTermsCostPct: { type: 'number' },
+          daysToCash: { type: 'number' },
+        },
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'deal_compute',
+      description: 'Deal economics scenarios (base, conservative, upside, stress) for one deal. Pass the same fields as the Deal Calculator: quantity, landedUnitCost, sellingUnitPrice and optional timing/cost assumptions.',
+      parameters: { type: 'object', properties: {}, additionalProperties: true },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'compare_uploads',
+      description: 'Diff two earlier imports by their cleaned snapshots: added, removed, price and quantity changes between them. Get ids from list_uploads. No files need to be re-uploaded.',
+      parameters: { type: 'object', properties: { aId: { type: 'integer' }, bId: { type: 'integer' }, limit: { type: 'integer' } }, required: ['aId', 'bId'] },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'ai_diagnose',
+      description: 'AI provider health: is it reachable, do the configured models still exist and support tools, is there credit, and what free alternatives could replace a dead model. If the assistant seems broken, run this first.',
+      parameters: { type: 'object', properties: {} },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'draft_reservation',
+      description: 'Prepare (do not save) a stock reservation holding inventory for a demand. Needs lotId (from list_reservations), quantity, and optionally demandId or customerId. Returns a proposal a buyer applies.',
+      parameters: {
+        type: 'object',
+        properties: {
+          lotId: { type: 'integer' },
+          quantity: { type: 'number' },
+          demandId: { type: 'integer' },
+          customerId: { type: 'integer' },
+          notes: { type: 'string' },
+        },
+        required: ['lotId', 'quantity'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'draft_shipment',
+      description: 'Prepare (do not save) a shipment cost allocation: totalCost split across lines by driver (weight|volume|value). Each line needs basisValue; productId and quantity optional. Returns a proposal an analyst applies.',
+      parameters: {
+        type: 'object',
+        properties: {
+          totalCost: { type: 'number' },
+          driver: { type: 'string', enum: ['weight', 'volume', 'value'] },
+          direction: { type: 'string', enum: ['inbound', 'outbound'] },
+          supplierCode: { type: 'string' },
+          customerId: { type: 'integer' },
+          currency: { type: 'string' },
+          ref: { type: 'string' },
+          incoterm: { type: 'string' },
+          notes: { type: 'string' },
+          lines: { type: 'array', items: { type: 'object', properties: { productId: { type: 'integer' }, quantity: { type: 'number' }, basisValue: { type: 'number' } }, required: ['basisValue'] } },
+        },
+        required: ['totalCost', 'lines'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'draft_exception',
+      description: 'Prepare (do not save) resolving one import exception: shows its type, detail and supplier so the user can confirm. Returns a proposal an analyst applies.',
+      parameters: { type: 'object', properties: { exceptionId: { type: 'integer' } }, required: ['exceptionId'] },
     },
   },
 ];
@@ -1384,6 +1932,9 @@ function offeredDraftTool(assistantText, userText) {
   const DEMAND = /\bdemand\b/;
   const ORDER = /\b(customer order|sales order)\b/;
   const TASK = /\btask\b/;
+  const RESERVE = /\b(reserv\w+|hold stock|lock (?:in )?stock)\b/;
+  const SHIP = /\b(shipment|ship (?:the )?cost|freight allocat\w*)\b/;
+  const EXC = /\b(exception|resolve exception)\b/;
 
   const fromAssistant = [];
   if (PLACE.test(a)) fromAssistant.push('draft_placement');
@@ -1391,10 +1942,16 @@ function offeredDraftTool(assistantText, userText) {
   if (DEMAND.test(a)) fromAssistant.push('draft_demand');
   if (ORDER.test(a)) fromAssistant.push('draft_order');
   if (TASK.test(a)) fromAssistant.push('draft_task');
+  if (RESERVE.test(a)) fromAssistant.push('draft_reservation');
+  if (SHIP.test(a)) fromAssistant.push('draft_shipment');
+  if (EXC.test(a)) fromAssistant.push('draft_exception');
   // An unambiguous offer in the assistant's reply wins.
   if (fromAssistant.length === 1) return fromAssistant[0];
 
   // Otherwise infer from what the user originally asked for.
+  if (RESERVE.test(u)) return 'draft_reservation';
+  if (SHIP.test(u)) return 'draft_shipment';
+  if (EXC.test(u)) return 'draft_exception';
   if (DEMAND.test(u)) return 'draft_demand';
   if (TASK.test(u) || /\bremind\b/.test(u)) return 'draft_task';
   if (PLACE.test(u) || /\b(supplier|source|sourcing|buy|purchase|restock)\b/.test(u)) return 'draft_placement';

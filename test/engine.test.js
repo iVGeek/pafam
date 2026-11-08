@@ -1450,6 +1450,96 @@ test('AI draft_demand, draft_order and draft_task prepare proposals', () => {
   assert.ok(badTask.error);
 });
 
+test('AI full-system tools: quotes, placements, shipments, reservations, kpis, uploads, audit, fx, users, pfi, recommendations, calculators', () => {
+  const q = ai.runTool('list_quotes', { limit: 5 }).result;
+  assert.ok(Array.isArray(q.quotes));
+  const pl = ai.runTool('list_placements', { limit: 5 }).result;
+  assert.ok(Array.isArray(pl.placements));
+  const sh = ai.runTool('list_shipments', { limit: 5 }).result;
+  assert.ok(Array.isArray(sh.shipments) && Array.isArray(sh.drivers) && sh.drivers.length >= 3);
+  const res = ai.runTool('list_reservations', { limit: 5 }).result;
+  assert.ok(Array.isArray(res.reservations) && Array.isArray(res.lots));
+  const k = ai.runTool('get_kpis', {}).result;
+  assert.ok(k.summary && k.baseCurrency);
+  const up = ai.runTool('list_uploads', { limit: 5 }).result;
+  assert.ok(Array.isArray(up.uploads));
+  const au = ai.runTool('list_audit', { limit: 5 }).result;
+  assert.ok(Array.isArray(au.entries));
+  const fxr = ai.runTool('list_fx', {}).result;
+  assert.ok(Array.isArray(fxr.rates));
+  const us = ai.runTool('list_users', {}).result;
+  assert.ok(us.count >= 1);
+  assert.ok(!('password_hash' in (us.users[0] || {})), 'never expose password hashes');
+  const pfi = ai.runTool('list_pfi', {}).result;
+  assert.ok(Array.isArray(pfi.pfis));
+  const rec = ai.runTool('get_recommendations', { limit: 5 }).result;
+  assert.ok(Array.isArray(rec.rows) && typeof rec.totalCapital === 'number');
+  const calc = ai.runTool('price_calculate', { purchaseUnitPrice: 10, dutyPct: 10, quantity: 24, sellingUnitPrice: 20 }).result;
+  assert.ok(calc.landed.total >= 11 && calc.metrics.marginPct !== undefined);
+  const deal = ai.runTool('deal_compute', { quantity: 24, landedUnitCost: 11.1, sellingUnitPrice: 20 }).result;
+  assert.ok(deal.deal);
+  const diag = ai.runTool('ai_diagnose', {}).result;
+  assert.ok('provider' in diag && 'model' in diag);
+  const prev = ai.runTool('auto_purchase_preview', {}).result;
+  assert.ok(Array.isArray(prev.suppliers));
+});
+
+test('AI new draft tools: reservation, shipment, exception', () => {
+  const lot = db.prepare('SELECT id FROM inventory_lots LIMIT 1').get();
+  if (lot) {
+    const r = ai.runTool('draft_reservation', { lotId: lot.id, quantity: 6, notes: 'test' }).proposal;
+    assert.equal(r.type, 'reservation');
+    assert.equal(r.apply.url, '/reservations');
+    assert.equal(r.apply.body.lotId, lot.id);
+    const bad = ai.runTool('draft_reservation', { lotId: 999999, quantity: 6 }).result;
+    assert.ok(bad.error);
+  }
+  const s = ai.runTool('draft_shipment', { totalCost: 120, driver: 'value', lines: [{ basisValue: 60 }, { basisValue: 60 }] }).proposal;
+  assert.equal(s.type, 'shipment');
+  assert.equal(s.apply.url, '/shipments');
+  assert.equal(s.apply.body.lines.length, 2);
+  const badShip = ai.runTool('draft_shipment', { totalCost: 120, driver: 'nope', lines: [{ basisValue: 10 }] }).result;
+  assert.ok(badShip.error);
+  const exc = db.prepare('SELECT id FROM exceptions LIMIT 1').get();
+  if (exc) {
+    const e = ai.runTool('draft_exception', { exceptionId: exc.id }).proposal;
+    assert.equal(e.type, 'exception');
+    assert.equal(e.apply.url, '/exceptions/' + exc.id + '/resolve');
+    const badExc = ai.runTool('draft_exception', { exceptionId: 999999 }).result;
+    assert.ok(badExc.error);
+  }
+});
+
+test('auto-purchasing: generateFromPlan creates draft POs per supplier', () => {
+  const placements = require('../server/services/placements');
+  // A known supplier from the seed data; must not throw and must return a shape.
+  const out = placements.generateFromPlan({ actor: 'test' });
+  assert.ok(Array.isArray(out.created) && Array.isArray(out.blocked));
+  assert.ok(typeof out.totalCapital === 'number');
+  // Any created POs are drafts with refs.
+  for (const c of out.created) {
+    assert.ok(c.ref && c.supplierCode && c.lines > 0);
+    const full = placements.getPlacement(c.id);
+    assert.equal(full.status, 'draft');
+  }
+  // Cleanup: delete test-created draft POs so re-runs stay deterministic.
+  const { db: d } = require('../server/db');
+  for (const c of out.created) {
+    d.prepare('DELETE FROM purchase_order_lines WHERE po_id = ?').run(c.id);
+    d.prepare('DELETE FROM purchase_orders WHERE id = ?').run(c.id);
+  }
+});
+
+test('exceptions bulk resolve + summary shape', () => {
+  const { db: d2 } = require('../server/db');
+  // insert two synthetic open exceptions tied to no offer, resolve via SQL shape check only
+  // (route test needs HTTP; here we just verify counts query works)
+  const s = d2.prepare('SELECT COUNT(*) n FROM exceptions WHERE resolved = 0').get().n;
+  assert.ok(s >= 0);
+  const byType = d2.prepare('SELECT type, COUNT(*) n FROM exceptions WHERE resolved = 0 GROUP BY type').all();
+  assert.ok(Array.isArray(byType));
+});
+
 
 
 

@@ -266,4 +266,67 @@ function placementPdf(id) {
   ).then((buffer) => ({ buffer, filename: `placement-${d.ref || id}.pdf` }));
 }
 
-module.exports = { toFullBoxes, normalizeLine, createPlacement, getPlacement, listPlacements, planForSupplier, placementData, placementWorkbook, placementPdf, computeTotals };
+// Auto-purchasing: turn the whole purchase plan into draft POs in one go.
+// One createPlacement per supplier with lines present; blocked lines are
+// reported, never silently dropped. Still drafts — a human reviews and sends.
+function generateFromPlan(opts = {}) {
+  const plan = planForSupplier(opts.supplierCode || null);
+  const bySupplier = new Map();
+  for (const l of plan.lines) {
+    const code = l.supplierCode || (plan.suppliers && plan.suppliers[0]) || null;
+    // planForSupplier lines carry no supplierCode per line when unfiltered;
+    // use offer lookup path: lines are grouped by their supplier via plan call per supplier.
+    if (!bySupplier.has(code)) bySupplier.set(code, []);
+    bySupplier.get(code).push(l);
+  }
+  // When unfiltered, planForSupplier returns mixed lines without a per-line
+  // supplier field, so re-run per supplier for a clean grouping.
+  const groups = new Map();
+  const suppliers = (opts.supplierCode ? [opts.supplierCode] : plan.suppliers) || [];
+  for (const code of suppliers) {
+    const p = planForSupplier(code);
+    if (p.lines.length) groups.set(code, p.lines);
+  }
+  const created = [];
+  const blocked = [];
+  let totalCapital = 0;
+  for (const [code, lines] of groups) {
+    // Cheap executable lines only; anything non-executable is flagged, not ordered.
+    const orderable = lines.filter((l) => l.executable !== false);
+    const skipped = lines.length - orderable.length;
+    if (!orderable.length) {
+      blocked.push({ supplierCode: code, reason: 'no executable lines', skipped });
+      continue;
+    }
+    const r = createPlacement({
+      supplierCode: code,
+      currency: orderable[0].currency || 'EUR',
+      status: 'draft',
+      notes: 'Auto-generated from purchase plan' + (skipped ? ` (${skipped} line(s) skipped: not executable)` : ''),
+      createdBy: opts.actor || 'user',
+      lines: orderable.map((l) => ({
+        productId: l.productId,
+        offerId: l.offerId,
+        description: l.description,
+        boxes: l.suggestedBoxes != null ? l.suggestedBoxes : 1,
+        unitCost: l.unitCost,
+      })),
+    });
+    if (r.error) {
+      blocked.push({ supplierCode: code, reason: r.error, skipped });
+      continue;
+    }
+    const full = getPlacement(r.id);
+    totalCapital += Number(full.totals.total) || 0;
+    created.push({ id: r.id, ref: r.ref, supplierCode: code, lines: full.totals.lineCount, total: full.totals.total, currency: full.currency, skipped });
+  }
+  return {
+    ok: created.length > 0,
+    created,
+    blocked,
+    totalCapital: round4(totalCapital),
+    lineCount: created.reduce((s, c) => s + c.lines, 0),
+  };
+}
+
+module.exports = { toFullBoxes, normalizeLine, createPlacement, getPlacement, listPlacements, planForSupplier, placementData, placementWorkbook, placementPdf, computeTotals, generateFromPlan };
