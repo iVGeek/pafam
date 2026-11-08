@@ -81,6 +81,56 @@ function skeleton(n) {
   return `<div class="skel" aria-busy="true">${bars}</div>`;
 }
 
+const ICONS = {
+  grid: '<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/>',
+  upload: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m17 8-5-5-5 5"/><path d="M12 3v12"/>',
+  tag: '<path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z"/><circle cx="7.5" cy="7.5" r=".5" fill="currentColor"/>',
+  package: '<path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/>',
+  alert: '<path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/>',
+  inbox: '<path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/>',
+  cart: '<circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/>',
+  percent: '<path d="M19 5 5 19"/><circle cx="6.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/>',
+  file: '<path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/>',
+  clipboard: '<rect width="8" height="4" x="8" y="2" rx="1" ry="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/>',
+  truck: '<path d="M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2"/><path d="M15 18H9"/><path d="M19 18h2a1 1 0 0 0 1-1v-3.65a1 1 0 0 0-.22-.62l-3.48-4.35A1 1 0 0 0 17.52 8H14"/><circle cx="17" cy="18" r="2"/><circle cx="7" cy="18" r="2"/>',
+  award: '<circle cx="12" cy="8" r="6"/><path d="M15.477 12.89 17 22l-5-3-5 3 1.523-9.11"/>',
+  compare: '<circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><path d="m8.59 13.51 6.83 3.98"/><path d="m15.41 6.51-6.82 3.98"/>',
+  calculator: '<rect width="16" height="20" x="4" y="2" rx="2"/><path d="M8 6h8"/><path d="M8 12h.01M12 12h.01M16 12h.01M8 16h.01M12 16h.01M16 16h.01"/>',
+  list: '<path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>',
+  archive: '<rect width="20" height="5" x="2" y="3" rx="1"/><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8"/><path d="M10 12h4"/>',
+  users: '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',
+  bell: '<path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/>',
+  trending: '<path d="m22 7-8.5 8.5-5-5L2 17"/><path d="M16 7h6v6"/>',
+  forecast: '<path d="m22 7-8.5 8.5-5-5L2 17"/><path d="M16 7h6v6"/>',
+  activity: '<path d="M22 12h-4l-3 9L9 3l-3 9H2"/>',
+  download: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/><path d="M12 15V3"/>',
+  sparkles: '<path d="M12 3v3m0 12v3M5.6 5.6l2.2 2.2m8.4 8.4 2.2 2.2M3 12h3m12 0h3M5.6 18.4l2.2-2.2m8.4-8.4 2.2-2.2"/><path d="M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8z"/>',
+  building: '<rect width="16" height="20" x="4" y="2" rx="2" ry="2"/><path d="M9 22v-4h6v4"/><path d="M8 6h.01M16 6h.01M12 6h.01M12 10h.01M12 14h.01M16 10h.01M16 14h.01M8 10h.01M8 14h.01"/>',
+  gear: '<circle cx="12" cy="12" r="3"/><path d="M12 1v4m0 14v4M4.2 4.2l2.8 2.8m10 10 2.8 2.8M1 12h4m14 0h4M4.2 19.8l2.8-2.8m10-10 2.8-2.8"/>',
+  scroll: '<path d="M8 21h12a2 2 0 0 0 2-2v-2H10v2a2 2 0 1 1-4 0V5a2 2 0 1 0-4 0v3h4"/><path d="M19 17V5a2 2 0 0 0-2-2H4"/>',
+  paperclip: '<path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/>',
+  zap: '<path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"/>',
+  x: '<path d="M18 6 6 18M6 6l12 12"/>',
+};
+function icon(name, size) {
+  const path = ICONS[name] || '';
+  return `<span class="ni"><svg width="${size || 18}" height="${size || 18}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${path}</svg></span>`;
+}
+const ROUTE_ICONS = {
+  dashboard: 'grid', imports: 'upload', offers: 'tag', products: 'package', exceptions: 'alert',
+  demands: 'inbox', buying: 'cart', builder: 'percent', quotes: 'file', orders: 'clipboard',
+  placements: 'truck', shipments: 'truck', lowest: 'award', compare: 'compare', pricing: 'calculator',
+  lists: 'list', inventory: 'archive', customers: 'users', captures: 'inbox', alerts: 'bell',
+  trends: 'trending', forecast: 'forecast', performance: 'activity', reports: 'download', 'ai-chat': 'sparkles',
+  suppliers: 'building', settings: 'gear', users: 'users', audit: 'scroll',
+};
+function decorateNav() {
+  $$('#nav a').forEach((a) => {
+    if (a.querySelector('.ni')) return;
+    a.insertAdjacentHTML('afterbegin', icon(ROUTE_ICONS[a.dataset.route] || 'file', 18));
+  });
+}
+
 function badgeList(flags) {
   const map = {
     'estimated-cost-from-rrp': ['warn', 'cost est. from RRP'],
@@ -287,8 +337,8 @@ function installExportBar() {
     <span class="small muted">${num(grid.rows.length)} rows on this screen</span>
     <span class="small muted viewExportBarHint">export honours the current search</span>
     <span class="spacer"></span>
-    <button class="btn sm" data-vx="xlsx" title="Download this screen as Excel">Excel</button>
-    <button class="btn sm" data-vx="pdf" title="Download this screen as PDF">PDF</button>`;
+    <button class="btn sm" data-vx="xlsx" title="Download this screen as Excel">${icon('download', 15)}Excel</button>
+    <button class="btn sm" data-vx="pdf" title="Download this screen as PDF">${icon('download', 15)}PDF</button>`;
   root.insertBefore(bar, root.firstChild);
   $$('.viewExportBar [data-vx]', bar).forEach((b) => b.addEventListener('click', () => exportView(b.dataset.vx)));
 }
@@ -1398,7 +1448,7 @@ routes.placements = async () => {
           <div class="field"><label>Order date</label><input id="plDate" type="date" value="${today}" /></div>
         </div>
         <div class="row" style="margin-top:8px"><button id="plPlan" class="ghost" type="button">Load from purchase plan</button>
-        ${can('buyer') ? '<button id="plAuto" class="ghost" type="button" title="Create one draft PO per supplier in the plan, in one click">⚡ Auto-generate all supplier orders</button>' : ''}</div>
+        ${can('buyer') ? '<button id="plAuto" class="ghost" type="button" title="Create one draft PO per supplier in the plan, in one click">' + icon('zap', 15) + 'Auto-generate all supplier orders</button>' : ''}</div>
         <div class="row" style="gap:10px;margin-top:14px;align-items:flex-end">
           <div class="field" style="flex:2"><label>Add a product</label>
             <div>
@@ -1445,7 +1495,7 @@ routes.placements = async () => {
       if (created) alert(`Draft orders created:\n\n${created}${blocked ? '\n\n' + blocked : ''}\n\nReview them in Saved placements, then export to send.`);
       loadList();
     } catch (err) { toast(err.message, 'err'); }
-    finally { autoBtn.disabled = false; autoBtn.textContent = '⚡ Auto-generate all supplier orders'; }
+    finally { autoBtn.disabled = false; autoBtn.innerHTML = icon('zap', 15) + 'Auto-generate all supplier orders'; }
   });
 
   $('#plPlan').addEventListener('click', async () => {
@@ -2557,7 +2607,7 @@ routes['ai-chat'] = async () => {
   $('#view').innerHTML = `
     <div class="ai-layout">
       <div class="ai-side">
-        <button id="aiNew" class="new">＋ New chat</button>
+        <button id="aiNew" class="new">+ New chat</button>
         <div class="ai-list" id="aiList"></div>
         <div class="small muted" style="padding:8px 2px 0">${s.enabled ? esc(s.model || '') : 'not configured'} · 45 tools · drafts are confirmed by you</div>
         <button id="aiDelete" class="ghost sm" style="margin-top:8px">Delete this chat</button>
@@ -2570,7 +2620,7 @@ routes['ai-chat'] = async () => {
         <div class="ai-body" id="aiBody"></div>
         <div class="chat-attach hidden" id="chatAttachPage"></div>
         <div class="ai-foot">
-          <button id="aiAttachBtn" class="ghost sm" title="Attach files (any type)" style="font-size:17px">📎</button>
+          <button id="aiAttachBtn" class="ghost sm" title="Attach files (any type)" style="font-size:17px"></button>
           <input id="aiFile" type="file" accept="*/*" multiple hidden />
           <textarea id="aiInput" rows="1" placeholder="Message the assistant… (Enter to send, Shift+Enter for new line)" aria-label="Message the assistant"></textarea>
           <button id="aiSend">Send</button>
@@ -2590,6 +2640,7 @@ routes['ai-chat'] = async () => {
   $('#aiInput').addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); if (!chat.streaming) sendChat(); }
   });
+  $('#aiAttachBtn').innerHTML = icon('paperclip', 17);
   setTimeout(() => { const i = $('#aiInput'); if (i) i.focus(); }, 50);
 };
 
@@ -2678,6 +2729,7 @@ const TITLES = {
 };
 
 function updateUserUI() {
+  decorateNav();
   if (!state.user) { $('#userChip').textContent = ''; return; }
   $('#userChip').textContent = `${state.user.display_name || state.user.username} · ${state.user.role}`;
   $('#userChip').title = state.user.username;
@@ -3018,7 +3070,7 @@ function renderAttachments() {
     if (!box) continue;
     if (!pendingFiles.length) { box.classList.add('hidden'); box.innerHTML = ''; continue; }
     box.classList.remove('hidden');
-    box.innerHTML = pendingFiles.map((f, i) => `<span class="chat-file" title="${esc(f.name)}">📎 ${esc(f.name)} <span class="muted">${humanSize(f.size)}</span> <button class="chat-file-x" data-file-rm="${i}" aria-label="Remove attachment">×</button></span>`).join('');
+    box.innerHTML = pendingFiles.map((f, i) => `<span class="chat-file" title="${esc(f.name)}">${icon('paperclip', 12)} ${esc(f.name)} <span class="muted">${humanSize(f.size)}</span> <button class="chat-file-x" data-file-rm="${i}" aria-label="Remove attachment">×</button></span>`).join('');
     box.querySelectorAll('[data-file-rm]').forEach((b) => b.addEventListener('click', () => {
       pendingFiles.splice(Number(b.dataset.fileRm), 1);
       renderAttachments();
@@ -3089,7 +3141,7 @@ function chatBubble(m, idx) {
   if (m.role === 'proposal') return proposalCard(m.proposal, idx);
   if (m.role === 'user') {
     const chips = (m.files && m.files.length)
-      ? `<div class="chat-files">${m.files.map((f) => `<span class="chat-file">📎 ${esc(f.name)}</span>`).join('')}</div>`
+      ? `<div class="chat-files">${m.files.map((f) => `<span class="chat-file">${icon('paperclip', 12)} ${esc(f.name)}</span>`).join('')}</div>`
       : '';
     return `<div class="chat-msg user">${esc(m.content)}${chips}<div class="chat-actions"><button class="ghost sm" data-copy="${idx}" title="Copy this message">Copy</button></div></div>`;
   }
@@ -3390,11 +3442,12 @@ async function initAssistant() {
     <div class="chat-body" id="chatBody"></div>
     <div class="chat-attach hidden" id="chatAttach"></div>
     <div class="chat-foot">
-      <button id="chatAttachBtn" class="ghost sm" title="Attach files (any type)">📎</button>
+      <button id="chatAttachBtn" class="ghost sm" title="Attach files (any type)"></button>
       <input id="chatFile" type="file" accept="*/*" multiple hidden />
-      <textarea id="chatInput" rows="1" placeholder="Ask or instruct… Paste with Ctrl+V, 📎 to attach any file" aria-label="Message the assistant"></textarea>
+      <textarea id="chatInput" rows="1" placeholder="Ask or instruct… Paste with Ctrl+V, or attach any file" aria-label="Message the assistant"></textarea>
       <button id="chatSend">Send</button>
     </div>`;
+  $('#chatAttachBtn').innerHTML = icon('paperclip', 17);
   document.body.appendChild(btn);
   document.body.appendChild(panel);
   btn.addEventListener('click', () => {
@@ -3428,6 +3481,7 @@ async function initAssistant() {
 }
 
 (async function boot() {
+  decorateNav();
   try {
     const me = await GET('/auth/me');
     state.user = me.user;

@@ -3,8 +3,15 @@
    monochrome scheme, but they are never removed: a trader has to see at a
    glance whether a deal meets policy. */
 
+@font-face { font-family: 'Inter'; src: url('/fonts/Inter-var.ttf') format('truetype'); font-weight: 100 900; font-style: normal; font-display: swap; }
+@font-face { font-family: 'Fraunces'; src: url('/fonts/Fraunces-var.ttf') format('truetype'); font-weight: 100 900; font-style: normal; font-display: swap; }
+@font-face { font-family: 'JetBrains Mono'; src: url('/fonts/JetBrainsMono-var.ttf') format('truetype'); font-weight: 100 800; font-style: normal; font-display: swap; }
+
 :root {
   --bg: #000000;
+  --font-ui: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  --font-display: 'Fraunces', Georgia, serif;
+  --font-mono: 'JetBrains Mono', 'Cascadia Code', ui-monospace, Consolas, monospace;
   --panel: #0b0b0d;
   --panel-2: #161619;
   --panel-3: #1f1f24;
@@ -33,7 +40,8 @@ body {
   margin: 0;
   background: var(--bg);
   color: var(--text);
-  font: 15px/1.65 "Segoe UI", system-ui, -apple-system, sans-serif;
+  font: 400 15px/1.65 var(--font-ui);
+  font-feature-settings: 'cv11' 1;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
@@ -50,14 +58,20 @@ a { color: var(--accent); text-decoration: none; }
   position: sticky; top: 0; height: 100vh; overflow-y: auto;
 }
 .brand {
-  font-weight: 700; font-size: 17px; padding: 6px 10px 18px;
-  letter-spacing: .18em; text-transform: uppercase;
+  font-family: var(--font-display); font-weight: 600; font-size: 21px; padding: 6px 10px 18px;
+  letter-spacing: .22em; text-transform: uppercase;
 }
 .nav a {
-  display: block; padding: 10px 14px; border-radius: 8px; color: var(--text-dim);
+  display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-radius: 8px; color: var(--text-dim);
   margin-bottom: 2px; cursor: pointer; user-select: none; font-size: 14px;
   border-left: 2px solid transparent;
 }
+.nav a .ni { display: inline-flex; flex: 0 0 auto; width: 18px; height: 18px; opacity: .75; }
+.nav a .ni svg { width: 18px; height: 18px; }
+.nav a:hover .ni { opacity: 1; }
+.nav a.active .ni { opacity: 1; color: var(--accent); }
+.btn .ni, button .ni { display: inline-flex; vertical-align: -3px; margin-right: 6px; }
+.btn .ni svg, button .ni svg { width: 15px; height: 15px; }
 .nav a:hover { background: var(--panel-2); color: var(--text); }
 .nav a.active {
   background: var(--accent-soft); color: var(--accent);
@@ -67,7 +81,7 @@ a { color: var(--accent); text-decoration: none; }
 
 .main { padding: 24px 28px; min-width: 0; }
 .topbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px; gap: 12px; }
-.topbar h1 { font-size: 22px; margin: 0; letter-spacing: .01em; line-height: 1.25; }
+.topbar h1 { font-family: var(--font-display); font-size: 26px; font-weight: 600; margin: 0; letter-spacing: -.01em; line-height: 1.2; }
 .topbar .sub { color: var(--muted); font-size: 13.5px; }
 .topbar .tb-left { min-width: 0; }
 
@@ -96,7 +110,7 @@ a { color: var(--accent); text-decoration: none; }
   background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius);
   padding: 18px;
 }
-.card .k { color: var(--muted); font-size: 11.5px; text-transform: uppercase; letter-spacing: .08em; font-weight: 600; }
+.card .k { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .08em; font-weight: 600; }
 .card .v { font-size: 26px; font-weight: 700; margin-top: 6px; font-variant-numeric: tabular-nums; line-height: 1.2; }
 .card .s { color: var(--muted); font-size: 12.5px; margin-top: 4px; }
 
@@ -106,7 +120,7 @@ a { color: var(--accent); text-decoration: none; }
 
 table { width: 100%; border-collapse: collapse; font-size: 14px; line-height: 1.5; }
 th, td { text-align: left; padding: 11px 13px; border-bottom: 1px solid var(--border); }
-th { color: var(--muted); font-weight: 700; font-size: 11.5px; text-transform: uppercase; letter-spacing: .06em; }
+th { color: var(--muted); font-weight: 700; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; }
 tr:hover td { background: var(--panel-2); }
 td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 .table-wrap { overflow: auto; max-height: 68vh; }
@@ -196,7 +210,7 @@ svg.spark polyline { fill: none; stroke: var(--accent); stroke-width: 2; stroke-
 .muted { color: var(--muted); }
 .small { font-size: 12.5px; }
 .right { text-align: right; }
-.mono { font-family: "Cascadia Code", ui-monospace, Consolas, monospace; font-size: 12.5px; }
+.mono { font-family: var(--font-mono); font-size: 12.5px; font-feature-settings: 'tnum' 1; }
 .spacer { flex: 1; }
 .nowrap { white-space: nowrap; }
 .pill-price { font-variant-numeric: tabular-nums; font-weight: 700; }
@@ -215,7 +229,7 @@ svg.spark polyline { fill: none; stroke: var(--accent); stroke-width: 2; stroke-
 .progress > i { display: block; height: 100%; background: var(--accent); }
 
 .field { display: flex; flex-direction: column; gap: 4px; }
-.field label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+.field label { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; font-weight: 600; }
 .kpi-inline { display: flex; gap: 24px; flex-wrap: wrap; }
 .kpi-inline .item .k { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
 .kpi-inline .item .v { font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums; }
