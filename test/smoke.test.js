@@ -36,7 +36,7 @@ test('index.html: shell, nav, gated demo creds, fonts preloaded', () => {
 });
 
 test('app.js: chat wiring, icons, finder, stepper all present', () => {
-  const js = pub('app.js');
+  const js = ['ui-helpers.js', 'ui-routes.js', 'app.js'].map(pub).join('\n');
   for (const needle of [
     'chatLauncher', 'chatPanel', 'chatBody', 'chatInput', 'chatSend',
     'decorateNav', 'ROUTE_ICONS', 'icon(',
@@ -44,12 +44,18 @@ test('app.js: chat wiring, icons, finder, stepper all present', () => {
     'renderChatInto', 'aiBody', 'aiList', 'aiInput', 'deleteChat',
     'copyText', "icon('paperclip'",
   ]) {
-    assert.ok(js.includes(needle), 'app.js missing: ' + needle);
+    assert.ok(js.includes(needle), 'UI missing: ' + needle);
+  }
+  // UI split files must each parse as classic scripts in load order.
+  for (const f of ['ui-helpers.js', 'ui-routes.js', 'app.js']) {
+    const src = pub(f);
+    new Function(src); // throws on syntax error
   }
   // The crash we shipped once: attach icon must be written AFTER panel is
   // appended to the document. Guard the ordering statically.
-  const attachIdx = js.indexOf("$('#chatAttachBtn').innerHTML");
-  const appendIdx = js.indexOf('document.body.appendChild(panel)');
+  const app = pub('app.js');
+  const attachIdx = app.indexOf("$('#chatAttachBtn').innerHTML");
+  const appendIdx = app.indexOf('document.body.appendChild(panel)');
   assert.ok(attachIdx > appendIdx, 'attach icon write must come after appendChild(panel)');
   assert.ok(!js.includes("$('#toast')"), 'stale #toast reference (now #toasts)');
 });
