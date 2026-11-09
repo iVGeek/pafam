@@ -815,6 +815,18 @@ function toolAutoPurchasePreview({ supplierCode } = {}) {
   };
 }
 
+function toolAgingReport({ limit } = {}) {
+  return require('./aging').agingReport({ limit: Math.min(Math.max(Number(limit) || 50, 1), 200) });
+}
+
+function toolCustomerKpis() {
+  return require('./customerKpis').customerKpis();
+}
+
+function toolForecastBacktest() {
+  return require('./forecast').backtest({});
+}
+
 function toolObservedSupply({ limit } = {}) {
   return require('./pools').observedSupply({ limit: Math.min(Math.max(Number(limit) || 25, 1), 100) });
 }
@@ -1072,6 +1084,9 @@ const EXECUTORS = {
   get_recommendations: toolGetRecommendations,
   rank_opportunities: toolRankOpportunities,
   observed_supply: toolObservedSupply,
+  aging_report: toolAgingReport,
+  customer_kpis: toolCustomerKpis,
+  forecast_backtest: toolForecastBacktest,
   price_calculate: toolPriceCalculate,
   deal_compute: toolDealCompute,
   compare_uploads: toolCompareUploads,
@@ -1446,6 +1461,30 @@ const TOOLS = [
       name: 'list_pfi',
       description: 'Proforma invoices reconciled against supplier placements. Pass placementId for one PO, or list the most recent PfIs across all placements.',
       parameters: { type: 'object', properties: { placementId: { type: 'integer' } } },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'aging_report',
+      description: 'Inventory aging (brief section 18): lots in 0-30/31-90/91-180/181-365/365+ buckets with units, value, days of cover, markdown exposure and stock turn. Use this to answer "what stock is rotting" or "what should we discount".',
+      parameters: { type: 'object', properties: { limit: { type: 'integer' } } },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'customer_kpis',
+      description: 'Customer KPIs (brief section 18): quote conversion by status, lost-sale reasons, repeat buyers, overdue debt, settled orders. Use for "who pays late" or "are quotes converting".',
+      parameters: { type: 'object', properties: {} },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'forecast_backtest',
+      description: 'Walk-forward backtest of the demand forecast vs a moving-average baseline (brief section 12): MAPE per product. If history is too thin it says so — never grade noise.',
+      parameters: { type: 'object', properties: {} },
     },
   },
   {

@@ -33,6 +33,44 @@ function movingAverageForecast(monthlyQuantities, opts = {}) {
   };
 }
 
+// Backtest (brief section 12): "Backtest against a simple baseline."
+// Walk-forward: for each product with >= MIN_OBS months, forecast each
+// month from the prior months' average and measure the error vs actual.
+// Returns MAPE per product and overall. With < MIN_OBS months it says so,
+// it does not grade noise.
+function backtest(opts = {}) {
+  const baseline = forecastBaseline(opts);
+  const products = (baseline.byProduct || []).filter((p) => p.months >= MIN_OBS);
+  const results = products.map((p) => {
+    const qs = p.observations.map((o) => Number(o.quantity) || 0);
+    let absErr = 0, n = 0, sumA = 0;
+    for (let i = 1; i < qs.length; i++) {
+      const prior = qs.slice(0, i);
+      const pred = prior.reduce((s, q) => s + q, 0) / prior.length;
+      const actual = qs[i];
+      if (actual > 0) { absErr += Math.abs(pred - actual) / actual; sumA += actual; n += 1; }
+    }
+    return {
+      productId: p.productId,
+      productName: p.productName,
+      months: p.months,
+      mape: n ? Math.round((absErr / n) * 1000) / 10 : null,
+      testedMonths: n,
+    };
+  }).filter((r) => r.mape != null).sort((a, b) => a.mape - b.mape);
+  const overall = results.length
+    ? Math.round((results.reduce((s, r) => s + r.mape, 0) / results.length) * 10) / 10
+    : null;
+  const totalProducts = (baseline.byProduct || []).length;
+  return {
+    overallMape: overall,
+    tested: results.length,
+    totalProducts,
+    reason: results.length ? null : `need >= ${MIN_OBS} months of delivered history per product (have ${totalProducts} product(s), none sufficient)`,
+    results: results.slice(0, opts.limit || 25),
+  };
+}
+
 function _getOrders() {
   try {
     const orders = require('./orders');
@@ -128,4 +166,4 @@ function forecastBaseline(opts = {}) {
   };
 }
 
-module.exports = { forecastBaseline, movingAverageForecast, MIN_OBS };
+module.exports = { forecastBaseline, movingAverageForecast, backtest, MIN_OBS };

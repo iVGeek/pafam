@@ -1132,7 +1132,10 @@ function renderPfi(el, r) {
 }
 
 routes.inventory = async () => {
-  const [d, res] = await Promise.all([GET('/inventory'), GET('/reservations')]);
+  const [d, res, ag] = await Promise.all([
+    GET('/inventory'), GET('/reservations'),
+    GET('/aging').catch(() => null),
+  ]);
   const avail = {};
   for (const l of res.lots || []) avail[l.lotId] = l;
   $('#view').innerHTML = `
@@ -1165,6 +1168,12 @@ routes.inventory = async () => {
         <button id="invAdd" style="margin-top:12px">Add lot</button>
       </div>
     </div>
+    ${ag ? `<div class="panel" style="margin-top:16px"><h2>Stock aging <span class="muted small">— brief §18 buckets · markdown exposure ${money(ag.markdownExposure)} (${ag.markdownPct != null ? ag.markdownPct + '%' : '—'}) · turn ${ag.stockTurn != null ? ag.stockTurn + '×' : '—'}</span></h2>
+      <div class="table-wrap"><table><thead><tr><th>Bucket</th><th class="num">Lots</th><th class="num">Units</th><th class="num">Value</th></tr></thead>
+      <tbody>${ag.byBucket.map((b) => `<tr><td>${esc(b.label)}</td><td class="num">${b.lots}</td><td class="num">${num(b.units)}</td><td class="num">${money(b.value)}</td></tr>`).join('')}</tbody></table></div>
+      <div class="table-wrap" style="margin-top:10px"><table><thead><tr><th>Product</th><th>Warehouse</th><th class="num">Age (d)</th><th class="num">Available</th><th class="num">Cover (d)</th><th>Expiry</th></tr></thead>
+      <tbody>${ag.oldest.slice(0, 8).map((l) => `<tr><td class="small">${esc((l.product || '').slice(0, 34))}</td><td>${esc(l.warehouse || '')}</td><td class="num">${l.ageDays} <span class="badge ${l.bucket === '365+' || l.bucket === '181-365' ? 'bad' : 'muted'}">${esc(l.bucket)}</span></td><td class="num">${num(l.available)}</td><td class="num">${l.daysOfCover != null ? l.daysOfCover : '—'}</td><td class="small">${l.expiring ? '<span class="badge bad">expired</span>' : ''}</td></tr>`).join('')}</tbody></table></div>
+    </div>` : ''}
     <div class="panel" style="margin-top:16px"><h2>Reservations</h2>
       <div class="table-wrap"><table><thead><tr><th>Product</th><th>Lot</th><th class="num">Qty</th><th>Customer</th><th>Status</th><th>Created</th><th></th></tr></thead>
       <tbody>${(res.rows || []).map((r) => `<tr><td>${esc((r.display_name || '').slice(0, 32))}</td><td class="mono small">${esc(r.lot_reference || '')}</td><td class="num">${num(r.quantity)}</td><td class="small">${esc(r.customer_name || '—')}</td><td><span class="badge ${r.status === 'active' ? 'info' : 'good'}">${esc(r.status)}</span></td><td class="small muted">${esc(r.created_at || '')}</td><td>${r.status === 'active' && can('buyer') ? `<button class="btn sm" data-release="${r.id}">Release</button>` : ''}</td></tr>`).join('') || '<tr><td colspan="7" class="muted">No reservations yet.</td></tr>'}

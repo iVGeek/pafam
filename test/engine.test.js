@@ -1619,6 +1619,35 @@ test('§15 plaud: meeting convention + parsers', () => {
   assert.ok(out.prices.length >= 1);
 });
 
+test('§18 aging: buckets sum and never invent cover', () => {
+  const aging = require('../server/services/aging');
+  const r = aging.agingReport({});
+  assert.ok(Array.isArray(r.byBucket));
+  assert.equal(r.byBucket.length, 5);
+  assert.ok(typeof r.totalValue === 'number');
+  assert.ok(typeof r.markdownExposure === 'number');
+  for (const lot of r.oldest) {
+    assert.ok(lot.bucket);
+    assert.ok(lot.daysOfCover == null || lot.daysOfCover >= 0);
+  }
+  assert.equal(aging.bucketFor(10), '0-30');
+  assert.equal(aging.bucketFor(400), '365+');
+});
+
+test('§18 customer KPIs: conversion and overdue computed', () => {
+  const k = require('../server/services/customerKpis').customerKpis();
+  assert.ok(k.quotes && typeof k.quotes.byStatus === 'object');
+  assert.ok(Array.isArray(k.repeatPurchases.customers));
+  assert.ok(typeof k.overdueDebt === 'number');
+});
+
+test('§12 backtest: honest on thin history', () => {
+  const bt = require('../server/services/forecast').backtest({});
+  assert.ok(Array.isArray(bt.results));
+  if (!bt.results.length) assert.ok(bt.reason, 'thin history must explain itself');
+  else assert.ok(bt.overallMape != null);
+});
+
 test('exceptions bulk resolve + summary shape', () => {
   const { db: d2 } = require('../server/db');
   // insert two synthetic open exceptions tied to no offer, resolve via SQL shape check only
