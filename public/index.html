@@ -77,6 +77,17 @@
       <div class="field" style="margin-bottom:10px"><label>Username</label><input id="loginUser" autocomplete="username" /></div>
       <div class="field" style="margin-bottom:14px"><label>Password</label><input id="loginPass" type="password" autocomplete="current-password" /></div>
       <button id="loginGo" style="width:100%">Sign in</button>
+      <div class="small muted" style="margin-top:12px;text-align:center">No account? <a id="showSignup" style="cursor:pointer">Create one</a></div>
+      <div id="signupForm" class="hidden" style="margin-top:12px">
+        <div class="field" style="margin-bottom:8px"><label>Username</label><input id="regUser" autocomplete="username" /></div>
+        <div class="field" style="margin-bottom:8px"><label>Full name</label><input id="regName" autocomplete="name" /></div>
+        <div class="field" style="margin-bottom:8px"><label>Email (optional)</label><input id="regEmail" type="email" autocomplete="email" /></div>
+        <div class="field" style="margin-bottom:8px"><label>Password (min 6)</label><input id="regPass" type="password" autocomplete="new-password" /></div>
+        <div class="field" style="margin-bottom:8px"><label>Confirm password</label><input id="regPass2" type="password" autocomplete="new-password" /></div>
+        <button id="regGo" style="width:100%">Request account</button>
+        <div class="small muted" style="margin-top:8px">You start as <b>viewer</b>. An admin approves your account and assigns your role (analyst / buyer / admin) — permissions then apply automatically.</div>
+        <div class="small" style="margin-top:8px;text-align:center"><a id="hideSignup" style="cursor:pointer">Back to sign in</a></div>
+      </div>
       <div id="loginErr" class="small" style="color:var(--danger);margin-top:10px"></div>
       <div class="small muted hidden" style="margin-top:14px" id="demoCreds">Demo (local only): admin/admin123 · buyer/buyer123 · analyst/analyst123 · viewer/viewer123</div>
     </div>

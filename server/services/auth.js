@@ -28,16 +28,34 @@ function verifyPassword(password, stored) {
   return a.length === b.length && crypto.timingSafeEqual(a, b);
 }
 
-function createUser({ username, password, role = 'viewer', displayName, email }) {
+function validateUsername(username) {
+  return /^[a-z0-9_.-]{3,32}$/i.test(String(username || ''));
+}
+
+function createUser({ username, password, role = 'viewer', displayName, email, active = 1 }) {
   if (!username || !password) throw Object.assign(new Error('username and password required'), { status: 400 });
+  if (!validateUsername(username)) throw Object.assign(new Error('username must be 3-32 characters: letters, digits, _ . -'), { status: 400 });
+  if (String(password).length < 6) throw Object.assign(new Error('password must be at least 6 characters'), { status: 400 });
   if (!ROLES.includes(role)) throw Object.assign(new Error('invalid role'), { status: 400 });
   const exists = db.prepare('SELECT id FROM users WHERE username = ?').get(username);
   if (exists) throw Object.assign(new Error('username already exists'), { status: 409 });
   const info = db.prepare(
-    'INSERT INTO users(username, display_name, email, password_hash, role) VALUES (?,?,?,?,?)'
-  ).run(username, displayName || username, email || null, hashPassword(password), role);
-  audit('system', 'create-user', 'user', Number(info.lastInsertRowid), `${username} (${role})`);
+    'INSERT INTO users(username, display_name, email, password_hash, role, active) VALUES (?,?,?,?,?,?)'
+  ).run(username, displayName || username, email || null, hashPassword(password), role, active ? 1 : 0);
+  audit('system', 'create-user', 'user', Number(info.lastInsertRowid), `${username} (${role})${active ? '' : ' pending approval'}`);
   return Number(info.lastInsertRowid);
+}
+
+// Public self-registration: always viewer + pending admin approval.
+// The chosen role is decided by an admin on the Users screen, never here.
+function registerUser({ username, password, displayName, email }) {
+  const id = createUser({ username, password, role: 'viewer', displayName, email, active: 0 });
+  audit('system', 'register-pending', 'user', id, String(username));
+  return id;
+}
+
+function pendingUsers() {
+  return listUsers().filter((u) => !u.active);
 }
 
 function setPassword(userId, password) {
@@ -172,7 +190,8 @@ function ensureBootstrapAdmin() {
 
 module.exports = {
   ROLES, RANK, COOKIE,
-  hashPassword, verifyPassword, createUser, setPassword, listUsers, getById, updateUser,
+  hashPassword, verifyPassword, createUser, registerUser, validateUsername, pendingUsers,
+  setPassword, listUsers, getById, updateUser,
   authenticate, createSession, destroySession, pruneSessions, userFromToken,
   parseCookies, attachUser, requireAuth, requireRole,
   setSessionCookie, clearSessionCookie, ensureBootstrapAdmin,

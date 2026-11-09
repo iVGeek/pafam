@@ -2253,7 +2253,24 @@ routes['ai-chat'] = async () => {
 
 routes.users = async () => {
   const users = await GET('/users');
-  $('#view').innerHTML = `
+  const pending = users.filter((u) => !u.active);
+  const pendingHtml = pending.length ? `
+    <div class="panel" style="margin-bottom:16px">
+      <h2>Pending approvals <span class="badge warn">${pending.length}</span></h2>
+      <div class="muted small" style="margin:6px 0 10px">Public signups. Tick <b>Active</b> + set their <b>role</b> (permissions then apply automatically) and Save.</div>
+      <div class="table-wrap"><table><thead><tr><th>Username</th><th>Name</th><th>Email</th><th>Role</th><th>Active</th><th></th></tr></thead>
+      <tbody>${pending.map((u) => `
+        <tr data-id="${u.id}">
+          <td class="mono">${esc(u.username)}</td>
+          <td><input data-f="display_name" value="${esc(u.display_name || '')}" style="width:130px" /></td>
+          <td class="small">${esc(u.email || '')}</td>
+          <td><select data-f="role">${['viewer', 'analyst', 'buyer', 'admin'].map((r) => `<option ${u.role === r ? 'selected' : ''}>${r}</option>`).join('')}</select></td>
+          <td><input type="checkbox" data-f="active" ${u.active ? 'checked' : ''} /></td>
+          <td><button class="sm" data-save="${u.id}">Approve</button></td>
+        </tr>`).join('')}
+      </tbody></table></div>
+    </div>` : '';
+  $('#view').innerHTML = pendingHtml + `
     <div class="split">
       <div class="panel"><h2>Users</h2>
         <div class="table-wrap"><table><thead><tr><th>Username</th><th>Name</th><th>Role</th><th>Active</th><th>Last login</th><th></th></tr></thead>

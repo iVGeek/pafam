@@ -36,12 +36,42 @@ router.post('/auth/login', (req, res) => {
     return res.status(429).json({ error: 'Too many failed login attempts. Retry in a few minutes.' });
   }
   const user = auth.authenticate(username, password);
-  if (!user) { recordFail(key); return res.status(401).json({ error: 'invalid username or password' }); }
+  if (!user) {
+    recordFail(key);
+    // Distinguish "pending approval" so the user isn't confused.
+    const existing = require('../db').db.prepare('SELECT active FROM users WHERE username = ?').get(username);
+    if (existing && !existing.active) {
+      return res.status(403).json({ error: 'Account is pending admin approval. You will be able to sign in once approved.' });
+    }
+    return res.status(401).json({ error: 'invalid username or password' });
+  }
   FAILS.delete(key);
   auth.pruneSessions();
   const { token, maxAgeMs } = auth.createSession(user.id);
   auth.setSessionCookie(res, token, maxAgeMs);
   res.json({ user });
+});
+
+// Public self-registration -> pending (viewer, inactive) until an admin
+// approves and assigns a role on the Users screen. Rate-limited like login.
+const REG_FAILS = new Map();
+router.post('/auth/register', (req, res) => {
+  const ip = req.ip || req.socket.remoteAddress || 'unknown';
+  const now = Date.now();
+  const arr = (REG_FAILS.get(ip) || []).filter((t) => now - t < LOGIN_WINDOW_MS);
+  if (arr.length >= LOGIN_MAX) {
+    res.setHeader('Retry-After', String(Math.ceil(LOGIN_WINDOW_MS / 1000)));
+    return res.status(429).json({ error: 'Too many registration attempts. Retry in a few minutes.' });
+  }
+  const { username, password, confirmPassword, displayName, email } = req.body || {};
+  if (password !== confirmPassword) { arr.push(now); REG_FAILS.set(ip, arr); return res.status(400).json({ error: 'Passwords do not match' }); }
+  try {
+    const id = auth.registerUser({ username, password, displayName, email });
+    res.json({ ok: true, id, message: 'Account requested. An admin will approve it and assign your role — you can sign in after that.' });
+  } catch (e) {
+    arr.push(now); REG_FAILS.set(ip, arr);
+    res.status(e.status || 400).json({ error: e.message });
+  }
 });
 
 router.post('/auth/logout', (req, res) => {

@@ -129,6 +129,31 @@ $('#loginGo').addEventListener('click', doLogin);
 $('#loginPass').addEventListener('keydown', (e) => { if (e.key === 'Enter') doLogin(); });
 $('#loginUser').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('#loginPass').focus(); });
 
+const showSignup = $('#showSignup');
+if (showSignup) showSignup.addEventListener('click', () => $('#signupForm').classList.remove('hidden'));
+const hideSignup = $('#hideSignup');
+if (hideSignup) hideSignup.addEventListener('click', () => $('#signupForm').classList.add('hidden'));
+const regGo = $('#regGo');
+if (regGo) regGo.addEventListener('click', async () => {
+  const body = {
+    username: $('#regUser').value.trim(),
+    displayName: $('#regName').value.trim(),
+    email: $('#regEmail').value.trim(),
+    password: $('#regPass').value,
+    confirmPassword: $('#regPass2').value,
+  };
+  try {
+    const r = await POST('/auth/register', body);
+    $('#loginErr').textContent = r.message;
+    $('#loginErr').style.color = 'var(--good)';
+    $('#signupForm').classList.add('hidden');
+    toast('Account requested — pending admin approval', 'ok');
+  } catch (e) {
+    $('#loginErr').style.color = '';
+    $('#loginErr').textContent = e.message;
+  }
+});
+
 $('#logoutBtn').addEventListener('click', async () => {
   try { await POST('/auth/logout'); } catch (e) { /* ignore */ }
   state.user = null;
