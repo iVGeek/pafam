@@ -27,6 +27,7 @@ Other scripts:
 | `npm run import` | Headless importer spike / data-quality report (writes `output/`) |
 | `npm run gen:samples` | Regenerate the two demo perfume supplier lists under `samples/` (deterministic) |
 | `npm run gen:templates` | Regenerate the client onboarding Excel templates under `client-templates/` |
+| `npm run check:client -- <dir>` | Validate a returned client data package before importing (`--base`, `--json`) |
 | `npm run check:ai` | Live AI health check (add `-- --write` to store the working model) |
 | `npm run aws:deploy` | Create/update the AWS stack and push secrets to SSM |
 | `npm run aws:migrate` | Copy the local database + uploads to the AWS instance |

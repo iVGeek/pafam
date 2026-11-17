@@ -26,7 +26,7 @@ authoritative onboarding spec.
 | 3b | Prepared price list per supplier (the one you send customers) | `04-prepared-price-list.xlsx` | 🔴 Blocker |
 | 4 | Customer offer: **company copy** + **customer copy** | `05-offer-company-copy.xlsx`, `06-offer-customer-copy.xlsx` | 🟠 High |
 | 5 | Naming format for every document (supplier & customer side) | `07-document-naming.xlsx` | 🟠 High |
-| 6 | Base currency per supplier and per customer (+ FX rates) | columns in `01`/`02` | 🟠 High |
+| 6 | Base currency per supplier and per customer (+ FX rates) | columns in `01`/`02` + `10-fx-rates.xlsx` | 🟠 High |
 | 7 | Process captures: screenshots / screen-video per process | `08-process-capture-checklist.xlsx` | 🟠 High |
 | 8 | VLOOKUP formulas currently in use | `09-vlookup-formulas.xlsx` | 🟠 High |
 | 9 | Excel templates for every file | the whole pack (`00-readme-index.xlsx` is the map) | ✅ **Provided by us** |
@@ -293,7 +293,8 @@ send)**; system-generated names are noted as-is.
   — the currency you quote, invoice and settle in with them.
 
 Because money always converts between those currencies, we also need the
-**FX rate list** (`server/services/fx.js`):
+**FX rate list** in **`10-fx-rates.xlsx`** (sheet `FXRates`;
+`server/services/fx.js`):
 
 | Excel header | Type | Meaning | Example |
 |---|---|---|---|
@@ -389,6 +390,7 @@ exactly what the platform must reproduce.
 | `07-document-naming.xlsx` | Naming patterns + rules + your current names column |
 | `08-process-capture-checklist.xlsx` | P1–P11 capture plan + recording instructions |
 | `09-vlookup-formulas.xlsx` | Formula log (text-safe) + extraction instructions |
+| `10-fx-rates.xlsx` | FX rates for item 6 (`base`, `quote`, `rate`, `rateDate`, `source`, `booked`) |
 
 The system also **generates** standard-format files for you — do not send:
 after every import each supplier list is auto-cleaned into our 49-column
@@ -425,7 +427,7 @@ These were on the earlier checklist; keep them on the plan, lower in the pack.
    prepared-price-lists/            (item 3b: existing + our template)
    offers/                          (item 4: real company + customer copies)
    07-document-naming.xlsx          (item 5: with your current names filled)
-   fx-rates.xlsx                    (item 6)
+   10-fx-rates.xlsx                 (item 6)
    process-captures/                (item 7: P1..Pn media)
    09-vlookup-formulas.xlsx         (item 8)
    ```
@@ -440,17 +442,46 @@ These were on the earlier checklist; keep them on the plan, lower in the pack.
 
 ## Acceptance checks we run on receipt
 
-- Raw files: layout detection passes; barcode validity rate reported per file
-  (below ~90% we stop and discuss item 3a); currency/price-basis confirmed
-  against the `03` log.
-- Masters: referential checks (codes unique; every FX pair needed by item 6
-  exists; customer codes consistent with offer examples).
-- Offers: company vs customer copy diff → the exact masking list for the
-  platform.
-- Named files: each real document you send matches an agreed pattern (item 5).
-- Captures: all P-ids present or explicitly deferred; VLOOKUP log rows have
-  plain-language purposes.
-- Everything re-exportable as Excel **and** PDF from day one (built in).
+**Automated pre-check — run this first.** Point the validator at the returned
+folder; it reads the Excel files only (no database) and prints one line per
+check, sorted into `[OK]`, `[WARN]` and `[BLOCKER]`:
+
+```bash
+npm run check:client -- path/to/returned-package
+# stricter base currency:  --base EUR
+# machine-readable:        --json
+```
+
+Exit code `0` means no blockers, `1` means blockers found, `2` means bad
+arguments. Blockers stop the import; warnings are things we confirm with you
+but do not block on. The validator covers every check below.
+
+- **Templates still containing example rows** (marked `EXAMPLE ROW — replace`)
+  are ignored, and a package that has *only* example rows is a blocker.
+- **Masters:** codes unique, required fields non-empty, ISO-4217 currencies,
+  `priceType`/`priceListFormat` valid, landed-cost fields numeric. Every
+  supplier/customer currency must reach the company base (`--base`, default
+  `USD`) through a direct or inverse pair in `10-fx-rates.xlsx`; a missing pair
+  is a blocker because it would convert at 1.0 silently.
+- **Raw files:** each file named in `03` is present under `raw-price-lists/`
+  and parses through its profile; barcode validity rate is reported per file
+  (below 90% is a blocker — we stop and discuss item 3a); currency and price
+  basis are cross-checked against the `03` log.
+- **Prepared list:** `04` headers present, barcodes pass the GS1 check digit,
+  `supplierCode` exists in `01`, cost/landed/sell are positive numbers, dates
+  parse, `fxRateToSell` is present when cost and sell currencies differ.
+- **Offers:** `05` and `06` parse, line items are complete, subtotals and
+  `TOTAL` reconcile with the lines, the two copies agree on reference,
+  currency, customer and line totals, and the customer copy contains **no**
+  `supplierCode`/`unitCost`/`landedUnitCost`/`marginPct`/`markupPct` data.
+- **Named files:** each real document you send matches an agreed pattern
+  (item 5); blank `yourCurrentNamePattern` values are warned, not blocked.
+- **Captures:** all P1–P11 ids present or explicitly deferred. A deferral can
+  be written in `deferrals.md` / `unavailable.md` at the package root or in
+  `process-captures/` (e.g. "P9 deferred — no credential access yet").
+- **VLOOKUP log:** at least one real formula row (beyond the template examples
+  `F01`/`F02`) with `formulaText` and a plain-language `businessPurpose`.
+- **Everything re-exportable as Excel and PDF from day one** (built in).
 
 ## What NOT to send
 

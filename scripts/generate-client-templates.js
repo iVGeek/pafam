@@ -51,6 +51,7 @@ save('00-readme-index.xlsx', [{
     ['07-document-naming.xlsx', 'Agreed naming format for every supplier- and customer-facing document', 'Both', 'xlsx', 'HIGH'],
     ['08-process-capture-checklist.xlsx', 'Processes to capture with screenshots or screen video (supplier quote to customer quote)', 'Client', 'xlsx + media', 'HIGH'],
     ['09-vlookup-formulas.xlsx', 'Every VLOOKUP/XLOOKUP/INDEX formula currently used in your workbooks, as text', 'Client', 'xlsx', 'HIGH'],
+    ['10-fx-rates.xlsx', 'FX rates: every supplier and customer currency to the company base currency', 'Client', 'xlsx', 'HIGH'],
     [''],
     ['IMPORTANT'],
     ['Raw supplier price lists (03) are sent AS RECEIVED — do not rename or edit them. The log describes them.'],
@@ -178,8 +179,8 @@ save('04-prepared-price-list.xlsx', [
     name: 'PreparedPriceList',
     rows: [
       ['ean', 'brand', 'product', 'concentration', 'sizeMl', 'gender', 'casePack', 'supplierCode', 'supplierListDate', 'costPerUnit', 'costCurrency', 'fxRateToSell', 'landedCost', 'sellPrice', 'sellCurrency', 'markupPct', 'rrp', 'availability', 'validUntil', 'incoterm', 'leadTimeDays', 'notes'],
-      ['3348901392025', 'Dior', 'Sauvage EDP 100ml', 'EDP', 100, 'Men', 6, 'ALCODIS', '2026-10-01', 61.5, 'EUR', 1.08, 63.9, 82.5, 'USD', 29, 105, 'In stock', '2026-10-31', 'EXW', 7, 'EXAMPLE ROW — replace'],
-      ['3348901387032', 'Dior', 'Sauvage EDT 60ml', 'EDT', 60, 'Men', 12, 'IGAN', '2026-09-28', 38.1, 'EUR', 1.08, 39.6, 54.9, 'USD', 38, 78, 'Low stock', '2026-10-28', 'EXW', 7, 'EXAMPLE ROW — replace'],
+      ['3348901392020', 'Dior', 'Sauvage EDP 100ml', 'EDP', 100, 'Men', 6, 'ALCODIS', '2026-10-01', 61.5, 'EUR', 1.08, 63.9, 82.5, 'USD', 29, 105, 'In stock', '2026-10-31', 'EXW', 7, 'EXAMPLE ROW — replace'],
+      ['3348901387033', 'Dior', 'Sauvage EDT 60ml', 'EDT', 60, 'Men', 12, 'IGAN', '2026-09-28', 38.1, 'EUR', 1.08, 39.6, 54.9, 'USD', 38, 78, 'Low stock', '2026-10-28', 'EXW', 7, 'EXAMPLE ROW — replace'],
     ],
     widths: [16, 12, 26, 15, 9, 9, 10, 14, 17, 13, 13, 14, 12, 11, 13, 11, 9, 13, 13, 10, 13, 24],
   },
@@ -198,7 +199,7 @@ save('04-prepared-price-list.xlsx', [
   },
   guide([
     ['Field', 'Required', 'Type', 'Meaning', 'Example'],
-    ['ean', 'YES', 'TEXT', 'Unit barcode. Format cell as Text — leading zeros are significant.', '3348901392025'],
+    ['ean', 'YES', 'TEXT', 'Unit barcode. Format cell as Text — leading zeros are significant.', '3348901392020'],
     ['brand / product / concentration / sizeMl / gender', 'YES', 'TEXT / int', 'Identity of the fragrance as you present it to customers.', 'Dior / Sauvage EDP 100ml / EDP / 100 / Men'],
     ['casePack', 'If sold by case', 'integer', 'Units per case when price relates to a case. Never infer it from a case barcode.', '6'],
     ['supplierCode / supplierListDate', 'YES', 'TEXT / YYYY-MM-DD', 'Which supplier list this line came from and its date (traceability).', 'ALCODIS / 2026-10-01'],
@@ -236,8 +237,8 @@ save('05-offer-company-copy.xlsx', [
       ['Approved by', '(if approval required)', '', 'Price list basis', 'ALCODIS 2026-10-01'],
       [''],
       ['line', 'sku', 'ean', 'brand', 'product', 'concentration', 'sizeMl', 'qty', 'unitPriceSell', 'lineTotal', 'supplierCode', 'unitCost', 'landedUnitCost', 'marginPct', 'markupPct', 'incoterm', 'leadTimeDays', 'notes'],
-      [1, 'ALC-000123', '3348901392025', 'Dior', 'Sauvage EDP 100ml', 'EDP', 100, 240, 82.5, 19800, 'ALCODIS', 61.5, 63.9, 22.6, 29.1, 'EXW', 7, 'EXAMPLE — replace'],
-      [2, 'ALC-000456', '3348901387032', 'Dior', 'Sauvage EDT 60ml', 'EDT', 60, 120, 54.9, 6588, 'IGAN', 38.1, 39.6, 27.9, 38.6, 'EXW', 7, 'EXAMPLE — replace'],
+      [1, 'ALC-000123', '3348901392020', 'Dior', 'Sauvage EDP 100ml', 'EDP', 100, 240, 82.5, 19800, 'ALCODIS', 61.5, 63.9, 22.6, 29.1, 'EXW', 7, 'EXAMPLE — replace'],
+      [2, 'ALC-000456', '3348901387033', 'Dior', 'Sauvage EDT 60ml', 'EDT', 60, 120, 54.9, 6588, 'IGAN', 38.1, 39.6, 27.9, 38.6, 'EXW', 7, 'EXAMPLE — replace'],
       [''],
       ['', '', '', '', '', 'Subtotal', '', '', '', 26388],
       ['', '', '', '', '', 'Freight / other (if charged)', '', '', '', 0],
@@ -404,7 +405,7 @@ save('09-vlookup-formulas.xlsx', [
     name: 'Formulas',
     rows: [
       ['id', 'workbookFile', 'sheetName', 'cellOrColumn', 'formulaText (paste as TEXT)', 'businessPurpose', 'inputColumns (source)', 'outputColumn (result)', 'relatedProcessId', 'exampleInput', 'exampleResult'],
-      ['F01', 'my-price-prep.xlsx', 'Prepared', 'J2 (dragged to J2:Z900)', "=VLOOKUP($A2,'[LISTA OCTUBRE ALCODIS(v.2).xls]Sheet1'!$A:$R,10,FALSE)", 'Looks up the supplier cost for the EAN in column A of my prepared sheet, from the October raw list', 'raw list col A=EAN, col J=price', 'costPerUnit', 'P3', '3348901392025', '61.5'],
+      ['F01', 'my-price-prep.xlsx', 'Prepared', 'J2 (dragged to J2:Z900)', "=VLOOKUP($A2,'[LISTA OCTUBRE ALCODIS(v.2).xls]Sheet1'!$A:$R,10,FALSE)", 'Looks up the supplier cost for the EAN in column A of my prepared sheet, from the October raw list', 'raw list col A=EAN, col J=price', 'costPerUnit', 'P3', '3348901392020', '61.5'],
       ['F02', 'my-price-prep.xlsx', 'FX', 'C2', '=VLOOKUP(B2,FX!$A:$B,2,FALSE)', 'Converts cost currency to USD using my FX sheet', 'FX!A=currency pair, FX!B=rate', 'fxRateToSell', 'P4', 'EURUSD', '1.08'],
       ['F03', '', '', '', '', 'EXAMPLE ROWS ABOVE — replace with your real ones. Add one row per distinct formula.', '', '', '', '', ''],
     ],
@@ -434,6 +435,36 @@ save('09-vlookup-formulas.xlsx', [
     '3. Include formulas from: price preparation, FX conversion, pricing/markup, offer building, stock lookup, any report you keep in Excel.',
     '4. Attach or reference the workbook file names (column workbookFile) and if possible send copies of those workbooks with the delivery package.',
     '5. Together with process videos (08) and the prepared price list (04), these formulas are the specification of your current pricing process.',
+  ]),
+]);
+
+// ------------------------------------------------------- 10 FX rates
+save('10-fx-rates.xlsx', [
+  {
+    name: 'FXRates',
+    rows: [
+      ['base', 'quote', 'rate', 'rateDate', 'source', 'booked'],
+      ['EUR', 'USD', 1.08, '2026-10-19', 'ECB', 1],
+      ['GBP', 'USD', 1.27, '2026-10-19', 'ECB', 1],
+    ],
+    widths: [10, 10, 12, 14, 16, 10],
+  },
+  guide([
+    ['Field', 'Required', 'Type', 'Meaning', 'Example'],
+    ['base', 'YES', 'ISO 4217', 'The currency you are converting FROM (the supplier/customer base currency).', 'EUR'],
+    ['quote', 'YES', 'ISO 4217', 'The currency you are converting TO (normally your company base currency).', 'USD'],
+    ['rate', 'YES', 'number > 0', 'Quote units per 1 base unit: EUR,USD,1.08 means 1 EUR = 1.08 USD.', '1.08'],
+    ['rateDate', 'YES', 'YYYY-MM-DD', 'Date the rate applies from. The newest rate on or before the deal date is used.', '2026-10-19'],
+    ['source', 'Recommended', 'TEXT', 'Where the rate came from, for audit (ECB, bank, manual).', 'ECB'],
+    ['booked', 'Optional', '1 | 0', '1 = confirmed/locked rate, 0 = indicative. Default 0.', '1'],
+  ]),
+  readme('How to fill 10-fx-rates.xlsx', [
+    '1. Add one row per FX rate. The platform derives inverse pairs automatically — never enter both EUR->USD and USD->EUR.',
+    '2. Minimum pairs: every supplier baseCurrency and every customer baseCurrency (files 01 / 02) must reach your company base currency.',
+    '3. Use quote = your company base currency for those minimum pairs. For example, if the company is USD: EUR->USD and GBP->USD.',
+    '4. rateDate is YYYY-MM-DD. Keep history: a new dated row does not overwrite older rates and deals use the rate on their own date.',
+    '5. source is your audit trail (ECB / bank / manual). Tell us the refresh cadence in your reply.',
+    '6. A missing pair silently converts at 1.0 in the platform — that is wrong, so check every currency used in 01 and 02 has a path here.',
   ]),
 ]);
 
