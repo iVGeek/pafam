@@ -103,6 +103,8 @@ connector and no write-back into an ERP or warehouse system.
 10. Supplier costs do not appear on customer exports.
 
 Pilot is accepted when all ten criteria pass on the client's representative real data sample.
+Execution steps, expected values and the evidence/sign-off template are in
+`ACCEPTANCE-RUNBOOK.md`.
 
 ---
 

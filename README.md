@@ -18,6 +18,10 @@ Then open http://localhost:4173
 New to the system? The step-by-step, screenshot-illustrated
 [**User Manual**](05-user-manual.md) walks through every screen.
 
+Signing off the pilot? The [**Acceptance Runbook**](ACCEPTANCE-RUNBOOK.md) turns
+the ten SOW §4 criteria into a step-by-step test with evidence and a PO sign-off
+block.
+
 Other scripts:
 
 | Command | Purpose |
