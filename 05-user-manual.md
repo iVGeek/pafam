@@ -431,7 +431,12 @@ shown, never invented points. **Refresh alerts** re-checks thresholds.
 
 ![Demand Forecast](docs/manual/img/23-forecast.png)
 
-A moving-average baseline that is honest about thin history.
+A moving-average baseline that is honest about thin history: a product needs at
+least 5 months of delivered orders before a forecast is produced. Anything
+below that is listed under **Insufficient history** with the reason and no
+invented quantity. The **Backtest** panel re-forecasts each month from the prior
+months only and shows MAPE for products with enough history; it reports "not
+yet" instead of scoring noise.
 
 ### Performance
 
@@ -449,6 +454,13 @@ customer quotes (`/api/export/quote/<id>.xlsx|.pdf`), supplier placements and
 the cleaned supplier imports. Each screen with a table also has an **Excel /
 PDF** bar that exports exactly what you are looking at (the current search is
 honoured).
+
+**Integrations are file- and contract-based.** The cash-basis **GL journal** and
+**warehouse stock snapshot** reports are the accounting/WMS hand-off; the
+machine-readable contract at `GET /api/integrations` lists every export, the
+inbound capture webhook and the platform's limits. Nothing writes back into an
+ERP or WMS, and there is no scanner/hardware integration — those are out of
+scope (`02-pilot-sow.md`).
 
 ---
 

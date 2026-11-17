@@ -7,6 +7,7 @@ const analytics = require('../services/analytics');
 const template = require('../services/template');
 const placements = require('../services/placements');
 const pdf = require('../services/pdf');
+const forecast = require('../services/forecast');
 const XLSX = require('xlsx');
 
 const XLSX_TYPE = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
@@ -75,6 +76,23 @@ router.get('/integrations', (req, res) => {
       note: 'render any table (e.g. the screen you are looking at) as Excel or PDF',
     },
     formats,
+    // Deliberate limits, stated in the contract so an integrator does not go
+    // looking for a live connector that was never built.
+    limits: {
+      directAccountingConnector: false,
+      directWmsConnector: false,
+      interoperability: 'GL journal export + stock snapshot export + this contract; no live ERP/WMS write-back',
+      largeScaleDataMigration: false,
+      realtimeSupplierFeeds: false,
+      scannerHardware: false,
+      captureIntake: 'text only (Plaud transcripts / converted reMarkable text; no PDF/OCR)',
+      forecast: {
+        method: 'moving average of delivered quantity',
+        minDeliveryMonths: forecast.MIN_OBS,
+        thinHistory: 'forecast is withheld (not extrapolated) until enough delivery months exist; backtest grades MAPE only where history supports it',
+        backtest: `${base}/forecast/backtest`,
+      },
+    },
     webhook: {
       method: 'POST',
       url: `${base}/captures/webhook`,

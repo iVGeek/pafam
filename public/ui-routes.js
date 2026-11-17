@@ -1983,7 +1983,7 @@ routes.reports = async () => {
 };
 
 routes.forecast = async () => {
-  const d = await GET('/forecast');
+  const [d, bt] = await Promise.all([GET('/forecast'), GET('/forecast/backtest')]);
   const rows = d.byProduct || [];
   const ok = rows.filter((r) => r.sufficient);
   const no = rows.filter((r) => !r.sufficient);
@@ -2017,6 +2017,12 @@ routes.forecast = async () => {
             <td><span class="badge ok">${esc(r.confidence)}</span></td>
           </tr>`).join('') || '<tr><td colspan="7" class="muted">No product has enough delivery history yet.</td></tr>'}
         </tbody></table></div>
+    </div>
+    <div class="panel" style="margin-top:16px"><h2>Backtest (walk-forward)</h2>
+      <div class="muted small" style="margin:6px 0 10px">Forecast each month from the prior months only, then compare with what was actually delivered. MAPE is graded only for products with at least ${num(d.minObservations)} delivery months — thin history is reported, never scored.</div>
+      ${bt.overallMape != null
+        ? `<div class="row"><span class="badge ${bt.overallMape <= 25 ? 'ok' : 'warn'}">MAPE ${num(bt.overallMape, 1)}%</span><span class="small muted">${num(bt.tested)} of ${num(bt.totalProducts)} product(s) tested</span></div>`
+        : `<div class="muted small">${esc(bt.reason || 'No product has enough delivered history to backtest yet.')}</div>`}
     </div>
     <div class="panel" style="margin-top:16px"><h2>Insufficient history</h2>
       <div class="table-wrap"><table>

@@ -82,6 +82,10 @@ import validated SKU → confirmed stock → customer demand → landed margin
 - Data migration of more than the agreed representative clean sample.
 - Barcode hardware / scanners, ERP/accounting licences, third-party subscription fees.
 
+Integration in this SOW is file/contract based: the **GL journal** and **stock
+snapshot** exports plus `GET /api/integrations`. There is no live accounting/WMS
+connector and no write-back into an ERP or warehouse system.
+
 ---
 
 ## 4. Acceptance criteria (pilot exit — derived from §20)

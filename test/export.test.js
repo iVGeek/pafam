@@ -28,6 +28,7 @@ const { PDFDocument } = require('pdf-lib');
 
 const pdf = require('../server/services/pdf');
 const reporting = require('../server/services/reporting');
+const forecast = require('../server/services/forecast');
 const placements = require('../server/services/placements');
 const template = require('../server/services/template');
 const db = require('../server/db').db;
@@ -338,4 +339,78 @@ test('http: exports require a session, like every other route', async () => {
     body: JSON.stringify({ title: 'x', columns: ['a'], rows: [['b']] }),
   });
   assert.strictEqual(t.status, 401, 'ad-hoc export requires auth');
+});
+
+test('http: /api/integrations advertises the real surface — GL, stock, webhook — and its limits', async () => {
+  const r = await fetch(`${base}/api/integrations`, { headers: { cookie } });
+  assert.strictEqual(r.status, 200);
+  const j = await r.json();
+
+  const kinds = j.exports.map((e) => e.kind);
+  for (const kind of ['gl', 'stock']) {
+    const e = j.exports.find((x) => x.kind === kind);
+    assert.ok(e, `${kind} export is in the contract`);
+    assert.match(e.url, new RegExp(`/api/export/${kind}\\.xlsx$`));
+    assert.match(e.urlPdf, new RegExp(`/api/export/${kind}\\.pdf$`));
+    // The contract's URLs are the ones the server actually serves.
+    for (const [url, magic] of [[e.url, XLSX_MAGIC], [e.urlPdf, PDF_MAGIC]]) {
+      const d = await fetch(url, { headers: { cookie } });
+      assert.strictEqual(d.status, 200, `${url} status`);
+      const b = Buffer.from(await d.arrayBuffer());
+      assert.ok(b.slice(0, magic.length).equals(magic), `${url} magic`);
+    }
+  }
+
+  // The limits are declared, not implied: nothing pretends a live connector exists.
+  assert.strictEqual(j.limits.directAccountingConnector, false);
+  assert.strictEqual(j.limits.directWmsConnector, false);
+  assert.strictEqual(j.limits.largeScaleDataMigration, false);
+  assert.strictEqual(j.limits.realtimeSupplierFeeds, false);
+  assert.strictEqual(j.limits.scannerHardware, false);
+  assert.match(j.limits.interoperability, /GL journal export/);
+  assert.match(j.limits.interoperability, /stock snapshot export/);
+  assert.match(j.limits.interoperability, /no live ERP\/WMS write-back/);
+  assert.match(j.limits.captureIntake, /text only/i);
+  assert.strictEqual(j.limits.forecast.minDeliveryMonths, forecast.MIN_OBS);
+  assert.match(j.limits.forecast.backtest, /\/api\/forecast\/backtest$/);
+
+  assert.strictEqual(j.webhook.method, 'POST');
+  assert.match(j.webhook.url, /\/api\/captures\/webhook$/);
+  assert.match(j.webhook.note, /Text only/i);
+});
+
+test('http: forecast withholds thin history and the backtest never grades noise', async () => {
+  const [f, b] = await Promise.all([
+    fetch(`${base}/api/forecast`, { headers: { cookie } }),
+    fetch(`${base}/api/forecast/backtest`, { headers: { cookie } }),
+  ]);
+  assert.strictEqual(f.status, 200);
+  assert.strictEqual(b.status, 200);
+  const fc = await f.json();
+  const bt = await b.json();
+
+  assert.strictEqual(fc.minObservations, forecast.MIN_OBS);
+  for (const p of fc.byProduct || []) {
+    if (p.months < fc.minObservations) {
+      assert.strictEqual(p.sufficient, false, `${p.productName} withholds a thin-history forecast`);
+      assert.strictEqual(p.forecastQty30d, 0, `${p.productName} invents no quantity`);
+      assert.match(p.reason, /need >=/);
+    } else {
+      assert.strictEqual(p.sufficient, true);
+      assert.ok(!p.reason, `${p.productName} explains itself only when withheld`);
+    }
+  }
+
+  assert.ok(bt.tested <= bt.totalProducts);
+  assert.strictEqual(bt.totalProducts, (fc.byProduct || []).length);
+  if (bt.overallMape == null) {
+    assert.strictEqual(bt.tested, 0);
+    assert.strictEqual(bt.results.length, 0);
+    assert.match(bt.reason, /need >=/);
+  } else {
+    assert.ok(bt.tested > 0);
+    for (const row of bt.results) {
+      assert.ok(row.mape != null && row.mape >= 0, 'MAPE is a measured number, not a placeholder');
+    }
+  }
 });

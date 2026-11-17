@@ -314,6 +314,27 @@ configured**. See the [User Manual](05-user-manual.md) §§24–25.
 - **Access control**: session login with roles (`viewer < analyst < buyer <
   admin`); sensitive write endpoints are rank-guarded.
 
+## Scope boundaries
+
+These are deliberate limits, not missing screens:
+
+- **No direct accounting or WMS connectors.** Interoperability is file- and
+  contract-based: the cash-basis **GL journal** and **stock snapshot** exports
+  (Excel or PDF) plus the machine-readable `GET /api/integrations` contract.
+  Nothing writes back into an ERP/WMS, and there is no QuickBooks, Xero, SAP or
+  warehouse API client.
+- **No large-scale data migration, bespoke real-time supplier feeds, or
+  barcode/scanner hardware integration.** The pilot starts from a representative
+  clean sample (`02-pilot-sow.md`); supplier data arrives as Excel/CSV.
+- **Forecast output is honest but thin.** It is a moving average of delivered
+  quantity, withheld until enough delivery months exist; the walk-forward
+  backtest (`GET /api/forecast/backtest`, also shown on the Forecast page) grades
+  MAPE only where history supports it. Expect it to be useful after several
+  months of real deliveries, not on day one.
+- **Capture intake is text only** — Plaud transcripts and reMarkable notes
+  converted to text; PDFs/images are rejected, no OCR
+  (`06-plaud-zapier-setup.md`).
+
 ## Sign in
 
 After `npm run seed` (or a first hosted boot) the demo accounts are:
