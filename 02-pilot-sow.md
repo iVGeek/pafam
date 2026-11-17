@@ -74,7 +74,7 @@ import validated SKU → confirmed stock → customer demand → landed margin
 ## 3. Out of scope (this SOW)
 
 - Phase 3: market trend charts (§12), alerts engine (§13), Plaud ingestion (§15),
-  reMarkable ingestion (§15), note extraction & follow-up tasks.
+  reMarkable text intake (§15; manual conversion, no OCR), note extraction & follow-up tasks.
 - Phase 4: demand forecasts, purchasing optimisation, accounting/warehouse integrations (§17).
 - Supplier-ranking KPI suite and other §18 analytics beyond the buying recommendation.
 - AI/LLM note extraction of any kind.

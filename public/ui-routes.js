@@ -1512,7 +1512,7 @@ routes.captures = async () => {
   const webhookCard = can('admin') ? `
     <div class="panel" style="margin-top:16px">
       <h2>Device webhook</h2>
-      <div class="small muted">Point Plaud / reMarkable / Zapier at this endpoint to auto-ingest notes.</div>
+      <div class="small muted">Point Plaud / Zapier at this endpoint to ingest notes. It accepts plain text only — no PDFs, images or attachments (there is no OCR). For reMarkable, convert the handwriting to text in the reMarkable app first.</div>
       <div class="field" style="margin-top:8px"><label>URL</label><input readonly value="${esc(location.origin)}/api/captures/webhook" /></div>
       <div class="field" style="margin-top:8px"><label>Header x-capture-secret</label><input readonly value="${esc(state.settings.capture_secret || '')}" /></div>
     </div>` : '';
@@ -1587,11 +1587,11 @@ routes.captures = async () => {
           <button id="capAdd">Capture</button>
         </div>
         <div class="panel" style="margin-top:12px">
-          <h2>Import Plaud file</h2>
-          <div class="muted small" style="margin:6px 0 10px">Transcript/summary export (.txt, .srt, .vtt, .json). Name the file CUSTOMER-YYYYMMDD-STAFF. The meeting convention is validated; an unconfirmed customer is flagged, never silently attached.</div>
+          <h2>Import transcript file</h2>
+          <div class="muted small" style="margin:6px 0 10px">Plaud transcript/summary export (.txt, .md, .srt, .vtt, .json). Name the file CUSTOMER-YYYYMMDD-STAFF. The meeting convention is validated; an unconfirmed customer is flagged, never silently attached. <b>Text only — PDFs and page images are rejected.</b> reMarkable: use Convert to text (or select and copy) and paste it into Add a note, or upload the saved .txt.</div>
           <input type="file" id="plaudFile" accept=".txt,.srt,.vtt,.json,.md" />
           <button id="plaudGo" class="ghost" style="margin-top:8px">Import as capture</button>
-          <div class="small muted" style="margin-top:8px">Zapier/IFTTT? Use the device webhook (below) — POST text + x-capture-secret.</div>
+          <div class="small muted" style="margin-top:8px">Zapier/IFTTT? Use the device webhook (below) — POST plain text + x-capture-secret.</div>
         </div>` : '<div class="panel muted">View-only. Analyst role required to add notes.</div>'}
         ${webhookCard}
       </div>

@@ -397,7 +397,7 @@ Match live demand to the cheapest **executable** supplier.
 
 ## 20. Intelligence
 
-### Capture inbox (Plaud / reMarkable notes)
+### Capture inbox (Plaud transcripts / reMarkable text notes)
 
 ![Capture Inbox](docs/manual/img/20-captures.png)
 
@@ -405,6 +405,11 @@ Match live demand to the cheapest **executable** supplier.
 2. Press **Capture** to log a note, or ingest from your recorder.
 3. Turn a note into work with **Promote to demand**, park it with **Ignore**, or
    **Delete** it.
+
+Intake is **text only**. Plaud transcript files import directly; a reMarkable
+note must be converted to text in the reMarkable app first (Convert to text, or
+select-and-copy) and then pasted into **Add a note**. PDFs and page images are
+rejected — there is no OCR.
 
 ![Log a capture](docs/manual/img/20b-captures-add.png)
 

@@ -411,7 +411,7 @@ These were on the earlier checklist; keep them on the plan, lower in the pack.
 | A2 | **Business settings** | 26 keys with defaults — margin floor, capital limit, landed-cost defaults, cash-flow days, alert thresholds, `require_offer_approval`, session length, `capture_secret` (must be replaced). Full table with "Your value" column available on request / in Admin → Settings (`server/db.js:611-639`) |
 | A3 | **PFI samples** | One real proforma per supplier for order reconciliation; header auto-detect accepts `ean/upc/gtin`, `descrip/nombre`, `precio/pvp`, `importe/total`, `cantidad/qty` (`server/services/pfi.js:16-50`) |
 | A4 | **Opening records** | Opening stock lots (`inventory_lots`), open customer demands (`demands`), historical deals/quotes/orders (≥3 months for forecast) — field lists as previously documented (`db.js:154-219`) |
-| A5 | **Capture webhook** | If you use Plaud/reMarkable: choose `capture_secret` (A2) and configure `POST /api/captures/webhook` with `X-Capture-Secret` (`server/routes/captures.js:24-34`) |
+| A5 | **Capture webhook** | If you use Plaud/reMarkable: choose `capture_secret` (A2) and configure `POST /api/captures/webhook` with `X-Capture-Secret`. **Text only — no PDF/OCR**; reMarkable notes must be converted to text in the app first (`server/routes/captures.js`, `src/lib/captureText.js`) |
 | A6 | **AI assistant credentials** | `AI_BASE_URL` / `AI_API_KEY` / `AI_MODEL` + written OK that product names, prices and counterparty names go to that provider |
 
 ---

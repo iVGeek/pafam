@@ -6,6 +6,9 @@ const multer = require('multer');
 const { db, getSetting, audit } = require('../db');
 const auth = require('../services/auth');
 const { parseNote } = require('../../src/lib/notes');
+const {
+  plaudText, uploadTextProblem, contentTextProblem, webhookTextProblem,
+} = require('../../src/lib/captureText');
 const tasks = require('../services/tasks');
 const memUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
 
@@ -21,31 +24,8 @@ function meetingCheck(title) {
 }
 
 // Plaud exports are transcript + summary; SRT/VTT arrive as plain text.
-// Extract readable sentences (strip cue/timing lines).
-function plaudText(buffer, filename) {
-  const raw = buffer.toString('utf8');
-  const name = String(filename || '').toLowerCase();
-  if (name.endsWith('.json')) {
-    try {
-      const j = JSON.parse(raw);
-      const parts = [];
-      const collect = (v) => {
-        if (typeof v === 'string') parts.push(v);
-        else if (Array.isArray(v)) v.forEach(collect);
-        else if (v && typeof v === 'object') Object.values(v).forEach(collect);
-      };
-      collect(j);
-      const text = parts.filter((s) => s.length > 2).join('\n');
-      return text.slice(0, 200000) || raw.slice(0, 200000);
-    } catch (_) { return raw.slice(0, 200000); }
-  }
-  if (name.endsWith('.srt') || name.endsWith('.vtt')) {
-    return raw.split('\n')
-      .filter((l) => l.trim() && !/^\d+$/.test(l.trim()) && !/-->/.test(l) && !l.startsWith('WEBVTT'))
-      .join('\n').slice(0, 200000);
-  }
-  return raw.slice(0, 200000);
-}
+// Extraction lives in src/lib/captureText.js so the text-only rules can be
+// unit-tested without a database or HTTP server.
 
 function insertCapture({ source, title, text, createdBy }) {
   const parsed = parseNote(text);
@@ -68,6 +48,8 @@ router.post('/captures/webhook', (req, res) => {
   const b = req.body || {};
   const text = b.text || b.transcript || b.content || b.note || '';
   if (!text) return res.status(400).json({ error: 'no text/transcript provided' });
+  const rejected = webhookTextProblem(text);
+  if (rejected) return res.status(rejected.status).json({ error: rejected.error });
   const { id, taskId } = insertCapture({ source: b.source || 'webhook', title: b.title, text, createdBy: 'webhook' });
   audit('webhook', 'capture-ingest', 'capture', id, b.source || 'webhook');
   res.json({ ok: true, id, taskId });
@@ -90,10 +72,14 @@ router.get('/captures', auth.requireAuth, (req, res) => {
 // unconfirmed customer must not silently attach (flagged in the reply).
 router.post('/captures/import-plaud', auth.requireRole('analyst'), memUpload.single('file'), (req, res, next) => {
   try {
-    if (!req.file) return res.status(400).json({ error: 'Provide a transcript/summary file (field "file"): .txt, .srt, .vtt or .json' });
+    if (!req.file) return res.status(400).json({ error: 'Provide a transcript/summary file (field "file"): .txt, .md, .srt, .vtt or .json' });
+    const rejected = uploadTextProblem(req.file.buffer, req.file.originalname);
+    if (rejected) return res.status(rejected.status).json({ error: rejected.error });
     const title = (req.body && req.body.title) || req.file.originalname.replace(/\.[^.]+$/, '');
     const text = plaudText(req.file.buffer, req.file.originalname);
     if (!text.trim()) return res.status(400).json({ error: 'No readable text in that file — export the transcript (not just audio)' });
+    const junk = contentTextProblem(text);
+    if (junk) return res.status(junk.status).json({ error: junk.error });
     const check = meetingCheck(title);
     const products = parseNote(text);
     const { id, taskId } = insertCapture({ source: 'plaud-import', title, text, createdBy: req.user.username });

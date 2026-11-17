@@ -297,7 +297,7 @@ configured**. See the [User Manual](05-user-manual.md) §§24–25.
   and a **stock snapshot** export for a WMS/stocktake, and a machine-readable
   `/api/integrations` contract covering every export and the inbound **capture
   webhook**. Honest endpoints, no pretend connectors.
-- **Capture notes** (Plaud / reMarkable / manual / webhook) and turn them into
+- **Capture notes** (Plaud transcripts / reMarkable text / manual / webhook) and turn them into
   demand signals via a heuristic parser (`src/lib/notes.js`) — quantity, price,
   barcode, customer and product hints for a human to confirm. A captured note
   that looks like a lead automatically opens a **follow-up task** with a due
@@ -369,6 +369,7 @@ src/
   lib/pack.js           pack-size parser ("4*6", "6 Pack", ...)
   lib/template.js       standard template field groups
   lib/notes.js          Plaud/reMarkable note parser (intents, qty, price, barcode)
+  lib/captureText.js    text-only intake guard (no PDF/OCR; actionable rejects)
   importers/            vendor profiles + generic extractor
 public/
   index.html app.js styles.css   dependency-free SPA

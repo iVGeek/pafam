@@ -39,7 +39,7 @@ Sprint length: **2 weeks**. Efficiency assumption: 60–65% of dev time is focus
 | 0 Discovery | §4, §5–6 (spec), §7–10 (spec), §20 | Excel template, data dictionary, DB model, calculation spec, acceptance targets |
 | 1 Data foundation | §3, §5, §6 | Import/export, mapping, barcode validation, product master, alias table, exceptions, dated offers, upload audit log |
 | 2 Trading engine | §7, §8, §9, §10, §11, §14, §16, §19 | Landed cost, FX, tiers, profitability, scenarios, own inventory & reservations, customer demand, quote exports, RBAC/audit |
-| 3 Intelligence | §12, §13, §15 | Trend/price-supply charts, alerts, Plaud + reMarkable ingestion, note extraction, follow-up tasks |
+| 3 Intelligence | §12, §13, §15 | Trend/price-supply charts, alerts, Plaud ingestion + reMarkable text intake, note extraction, follow-up tasks |
 | 4 Advanced | §17 Phase 4, §18 | Demand forecasts, purchasing optimisation, accounting/warehouse integrations, KPI suite |
 
 ---
@@ -65,7 +65,7 @@ Sprint length: **2 weeks**. Efficiency assumption: 60–65% of dev time is focus
 | S14 | 27–28 | Trend dashboards + outlier/freshness flags | 3 | Matched-supplier series works |
 | S15 | 29–30 | Alerts engine + thresholds by brand/SKU (§13) | 3 | Alerts carry evidence |
 | S16 | 31–32 | Plaud ingestion technical pilot (§15) | 3 | Route selected & proven |
-| S17 | 33–34 | reMarkable ingestion (OCR/PDF) + note extraction | 3 | Source excerpt attached |
+| S17 | 33–34 | reMarkable text intake (manual conversion, **no OCR/PDF**) + note extraction | 3 | Converted text imports; PDFs rejected |
 | S18 | 35–36 | Reviewed note extraction, follow-up tasks | 3 | **M3: v1 go-live** |
 | S19–28 | 37–56 | Forecasts, purchasing optimisation, accounting & warehouse integrations, KPI suite | 4 | Backtested forecasts; reconciliation passes |
 
@@ -122,8 +122,10 @@ M4                                                                              
 ## 7. Schedule risks (highest first)
 
 1. **Plaud / reMarkable connectors (§15)** — brief explicitly says do not assume an API.
-   If it degrades to manual upload + OCR, remove ~2 weeks; if reliable automation is required,
-   add 3–6 weeks of uncertain work. Timebox S16 as a spike.
+   If it degrades to manual text conversion (no OCR), remove ~2 weeks; if reliable
+   automation is required, add 3–6 weeks of uncertain work. Timebox S16 as a spike.
+   Current decision: reMarkable is **manual text path only** — the app converts
+   handwriting to text and the user pastes/uploads the text; PDFs are rejected.
 2. **Matching edge cases (§6, §20)** — case vs unit barcodes, testers/gift sets, duplicate
    broker lots, conflicting sizes. QA-heavy; where schedules slip.
 3. **Calculation correctness (§7–§9)** — FX, Incoterms, recoverable taxes, partial receipts.

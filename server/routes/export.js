@@ -79,8 +79,8 @@ router.get('/integrations', (req, res) => {
       method: 'POST',
       url: `${base}/captures/webhook`,
       auth: 'X-Capture-Secret header (set capture_secret in Settings)',
-      body: { source: 'string (e.g. lab, forwarder)', reference: 'string', payload: 'object' },
-      note: 'Public endpoint; unauthenticated requests are rejected unless the shared secret matches.',
+      body: { source: 'string (e.g. remarkable)', title: 'CUSTOMER-YYYYMMDD-STAFF', text: 'plain text' },
+      note: 'Public endpoint; shared secret required. Text only: PDF/Office/image payloads are rejected (415) — no OCR.',
     },
   });
 });
