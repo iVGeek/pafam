@@ -98,6 +98,10 @@ function extract(filePath, supplier) {
     if (!nonEmpty) continue;
 
     const get = (field) => (colMap[field] !== undefined ? toText(row[colMap[field]]) : '');
+    // A totals/footer row (e.g. the L'Oréal analysis sheet's final QTY) has
+    // no product identity. Skip it rather than raising a blank-barcode
+    // exception for a row that is not a product at all.
+    if (!get('gtinSource') && !get('description') && !get('internalSku')) continue;
     const offer = emptyOffer();
 
     offer.supplierId = supplier.supplierId;
@@ -128,7 +132,9 @@ function extract(filePath, supplier) {
     offer.unitsPerCase = parseNumber(get('unitsPerCase'));
     const stockPal = parseNumber(get('availableQuantity'));
     offer.availableQuantity = stockPal;
-    offer.quantityUnit = get('availableQuantity') ? 'pallet' : null;
+    // Igan's stock column is pallet-based; other vendors (L'Oréal, GE) report
+    // units. The profile declares it so we never relabel units as pallets.
+    offer.quantityUnit = get('availableQuantity') ? (profile.quantityUnit || 'pallet') : null;
     offer.capType = get('capType') || null;
     const refill = get('refillable');
     offer.refillable = refill ? /irrellenable/i.test(refill) : null;

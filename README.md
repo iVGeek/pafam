@@ -22,6 +22,35 @@ Signing off the pilot? The [**Acceptance Runbook**](ACCEPTANCE-RUNBOOK.md) turns
 the ten SOW §4 criteria into a step-by-step test with evidence and a PO sign-off
 block.
 
+## Supported supplier list layouts
+
+Drop a raw `.xls`/`.xlsx` onto **Import Lists** — the header row and layout are
+detected automatically, no manual column mapping:
+
+| Profile | Recognises | Price treated as | Stock unit |
+|---|---|---|---|
+| Alcodis | `EAN` + `DUN` | cost (EUR) | pallet |
+| Igan | `CodigoEAN` + `PVP` | RRP less trade discount (EUR) | pallet |
+| Cacharel | vendor headers | cost (EUR) | pallet |
+| Sanya | `Description` + `MPN` + `Price` + `QTY` | cost (USD) | pallet |
+| Viktor&Rolf | vendor headers | cost (EUR) | pallet |
+| **L'Oréal analysis** | `BRAND` + `EAN` + `NEW CP` + `SP` | **NEW CP = cost (USD)** | units |
+| **GE Wholesale** | `SKU` + `UPC` + `Price (USD)` + `Stock` | **Price (USD) = cost (USD)** | units |
+
+> **Unconfirmed assumption:** the column meaning of the two new layouts was not
+> confirmed by the data owner. We read `NEW CP` and `Price (USD)` as our
+> acquisition cost — the conservative choice, and the L'Oréal sheet's own
+> `=(SP-NEW CP)/SP` formula supports it. `SP` is kept as a reference only;
+> `GCS CP` / `(-+)CP Var` are ignored as client analysis columns. If the client
+> says otherwise, change the supplier default in
+> `server/services/suppliers.js` (`priceType`, `defaultDiscount`, `defaultBasis`)
+> and re-import — the parser needs no change. See
+> `06-client-data-checklist.md` open questions 10–11.
+
+Leading-zero UPCs stay text. Blank, invalid and duplicate barcodes are captured
+as exceptions rather than invented, and totals/footer rows with no product
+identity are skipped.
+
 Other scripts:
 
 | Command | Purpose |

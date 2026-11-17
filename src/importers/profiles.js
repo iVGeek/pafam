@@ -145,6 +145,87 @@ const PROFILES = [
       image: null,
     },
   },
+  // ---- L'Oréal (client-prepared analysis list) ----
+  {
+    id: 'LOREAL',
+    name: "L'Oréal",
+    currency: 'USD',
+    quantityUnit: 'units',
+    // Recognition: BRAND / EAN / NEW CP / GCS CP / SP analysis sheet.
+    // ASSUMED (client confirmation pending — see checklist Q10): NEW CP is our
+    // acquisition cost, SP a selling-price reference, QTY units. GCS CP and
+    // (-+)CP Var are client analysis columns, not vendor cost fields. The
+    // sheet's own J-column formula ((SP-NEW CP)/SP) supports the cost reading.
+    match: (headers) =>
+      headers.some((h) => /^brand$/i.test(h)) &&
+      headers.some((h) => /^ean$/i.test(h)) &&
+      headers.some((h) => /^new\s*cp$/i.test(h)) &&
+      headers.some((h) => /^sp$/i.test(h)),
+    fields: {
+      gtinSource: [/^ean$/i],
+      description: [/^descrip/i],
+      availableQuantity: [/^qty$/i],
+      price: [/^new\s*cp$/i], // assumed acquisition cost (see checklist Q10)
+      rrp: [/^sp$/i], // reference only — never used as our cost
+      category: null,
+      sizeLiters: null,
+      abv: null,
+      capType: null,
+      refillable: null,
+      orderMultiple: null,
+      moq: null,
+      validUntil: null,
+      readyDate: null,
+      leadTimeDays: null,
+      countryOfOrigin: null,
+      stockWarehouse: null,
+      lastStockConfirmation: null,
+      stockConfidence: null,
+      permittedDestination: null,
+      usSuitability: null,
+      stockOwnerId: null,
+      image: null,
+    },
+  },
+  // ---- GE Wholesale (US market, USD, stock on hand) ----
+  {
+    id: 'GEWHOLESALE',
+    name: 'GE Wholesale',
+    currency: 'USD',
+    quantityUnit: 'units',
+    // Recognition: SKU + UPC + "Price (USD)" + Stock. UPCs arrive as TEXT,
+    // so leading zeros must survive (no numeric coercion by the importer).
+    match: (headers) =>
+      headers.some((h) => /^sku$/i.test(h)) &&
+      headers.some((h) => /^upc$/i.test(h)) &&
+      headers.some((h) => /^price\s*\(usd\)/i.test(h)) &&
+      headers.some((h) => /^stock$/i.test(h)),
+    fields: {
+      gtinSource: [/^upc$/i],
+      internalSku: [/^sku$/i],
+      description: [/^descrip/i],
+      availableQuantity: [/^stock$/i],
+      price: [/^price\s*\(usd\)/i],
+      category: null,
+      sizeLiters: null,
+      abv: null,
+      capType: null,
+      refillable: null,
+      orderMultiple: null,
+      moq: null,
+      validUntil: null,
+      readyDate: null,
+      leadTimeDays: null,
+      countryOfOrigin: null,
+      stockWarehouse: null,
+      lastStockConfirmation: null,
+      stockConfidence: null,
+      permittedDestination: null,
+      usSuitability: null,
+      stockOwnerId: null,
+      image: null,
+    },
+  },
   // ---- Viktor&Rolf (VR) ----
   {
     id: 'VR',

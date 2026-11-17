@@ -43,6 +43,24 @@ const SUPPLIERS = {
     incoterm: null, incotermPlace: null, stockCountry: null, paymentTerms: null,
     profiles: ['SANYA'],
   },
+  // ---- L'Oréal (client-prepared analysis list, USD) ----
+  LOREAL: {
+    code: 'LOREAL', name: "L'Oréal",
+    // ASSUMED (checklist Q10): "NEW CP" = cost, "SP" = reference only.
+    currency: 'USD', priceType: 'cost', defaultDiscount: 0,
+    defaultBasis: 'unit', priceBasisFromPack: false,
+    incoterm: null, incotermPlace: null, stockCountry: null, paymentTerms: null,
+    profiles: ['LOREAL'],
+  },
+  // ---- GE Wholesale (US stock list, USD) ----
+  GEWHOLESALE: {
+    code: 'GEWHOLESALE', name: 'GE Wholesale',
+    // ASSUMED (checklist Q11): "Price (USD)" = cost, "Stock" = units.
+    currency: 'USD', priceType: 'cost', defaultDiscount: 0,
+    defaultBasis: 'unit', priceBasisFromPack: false,
+    incoterm: null, incotermPlace: null, stockCountry: 'US', paymentTerms: null,
+    profiles: ['GEWHOLESALE'],
+  },
   // ---- Viktor&Rolf (VR) ----
   VR: {
     code: 'VR', name: 'Viktor&Rolf',

@@ -497,7 +497,8 @@ but do not block on. The validator covers every check below.
 ## Open questions (answer with the package)
 
 1. Confirm each supplier's currency, cost-vs-RRP and real trade discount %.
-2. Which suppliers use files outside the two known layouts? (item 3a)
+2. Which suppliers use files outside the layouts already supported (see
+   README → *Supported supplier list layouts*)? (item 3a)
 3. Base currency for the company itself, and destination market? (item 6)
 4. Do your prepared price lists and offers match our template columns, or do
    we need to adapt them? (items 3b, 4)
@@ -506,3 +507,17 @@ but do not block on. The validator covers every check below.
 7. FX source and refresh cadence? (item 6)
 8. Day-one scope for Appendix A items (users, settings, opening records)?
 9. Data-sharing OK for the AI assistant? (A6)
+10. **L'Oréal analysis list:** is `NEW CP` our acquisition cost, or is `GCS CP`
+    the cost we actually pay? Is `SP` our intended selling price or a retail
+    reference? Is `QTY` units or cases? We currently assume **NEW CP = cost**,
+    **SP = reference only (ignored for cost)**, **QTY = units**, and ignore
+    `GCS CP` / `(-+)CP Var` as your own analysis columns. The sheet's margin
+    formula `=(SP-NEW CP)/SP` is the basis for the cost assumption.
+11. **GE Wholesale list:** is `Price (USD)` our acquisition cost or a retail
+    price, and is `Stock` units or cases? We currently assume **cost / units**.
+    Leading-zero UPCs are preserved as text either way; blank, invalid and
+    duplicate UPCs are captured as exceptions, never invented.
+
+If an answer changes a price assumption, update the supplier default in
+`server/services/suppliers.js` (`priceType`, `defaultDiscount`, `defaultBasis`)
+and re-import the list — no parser change is needed.
