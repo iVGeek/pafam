@@ -1,7 +1,8 @@
 # Perfumes on AWS (free tier)
 
-One CloudFormation stack hosts the whole platform in **us-east-1**, without a
-domain:
+One CloudFormation stack hosts the whole platform in **us-east-2 by default**,
+without a domain. Region is configurable with `--region` or `AWS_REGION`; do not
+use `us-east-1` in this organization (an SCP denies compute there):
 
 ```
 browser ──HTTPS──> CloudFront (dxxxx.cloudfront.net, AWS certificate)
@@ -71,7 +72,7 @@ Options:
 npm run aws:deploy -- --instance-type t3.small     # more RAM, still cheap
 npm run aws:deploy -- --data-size 30               # bigger data volume
 npm run aws:deploy -- --backup-days 60             # S3 retention
-npm run aws:deploy -- --region us-east-1 --stack perfumes
+npm run aws:deploy -- --region us-east-2 --stack perfumes
 npm run aws:deploy -- --skip-wait                  # do not wait for CloudFront
 ```
 
@@ -161,19 +162,19 @@ node deploy/aws/exec.js "systemctl start perfumes-backup"
 List backups:
 
 ```bash
-node deploy/aws/exec.js "aws s3 ls s3://<bucket>/backups/ --region us-east-1"
+node deploy/aws/exec.js 'aws s3 ls s3://<bucket>/backups/ --region "$AWS_REGION"'
 ```
 
 Restore a database (replace `<timestamp>`):
 
 ```bash
-node deploy/aws/exec.js "systemctl stop perfumes && cp -a /var/data/ptp.db /var/data/backups/ptp-pre-restore.db && aws s3 cp s3://<bucket>/backups/ptp-<timestamp>.db /var/data/ptp.db --region us-east-1 && rm -f /var/data/ptp.db-wal /var/data/ptp.db-shm && chown 1000:1000 /var/data/ptp.db && systemctl start perfumes"
+node deploy/aws/exec.js 'systemctl stop perfumes && cp -a /var/data/ptp.db /var/data/backups/ptp-pre-restore.db && aws s3 cp s3://<bucket>/backups/ptp-<timestamp>.db /var/data/ptp.db --region "$AWS_REGION" && rm -f /var/data/ptp.db-wal /var/data/ptp.db-shm && chown 1000:1000 /var/data/ptp.db && systemctl start perfumes'
 ```
 
 Restore uploads:
 
 ```bash
-node deploy/aws/exec.js "aws s3 cp s3://<bucket>/backups/uploads-<timestamp>.tar.gz /tmp/u.tar.gz --region us-east-1 && rm -rf /var/data/uploads && mkdir -p /var/data/uploads && tar -xzf /tmp/u.tar.gz -C /var/data/uploads && chown -R 1000:1000 /var/data/uploads && rm -f /tmp/u.tar.gz"
+node deploy/aws/exec.js 'aws s3 cp s3://<bucket>/backups/uploads-<timestamp>.tar.gz /tmp/u.tar.gz --region "$AWS_REGION" && rm -rf /var/data/uploads && mkdir -p /var/data/uploads && tar -xzf /tmp/u.tar.gz -C /var/data/uploads && chown -R 1000:1000 /var/data/uploads && rm -f /tmp/u.tar.gz'
 ```
 
 ### Server access
@@ -202,8 +203,8 @@ opened, and the instance has no key pair.
 ## Tear down
 
 ```bash
-aws cloudformation delete-stack --stack-name perfumes --region us-east-1
-aws cloudformation wait stack-delete-complete --stack-name perfumes --region us-east-1
+aws cloudformation delete-stack --stack-name perfumes --region us-east-2
+aws cloudformation wait stack-delete-complete --stack-name perfumes --region us-east-2
 ```
 
 This deletes the instance, CloudFront distribution, VPC and Elastic IP. The data
@@ -211,7 +212,7 @@ volume and S3 bucket are **retained** (and still cost money). Delete them
 manually only after downloading a final backup:
 
 ```bash
-aws ec2 describe-volumes --filters Name=tag:Name,Values=perfumes-data --region us-east-1
+aws ec2 describe-volumes --filters Name=tag:Name,Values=perfumes-data --region us-east-2
 aws s3 rm s3://<bucket> --recursive
 aws s3 rb s3://<bucket>
 ```

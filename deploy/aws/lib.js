@@ -12,7 +12,10 @@ const path = require('node:path');
 const ROOT = path.resolve(__dirname, '..', '..');
 const TEMPLATE = 'deploy/aws/perfumes.yaml';
 const DEFAULT_STACK = 'perfumes';
-const DEFAULT_REGION = process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION || 'us-east-1';
+// The org SCP statement "UsEast1Partitional" denies compute in us-east-1.
+// Default to us-east-2, which avoids that region-scoped deny. Override with
+// AWS_REGION / AWS_DEFAULT_REGION or the --region flag on any deploy script.
+const DEFAULT_REGION = process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION || 'us-east-2';
 const AWS_CLI = process.env.AWS_CLI_PATH || 'aws';
 
 // Only these keys are pushed to the instance. Anything else in the local .env

@@ -66,7 +66,7 @@ async function main() {
     console.log(`Usage: npm run aws:deploy -- [options]
 
   --stack <name>          CloudFormation stack name (default: perfumes)
-  --region <region>       AWS region (default: us-east-1)
+  --region <region>       AWS region (default: us-east-2; avoid us-east-1 - org SCP blocks it)
   --instance-type <type>  t3.micro | t3.small | t3.medium (default: t3.micro)
   --root-size <gb>        Root volume GB (default: 10)
   --data-size <gb>        Data volume GB (default: 20)

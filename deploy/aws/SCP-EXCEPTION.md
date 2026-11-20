@@ -3,12 +3,29 @@
 ## What We're Asking For
 
 The Perfumes platform needs to run in your AWS account (tested in both
-`752796320611` and `856324327908`, region `us-east-1`) behind an organizational
-SCP that **explicitly denies** every way to create or inspect compute resources.
-Both accounts are affected because the deny is attached to the organization OU
-`o-snrun5i7ii`, not to a single account — switching accounts does not help.
-Verified by `npm run check:aws:perms` on 2026-11-20: the same 9 actions fail in
-both accounts with the same policy ARN.
+`752796320611` and `856324327908`) behind an organizational SCP that
+**explicitly denies** compute and administrative actions. Both accounts are
+affected because the deny is attached to the organization OU `o-snrun5i7ii`,
+not to a single account — switching accounts does not help. Verified by
+`npm run check:aws:perms` on 2026-11-20: the same 9 actions fail in both
+accounts with the same policy ARN.
+
+Decoding AWS's authorization failure on 2026-11-20 showed two layers of deny:
+
+1. A statement named **`UsEast1Partitional`**, conditioned on
+   `aws:RequestedRegion = us-east-1`, blocks `ec2:RunInstances` and
+   `s3:CreateBucket` there. The repo therefore defaults to **us-east-2** to
+   avoid it.
+2. A separate, region-independent deny still blocks these 7 actions in
+   **every** region tested: `cloudformation:ValidateTemplate`,
+   `cloudformation:DescribeStacks`, `ec2:DescribeManagedPrefixLists`,
+   `ec2:CreateVolume`, `ec2:CreateSecurityGroup`, `ssm:GetParameter`,
+   `ssm:SendCommand`.
+
+`npm run check:aws:perms -- --region us-east-2` confirms this: 7 blocked,
+the rest allowed. So changing `--region` avoids the first layer but not the
+second. A full deployment still needs the SCP narrowed as described below,
+or an account outside OU `o-snrun5i7ii`.
 
 | Action | Why It's Needed | Current SCP Denial |
 |---|---|---|
@@ -96,7 +113,7 @@ npm run check:aws:perms
 
 ## Who to Contact
 
-This is an organization-wide SCP; the request should go to whoever manages the org unit or management account that owns policy `p-pzq2xcu4`. If you have IAM administrator access, you can also ask them to attach the 4 JSON-patch entries above to the existing policy.
+This is an organization-wide SCP; the request should go to whoever manages the org unit or management account that owns policy `p-pzq2xcu4` (management account `909421214276`). Apply one of Options A–C above — adding Allow statements alone will not work.
 
 ## No Billing Impact During This Work
 

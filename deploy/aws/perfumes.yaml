@@ -66,9 +66,14 @@ Parameters:
 
   CloudFrontPrefixListId:
     Type: String
-    Default: pl-3b927c52
     AllowedPattern: '^pl-[0-9a-f]+$'
-    Description: Managed prefix list com.amazonaws.global.cloudfront.origin-facing for this region (deploy.js resolves it).
+    Description: >-
+      Region-specific ID of the managed prefix list
+      com.amazonaws.global.cloudfront.origin-facing. There is no safe hardcoded
+      default because the ID differs per region (pl-3b927c52 is us-east-1 only).
+      deploy.js resolves it automatically with ec2:describe-managed-prefix-lists;
+      for a manual console deploy, look it up with:
+      aws ec2 describe-managed-prefix-lists --filters "Name=prefix-list-name,Values=com.amazonaws.global.cloudfront.origin-facing" --region <region>
 
   BackupRetentionDays:
     Type: Number

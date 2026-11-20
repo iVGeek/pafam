@@ -158,7 +158,7 @@ replica, which is what a SQLite volume requires.
 ## Deploy on AWS (free tier)
 
 A complete CloudFormation kit is in [`deploy/aws/`](deploy/aws/README.md). It
-creates one `t3.micro` in `us-east-1`, a retained 20 GB EBS data volume, S3
+creates one `t3.micro` in `us-east-2` by default (region is configurable), a retained 20 GB EBS data volume, S3
 backups, an SSM SecureString for secrets, and a CloudFront distribution whose
 `*.cloudfront.net` hostname provides HTTPS — so **no domain is needed**.
 

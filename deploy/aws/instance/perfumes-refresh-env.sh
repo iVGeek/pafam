@@ -26,7 +26,7 @@ TMP="$(mktemp)"
 trap 'rm -f "$TMP"' EXIT
 
 if aws ssm get-parameter --name "$PARAM" --with-decryption \
-     --region "${AWS_REGION:-us-east-1}" \
+     --region "${AWS_REGION:-us-east-2}" \
      --query Parameter.Value --output text >"$TMP" 2>/dev/null; then
   if [ ! -s "$TMP" ]; then
     echo "FATAL: SSM parameter $PARAM is empty" >&2

@@ -4,7 +4,7 @@
 // 15 minutes on a CloudFormation deploy that will fail on a policy.
 //
 //   npm run check:aws:perms
-//   npm run check:aws:perms -- --region us-east-1
+//   npm run check:aws:perms -- --region us-east-2
 //
 // Every check uses a dry run or a deliberately non-existent resource, so the
 // script creates nothing and costs nothing. A "denied" line means an IAM or
@@ -44,7 +44,8 @@ const CHECKS = [
   },
   {
     label: 'ec2:CreateVolume',
-    args: ['ec2', 'create-volume', '--dry-run', '--availability-zone', 'us-east-1a', '--size', '8', '--volume-type', 'gp3'],
+    // AZ names are region-prefixed, so derive the probe AZ from --region.
+    args: (region) => ['ec2', 'create-volume', '--dry-run', '--availability-zone', `${region}a`, '--size', '8', '--volume-type', 'gp3'],
   },
   {
     label: 'ec2:CreateSecurityGroup',
@@ -112,7 +113,8 @@ function main() {
 
   const failed = [];
   for (const check of CHECKS) {
-    const result = probe(check.args, region);
+    const args = typeof check.args === 'function' ? check.args(region) : check.args;
+    const result = probe(args, region);
     const mark = result.ok ? 'OK  ' : 'FAIL';
     console.log(`  [${mark}] ${check.label.padEnd(34)} ${result.detail}`);
     if (!result.ok) failed.push({ label: check.label, detail: result.detail });
@@ -132,8 +134,9 @@ function main() {
   console.log(bold(`${failed.length} action(s) blocked in ${region}:`));
   for (const item of failed) console.log(`  - ${item.label}: ${item.detail}`);
   console.log('');
-  console.log('Send deploy/aws/SCP-EXCEPTION.md to the organization administrator.');
-  console.log('The same block applies in every region, so changing --region will not help.');
+  console.log('Note: the org SCP deny statement "UsEast1Partitional" is scoped to us-east-1.');
+  console.log('This repo defaults to us-east-2 to avoid it; some read/admin actions are still');
+  console.log('blocked there. See deploy/aws/SCP-EXCEPTION.md for the exception request.');
   fail('the account cannot create the stack yet', 3);
 }
 

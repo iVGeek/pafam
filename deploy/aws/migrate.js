@@ -42,7 +42,7 @@ async function main() {
     console.log(`Usage: npm run aws:migrate -- [options]
 
   --stack <name>          CloudFormation stack name (default: perfumes)
-  --region <region>       AWS region (default: us-east-1)
+  --region <region>       AWS region (default: us-east-2)
   --db <path>             Local SQLite file (default: data/ptp.db)
   --uploads <dir>         Local uploads directory (default: data/uploads)
   --skip-db               Do not copy the database

@@ -14,7 +14,7 @@ set -euo pipefail
 ENV_PARAM="${PTP_ENV_PARAM:-/perfumes/env}"
 BACKUP_BUCKET="${PTP_BACKUP_BUCKET:-}"
 DATA_MOUNT="${PTP_DATA_MOUNT:-/var/data}"
-AWS_REGION_NAME="${AWS_REGION:-us-east-1}"
+AWS_REGION_NAME="${AWS_REGION:-us-east-2}"
 APP_DIR="/opt/perfumes"
 LOG="/var/log/perfumes-bootstrap.log"
 

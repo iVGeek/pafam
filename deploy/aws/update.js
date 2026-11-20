@@ -28,7 +28,7 @@ async function main() {
     console.log(`Usage: npm run aws:update -- [options]
 
   --stack <name>          CloudFormation stack name (default: perfumes)
-  --region <region>       AWS region (default: us-east-1)
+  --region <region>       AWS region (default: us-east-2)
   --branch <name>         Git branch to deploy (default: main)
   --skip-wait             Do not wait for the health check
   --timeout-seconds <n>   SSM command timeout (default: 1500)`);
