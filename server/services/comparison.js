@@ -26,9 +26,15 @@ function normalizeOffer(offer, baseCurrency) {
   let perBottle = acq.perBottle;
   let perBottleBase = null;
   let fxRate = 1;
+  let fxMissing = false;
   if (perBottle != null) {
     fxRate = fx.getRate(offer.currency, base);
-    if (fxRate == null) fxRate = 1;
+    if (fxRate == null) {
+      // Never silently treat a missing rate as parity: keep the number usable
+      // but mark it so the UI and the AI cannot present it as a firm cost.
+      fxRate = 1;
+      fxMissing = offer.currency !== base;
+    }
     perBottleBase = pricing.round4(perBottle * fxRate);
   }
 
@@ -44,6 +50,7 @@ function normalizeOffer(offer, baseCurrency) {
   if (offer.price_basis === 'case') flags.push('priced-per-case');
   if (offer.gtin_valid === 0) flags.push('invalid-barcode');
   if (offer.price == null) flags.push('no-price');
+  if (fxMissing) flags.push('fx-rate-missing');
 
   return {
     perBottle: perBottle == null ? null : pricing.round4(perBottle),
@@ -51,6 +58,7 @@ function normalizeOffer(offer, baseCurrency) {
     currency: offer.currency,
     baseCurrency: base,
     fxRate,
+    fxMissing,
     isRetail,
     derivedFromRrp,
     flags,

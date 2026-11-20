@@ -398,6 +398,7 @@ const LANDING_FLAGS = {
   'no-price': ['bad', 'no price'],
   'units-per-case-unknown': ['bad', 'pack size unknown — cannot price per bottle'],
   'not-approved': ['bad', 'not approved by staff'],
+  'fx-rate-missing': ['warn', 'FX rate missing — cost assumes 1:1'],
 };
 function landingFlags(flags) {
   return (flags || []).map((f) => { const [k, l] = LANDING_FLAGS[f] || ['muted', f]; return `<span class="badge ${k}">${esc(l)}</span>`; }).join(' ');

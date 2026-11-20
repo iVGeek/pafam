@@ -61,7 +61,10 @@ function sourceLowest({ productId, gtin: rawGtin, quantity, destination, baseCur
   const approvalEnforced = approvals.approvalRequired();
   const results = rows.map((r) => {
     const key = r.currency;
-    if (!(key in rateCache)) rateCache[key] = fx.getRate(r.currency, base) || 1;
+    if (!(key in rateCache)) {
+      const rate = fx.getRate(key, base);
+      rateCache[key] = { rate: rate == null ? 1 : rate, missing: rate == null && key !== base };
+    }
     const supplier = {
       name: r.supplier_name,
       default_discount_pct: r.supplier_discount,
@@ -79,8 +82,16 @@ function sourceLowest({ productId, gtin: rawGtin, quantity, destination, baseCur
       destination: dest,
       baseCurrency: base,
       settings,
-      fxRate: rateCache[key],
+      fxRate: rateCache[key].rate,
     });
+    // A missing FX rate means the converted cost assumes parity — say so, and
+    // list the exact pair the user must supply before trading on this number.
+    if (rateCache[key].missing) {
+      landed.fxRateMissing = true;
+      landed.flags.push('fx-rate-missing');
+      landed.missing.push(`FX rate ${key} -> ${base}`);
+      landed.complete = false;
+    }
     // Staff approval (section 3/16): when enforcement is on, an offer that has
     // not been signed off cannot be traded, so it must not win the comparison.
     const approvalStatus = r.approval_status || 'review';
@@ -113,6 +124,7 @@ function sourceLowest({ productId, gtin: rawGtin, quantity, destination, baseCur
     : null;
 
   const incompleteCount = executable.filter((e) => !e.complete).length;
+  const fxMissingCount = executable.filter((e) => e.fxRateMissing).length;
 
   return {
     found: true,
@@ -130,6 +142,7 @@ function sourceLowest({ productId, gtin: rawGtin, quantity, destination, baseCur
     spread,
     spreadPct,
     warnings: [
+      ...(fxMissingCount ? [`${fxMissingCount} executable offer(s) have no ${base} FX rate — 1:1 was assumed; add the rate in Settings & FX.`] : []),
       ...(executable.length && incompleteCount ? [`${incompleteCount} executable offer(s) are missing landed-cost inputs (shown as assumed).`] : []),
       ...(excluded.length ? [`${excluded.length} offer(s) excluded (MOQ, stock, expiry, eligibility or retail price).`] : []),
     ],

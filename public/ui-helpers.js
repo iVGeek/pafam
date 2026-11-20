@@ -138,6 +138,7 @@ function badgeList(flags) {
     'priced-per-case': ['info', 'per case'],
     'invalid-barcode': ['bad', 'bad barcode'],
     'no-price': ['warn', 'no price'],
+    'fx-rate-missing': ['warn', 'FX rate missing — 1:1 assumed'],
   };
   return (flags || []).map((f) => {
     const [k, label] = map[f] || ['muted', f];
