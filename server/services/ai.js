@@ -2058,6 +2058,16 @@ function offeredDraftTool(assistantText, userText) {
   return null;
 }
 
+// Some models narrate a failed/empty tool result even though a draft card was
+// produced on an earlier round. Do not let that contradict the visible card.
+function draftDenied(reply) {
+  return /\b(couldn't|could not|unable|failed|failure|error|issue)\b/i.test(reply)
+    || /\bno (draft|proposal|card|offer)\b/i.test(reply)
+    || /\breturned (no|nothing|empty)\b/i.test(reply)
+    || /\bdid ?n't (return|create|prepare|produce|save)\b/i.test(reply)
+    || /\bnothing (was |has been )?(saved|prepared|created)\b/i.test(reply);
+}
+
 async function chat({ messages, onEvent } = {}) {
   if (!enabled()) {
     const err = new Error('The assistant is not configured. Set AI_BASE_URL, AI_API_KEY and AI_MODEL on the server.');
@@ -2139,7 +2149,7 @@ async function chat({ messages, onEvent } = {}) {
       let reply = msg.content || '';
       // A retried tool call can succeed after an early error; small models then
       // report the error and ignore the card. If a draft exists, say so.
-      if (proposals.length && /\b(couldn't|could not|unable|failed|failure|error|issue)\b/i.test(reply)) {
+      if (proposals.length && draftDenied(reply)) {
         const one = proposals.length === 1;
         reply = 'I prepared ' + proposals.length + ' draft' + (one ? '' : 's') + ': ' +
           proposals.map((p) => p.title + (p.summary ? ' (' + p.summary + ')' : '')).join('; ') +

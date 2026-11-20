@@ -514,6 +514,39 @@ test('a successful retry is described even if the model narrates the earlier err
   assert.doesNotMatch(out.reply, /issue/);
 });
 
+test('a reply denying a draft is corrected when a card exists', async () => {
+  setEnv({ AI_MODELS: 'test:model' });
+  let turn = 0;
+  ai.setTransport(async () => {
+    turn += 1;
+    if (turn === 1) {
+      return {
+        choices: [{
+          message: {
+            role: 'assistant',
+            content: '',
+            tool_calls: [{ id: 'a', type: 'function', function: { name: 'draft_task', arguments: '{"title":"follow up"}' } }],
+          },
+        }],
+        _model: 'test:model',
+      };
+    }
+    return {
+      choices: [{
+        message: {
+          role: 'assistant',
+          content: 'The draft tool returned no proposal. It requires a cost per bottle; please confirm.',
+        },
+      }],
+      _model: 'test:model',
+    };
+  });
+  const out = await ai.chat({ messages: [{ role: 'user', content: 'draft a task' }] });
+  assert.strictEqual(out.proposals.length, 1);
+  assert.match(out.reply, /I prepared 1 draft/);
+  assert.doesNotMatch(out.reply, /no proposal|returned no/i);
+});
+
 test('an exhausted free tier self-heals to a cheap paid model', async () => {
   setEnv({ AI_MODELS: 'retired:free', AI_BASE_URL: 'https://openrouter.ai/api/v1' });
   const seen = [];
