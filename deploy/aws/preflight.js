@@ -82,7 +82,9 @@ const MANUAL = [
 
 function probe(args, region) {
   const res = aws(args, { region, allowFailure: true });
-  const text = `${res.stdout}\n${res.stderr}`;
+  // AWS wraps error text across lines; collapse whitespace before matching so
+  // "not authorized to\nperform" is not misreported as "reached service".
+  const text = `${res.stdout}\n${res.stderr}`.replace(/\s+/g, ' ');
 
   if (res.status === 0) return { ok: true, detail: 'allowed' };
 
