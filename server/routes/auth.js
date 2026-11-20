@@ -13,11 +13,26 @@ router.get('/auth/me', (req, res) => {
 const FAILS = new Map();
 const LOGIN_WINDOW_MS = 5 * 60 * 1000;
 const LOGIN_MAX = 10;
+const MAX_GUARD_KEYS = 5000;
+let lastSweep = 0;
+
+// Expired keys (and, under a username-spraying attack, the oldest ones) are
+// dropped so the guard cannot grow without bound in memory.
+function sweep(map, now) {
+  if (now - lastSweep < 60_000 && map.size <= MAX_GUARD_KEYS) return;
+  lastSweep = now;
+  for (const [k, arr] of map) {
+    const fresh = arr.filter((t) => now - t < LOGIN_WINDOW_MS);
+    if (!fresh.length) map.delete(k); else map.set(k, fresh);
+  }
+  while (map.size > MAX_GUARD_KEYS) map.delete(map.keys().next().value);
+}
 function loginKey(req, username) {
   const ip = req.ip || req.socket.remoteAddress || 'unknown';
   return ip + '|' + String(username || '').toLowerCase();
 }
 function loginBlocked(key) {
+  sweep(FAILS, Date.now());
   const arr = (FAILS.get(key) || []).filter((t) => Date.now() - t < LOGIN_WINDOW_MS);
   FAILS.set(key, arr);
   return arr.length >= LOGIN_MAX;
@@ -58,6 +73,7 @@ const REG_FAILS = new Map();
 router.post('/auth/register', (req, res) => {
   const ip = req.ip || req.socket.remoteAddress || 'unknown';
   const now = Date.now();
+  sweep(REG_FAILS, now);
   const arr = (REG_FAILS.get(ip) || []).filter((t) => now - t < LOGIN_WINDOW_MS);
   if (arr.length >= LOGIN_MAX) {
     res.setHeader('Retry-After', String(Math.ceil(LOGIN_WINDOW_MS / 1000)));

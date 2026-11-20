@@ -341,6 +341,25 @@ test('http: exports require a session, like every other route', async () => {
   assert.strictEqual(t.status, 401, 'ad-hoc export requires auth');
 });
 
+test('http: login is rate-limited after repeated failures', async () => {
+  const probe = 'brute_probe_' + process.pid;
+  const post = (u) => fetch(`${base}/api/auth/login`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ username: u, password: 'definitely-wrong' }),
+  });
+  for (let i = 0; i < 10; i += 1) {
+    const r = await post(probe);
+    assert.strictEqual(r.status, 401, 'failed login ' + (i + 1));
+  }
+  const blocked = await post(probe);
+  assert.strictEqual(blocked.status, 429, 'further attempts are throttled');
+  assert.ok(blocked.headers.get('retry-after'), 'Retry-After header is set');
+  // A different username is unaffected (the guard is per username+IP).
+  const other = await post(probe + '_other');
+  assert.strictEqual(other.status, 401, 'another username is not blocked');
+});
+
 test('http: /api/import refuses server-side paths outside the import directory', async () => {
   const dataDir = path.dirname(TMP_DB);
   const importDir = path.join(dataDir, 'imports');
