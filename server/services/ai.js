@@ -1777,8 +1777,10 @@ function rememberModel(id) {
   const order = [];
   const push = (id) => { if (id && !order.includes(id)) order.push(id); };
   push(discoveredModel);
-  push(lastGoodModel());
+  // The remembered model is a fallback, not an override: an explicit change to
+  // AI_MODEL(S) must take effect even when the old model still works.
   for (const id of models()) push(id);
+  push(lastGoodModel());
   for (const id of builtinFallbacks()) push(id);
   return order;
 }

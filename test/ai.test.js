@@ -17,7 +17,7 @@ process.on('exit', () => {
 const { test, afterEach } = require('node:test');
 const assert = require('node:assert');
 const ai = require('../server/services/ai');
-const { db } = require('../server/db');
+const { db, setSetting } = require('../server/db');
 
 const SAVED = {};
 for (const k of ['AI_MODEL', 'AI_MODELS', 'AI_BASE_URL', 'AI_API_KEY', 'PTP_AI_MOCK', 'AI_TIMEOUT_MS', 'AI_AUTO_DISCOVER', 'AI_AUTO_DISCOVER_MAX', 'AI_DISCOVER_MAX_PRICE', 'AI_MAX_STEPS', 'AI_MAX_TOKENS']) SAVED[k] = process.env[k];
@@ -76,6 +76,20 @@ test('AI_MAX_TOKENS overrides the provider max_tokens', async () => {
   });
   await ai.chat({ messages: [{ role: 'user', content: 'hi' }] });
   assert.strictEqual(sent.max_tokens, 2048);
+});
+
+test('an explicit model change wins over the remembered model', async () => {
+  setEnv({ AI_MODELS: 'configured:new' });
+  setSetting('ai_model_last_good', 'remembered:old');
+  const seen = [];
+  ai.setFetch(async (_url, opts) => {
+    seen.push(JSON.parse(opts.body).model);
+    return json(200, { choices: [{ message: { role: 'assistant', content: 'ok' } }] });
+  });
+  const out = await ai.chat({ messages: [{ role: 'user', content: 'hi' }] });
+  assert.strictEqual(out.reply, 'ok');
+  assert.strictEqual(out.model, 'configured:new');
+  assert.deepStrictEqual(seen, ['configured:new']);
 });
 
 test('a retired model is skipped and the next model answers', async () => {
