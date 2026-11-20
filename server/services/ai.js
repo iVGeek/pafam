@@ -354,6 +354,11 @@ function toolExportInfo({ kind } = {}) {
 // "prepare an offer of X at rate R / target %" -> a QUOTE draft. Cost price and
 // both margin conventions are shown side by side, exactly as the Offer Builder
 // does, so the two readings are never confused.
+function pctLabel(n) {
+  const x = Number(n);
+  return Number.isFinite(x) ? Math.round((x + Number.EPSILON) * 100) / 100 : n;
+}
+
 function toolDraftOffer({ productId, quantity, costPerBottle, targetPct, basis, customerId, currency } = {}) {
   const product = db.prepare('SELECT id, display_name, canonical_gtin, category, size_ml FROM products WHERE id = ?').get(Number(productId));
   if (!product) return { error: 'product not found (' + productId + ')' };
@@ -387,7 +392,7 @@ function toolDraftOffer({ productId, quantity, costPerBottle, targetPct, basis, 
 
   const cur = currency || getSetting('base_currency', 'USD');
   const convention = which === 'markupOnCost' ? 'markup on cost' : 'margin on selling';
-  const targetLabel = `${usePct}% ${convention}` + (explicitPct ? '' : ' (default — confirm)');
+  const targetLabel = `${pctLabel(usePct)}% ${convention}` + (explicitPct ? '' : ' (default — confirm)');
 
   const proposal = {
     type: 'quote',
@@ -400,8 +405,8 @@ function toolDraftOffer({ productId, quantity, costPerBottle, targetPct, basis, 
       { label: 'Cost / bottle', value: `${cost} ${cur}` },
       { label: 'Target', value: targetLabel },
       { label: 'Selling price / bottle', value: `${chosen.sellingUnitPrice} ${cur}` },
-      { label: 'Margin on selling', value: chosen.marginPctOnSell == null ? '-' : chosen.marginPctOnSell + '%' },
-      { label: 'Markup on cost', value: chosen.markupPctOfCost == null ? '-' : chosen.markupPctOfCost + '%' },
+      { label: 'Margin on selling', value: chosen.marginPctOnSell == null ? '-' : pctLabel(chosen.marginPctOnSell) + '%' },
+      { label: 'Markup on cost', value: chosen.markupPctOfCost == null ? '-' : pctLabel(chosen.markupPctOfCost) + '%' },
     ],
     alternatives: {
       marginOnSelling: calc.marginOnSelling ? calc.marginOnSelling.sellingUnitPrice : null,
@@ -422,7 +427,7 @@ function toolDraftOffer({ productId, quantity, costPerBottle, targetPct, basis, 
     },
   };
   if (!explicitPct) {
-    proposal.note = 'No margin was given, so the default ' + usePct + '% ' + convention + ' was used. Confirm it (or ask for another margin) before applying.';
+    proposal.note = 'No margin was given, so the default ' + pctLabel(usePct) + '% ' + convention + ' was used. Confirm it (or ask for another margin) before applying.';
   }
   return { proposal };
 }

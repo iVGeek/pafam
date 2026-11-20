@@ -478,6 +478,25 @@ test('draft_offer refuses to invent a quantity, customer or margin', () => {
   assert.strictEqual(noMargin.proposal.apply.body.quantity, 12);
 });
 
+test('draft_offer shows rounded percentages without changing the applied price', () => {
+  const ids = seedPlacementFixture();
+  let customer = db.prepare('SELECT id FROM customers LIMIT 1').get();
+  if (!customer) {
+    customer = { id: Number(db.prepare("INSERT INTO customers(code, name) VALUES ('TC', 'Test Customer')").run().lastInsertRowid) };
+  }
+  const out = ai.runTool('draft_offer', {
+    productId: ids[50], quantity: 120, costPerBottle: 9.3604,
+    targetPct: 63.29254901960784, customerId: customer.id,
+  });
+  assert.ok(out.proposal, JSON.stringify(out.result));
+  const target = out.proposal.fields.find((f) => f.label === 'Target').value;
+  const margin = out.proposal.fields.find((f) => f.label === 'Margin on selling').value;
+  assert.match(target, /^63\.29% margin on selling$/);
+  assert.match(margin, /^\d+(\.\d{1,2})?%$/);
+  // Rounding is display-only: the quote body keeps the exact computed price.
+  assert.strictEqual(out.proposal.apply.body.unitPrice, 25.5);
+});
+
 test('an ordinary question leaves the tool choice automatic', async () => {
   setEnv({ AI_MODELS: 'test:model' });
   let choice = null;
