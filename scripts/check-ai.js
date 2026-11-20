@@ -5,7 +5,9 @@
 // from the command line.
 //
 //   npm run check:ai            report only
-//   npm run check:ai -- --write repair .env with the first working free model
+//   npm run check:ai -- --write repair .env with a model that passes a real
+//                              tool call (free models are often ZDR-blocked
+//                              or rate-limited, so the catalogue is not enough)
 //
 // Exit code 1 when no configured model is usable.
 
@@ -21,10 +23,47 @@ function line(label, value) {
   console.log('  ' + label.padEnd(16) + String(value));
 }
 
-function chooseReplacement(diag) {
+function candidates(diag) {
   const configured = new Set(diag.configured);
-  const alt = (diag.freeAlternatives || []).find((m) => !configured.has(m.id));
-  return alt ? alt.id : null;
+  const ids = []
+    .concat((diag.fallbacks || []), (diag.freeAlternatives || []).map((m) => m.id), diag.configured)
+    .filter((id) => id && !configured.has(id));
+  return ids.filter((id, i) => ids.indexOf(id) === i);
+}
+
+// A catalogue entry that lists tool support can still be unusable: account ZDR
+// rules exclude providers at routing time and free tiers commonly return 429.
+// Prove the candidate can execute a tool before writing it into .env.
+async function verifyModel(id) {
+  const base = (process.env.AI_BASE_URL || 'https://api.openai.com/v1').replace(/\/+$/, '');
+  const key = process.env.AI_API_KEY || '';
+  try {
+    const res = await fetch(base + '/chat/completions', {
+      method: 'POST',
+      headers: Object.assign({ 'content-type': 'application/json' }, key ? { authorization: 'Bearer ' + key } : {}),
+      body: JSON.stringify({
+        model: id,
+        messages: [{ role: 'user', content: 'Find the cheapest landed cost for GTIN 08400000000437, quantity 120, to US.' }],
+        tools: [{ type: 'function', function: {
+          name: 'lowest_cost',
+          description: 'Lowest landed cost for a GTIN and quantity.',
+          parameters: { type: 'object', properties: { gtin: { type: 'string' }, quantity: { type: 'integer' } }, required: ['gtin', 'quantity'] },
+        } }],
+        tool_choice: { type: 'function', function: { name: 'lowest_cost' } },
+        max_tokens: 512,
+        temperature: 0,
+      }),
+      signal: AbortSignal.timeout(30000),
+    });
+    if (!res.ok) return false;
+    const data = await res.json();
+    const calls = data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.tool_calls;
+    if (!calls || !calls.length) return false;
+    const args = typeof calls[0].function.arguments === 'string' ? JSON.parse(calls[0].function.arguments || '{}') : calls[0].function.arguments;
+    return String(args.gtin) === '08400000000437' && Number(args.quantity) === 120;
+  } catch (_) {
+    return false;
+  }
 }
 
 function writeEnv(primary, chain) {
@@ -76,18 +115,28 @@ function writeEnv(primary, chain) {
 
   const args = process.argv.slice(2);
   if (args.includes('--write')) {
-    const replacement = diag.ok ? null : chooseReplacement(diag);
-    if (!replacement) {
-      console.log('\nNothing to fix: ' + (diag.ok ? 'configured models look usable.' : 'no free alternative found - check the key and provider URL.'));
-    } else {
-      const chain = [replacement].concat((diag.freeAlternatives || []).filter((m) => m.id !== replacement).slice(0, 1).map((m) => m.id));
-      writeEnv(replacement, chain);
-      console.log('Restart the server for the change to take effect.');
+    if (diag.ok) {
+      console.log('\nNothing to fix: configured models look usable.');
+      return;
     }
+    const verified = [];
+    for (const id of candidates(diag)) {
+      process.stdout.write('  verifying ' + id + ' ... ');
+      const ok = await verifyModel(id);
+      console.log(ok ? 'OK' : 'not usable');
+      if (ok) verified.push(id);
+      if (verified.length >= 2) break;
+    }
+    if (!verified.length) {
+      console.log('\nNothing to fix: no candidate passed a live tool call. Check the key, credit and account privacy settings.');
+      return;
+    }
+    writeEnv(verified[0], verified);
+    console.log('Restart the server for the change to take effect.');
     return;
   }
 
   if (diag.hint) console.log('\n  hint: ' + diag.hint);
-  console.log('\n  ' + (diag.ok ? 'RESULT: at least one configured model can answer.' : 'RESULT: no usable model - run with --write to pick a working free one.') + '\n');
+  console.log('\n  ' + (diag.ok ? 'RESULT: at least one configured model can answer.' : 'RESULT: no usable model - run with --write to verify and install a working one.') + '\n');
   process.exitCode = diag.ok ? 0 : 1;
 })();

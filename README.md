@@ -203,23 +203,26 @@ logs, AMI pinning, teardown and troubleshooting.
 | `AI_AUTO_DISCOVER_MAX` | How many catalogue models to try when self-healing (free first, then cheap paid) | `4` |
 | `AI_DISCOVER_MAX_PRICE` | Highest prompt price, USD per 1M tokens, for a paid self-heal model | `1` |
 | `AI_MAX_STEPS` | Max tool rounds per turn (raise for wide multi-line drafts) | `12` |
+| `AI_MAX_TOKENS` | Max output tokens per provider request. Keeps the provider's credit pre-check from failing with 402 and silently falling back | `4096` |
 | `AI_TIMEOUT_MS` | Per-attempt timeout | `45000` |
 
 When the primary model is retired, turned paid or throttled, the assistant
 silently moves to the next model in `AI_MODELS` and the chat header shows which
 one answered (`+N fallback`). If **every** configured model is stale, it first
 tries a built-in chain of cheap, tool-capable models that ship with the app
-(`openai/gpt-4o-mini`, `mistral-small-3.2`, `gemini-2.5-flash` on OpenRouter),
-then asks the provider for the current catalogue — a free model if available,
-otherwise the cheapest paid one under `AI_DISCOVER_MAX_PRICE`. The model that
-answered is remembered in the database (`ai_model_last_good`), so a restart or
-redeploy starts on a model known to work instead of re-probing a dead one. A
-stale dashboard value therefore cannot leave the assistant dead, and no
-environment change is needed when a model is retired. If nothing works, the
+(`mistral-small-3.2-24b-instruct`, `gemini-2.5-flash`, `llama-3.3-70b-instruct`
+on OpenRouter), then asks the provider for the current catalogue — a free model
+if available, otherwise the cheapest paid one under `AI_DISCOVER_MAX_PRICE`.
+The model that answered is remembered in the database (`ai_model_last_good`) as
+a **fallback** for when the configured models fail; an explicit change to
+`AI_MODEL` or `AI_MODELS` always takes precedence. A stale dashboard value
+therefore cannot leave the assistant dead, and no environment change is needed
+when a model is retired. If nothing works, the
 error says exactly why (retired / paid-only / rate-limited / no credit / bad
 key) instead of a generic provider error. **Free catalogues churn** — run
 `npm run check:ai` any time the assistant stops working; `npm run check:ai --
---write` repairs `.env` with a working free model. `GET /api/ai/diagnose`
+--write` verifies candidate models with a real tool call before repairing `.env`.
+`GET /api/ai/diagnose`
 returns the same report as JSON (signed-in users only, no key material).
 
 Provider examples:
@@ -229,17 +232,25 @@ Provider examples:
 | **GitHub Models** (free) | `https://models.github.ai/inference` | `openai/gpt-4o-mini` | GitHub PAT with the `models:read` scope |
 | OpenAI | `https://api.openai.com/v1` | `gpt-4o-mini` | OpenAI key |
 | Groq (free tier) | `https://api.groq.com/openai/v1` | `llama-3.3-70b-versatile` | Groq key |
-| OpenRouter (cheap paid) | `https://openrouter.ai/api/v1` | `mistralai/mistral-small-3.2-24b-instruct` | OpenRouter key |
-| OpenRouter (free) | `https://openrouter.ai/api/v1` | `nvidia/nemotron-3.5-lightning:free` | OpenRouter key |
+| OpenRouter (cheap paid, ZDR-safe) | `https://openrouter.ai/api/v1` | `openai/gpt-6-luna` | OpenRouter key |
+| OpenRouter (free — ZDR must be relaxed) | `https://openrouter.ai/api/v1` | `nvidia/nemotron-3.5-lightning:free` | OpenRouter key |
 | Google Gemini | `https://generativelanguage.googleapis.com/v1beta/openai/` | `gemini-1.5-flash` | Google key |
 | Ollama (local) | `http://localhost:11434/v1` | `llama3.1` | *(none)* |
 
-A small paid model such as `mistralai/mistral-small-3.2-24b-instruct` costs
-well under a cent per question and does not hit the free-tier daily limit; keep
-free `:free` models later in `AI_MODELS` as fallbacks. Tool/function calling is
+A small paid model such as `openai/gpt-6-luna` costs well under a cent per
+question and does not hit the free-tier daily limit. Tool/function calling is
 mandatory — some provider slugs that look suitable (for example
 `openai/gpt-4o-mini` via OpenRouter) reject tool calls, so confirm with
-`npm run check:ai` before choosing one. Locally, put these in a `.env` file at the
+`npm run check:ai` before choosing one.
+
+**Zero Data Retention:** when OpenRouter account privacy has ZDR enforced for
+"All other models" (Settings → Privacy), most `:free` endpoints are excluded at
+routing time (`ZDR violation (account settings)`), and the few that pass are
+usually rate-limited on tool calls. Keep client data on ZDR-safe paid models;
+only relax that setting if the data owner explicitly accepts provider retention.
+Run `npm run check:ai` to see which models are reachable with the current key.
+
+Locally, put these in a `.env` file at the
 project root (it is git-ignored and loaded on start); on Railway/Render set them
 as dashboard variables. Free model lists rotate — `npm run check:ai` lists
 current free models that support tool/function calling (that capability is
