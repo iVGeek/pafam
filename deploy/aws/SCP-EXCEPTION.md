@@ -42,38 +42,45 @@ The template, scripts and runbooks are all ready; only the SCP is the remaining 
 arn:aws:organizations::909421214276:policy/o-snrun5i7ii/service_control_policy/p-pzq2xcu4
 ```
 
-This policy is attached to organizational unit `o-snrun5i7ii`. The exception needs to cover the exact 9 actions listed above. The safest approach is to add a `Condition` on each statement that permits those actions, or to broaden the policy to `Allow all ec2:` / `Allow all s3:` / `Allow all cloudformation:` / `Allow all ssm:` at the org level — whichever your security team’s approval process accepts.
+This policy is attached to organizational unit `o-snrun5i7ii`.
 
-## Minimal Policy Change (JSON Patch)
+## Important: adding "Allow" statements will NOT work
 
-If your org admin prefers a targeted edit rather than a blanket allow, here's a minimal JSON patch that adds the needed actions to the existing policy's statements:
+The failures are caused by an explicit **Deny**, and an explicit Deny always wins
+over an Allow. Adding `Effect: Allow` statements does nothing. The admin must
+**remove or narrow the Deny statement itself**. There are three valid options:
 
-```json
-[
-  {
-    "Action": "cloudformation:ValidateTemplate,cloudformation:DescribeStacks",
-    "Effect": "Allow",
-    "Resource": "*"
-  },
-  {
-    "Action": "ec2:DescribeVpcs,ec2:DescribeManagedPrefixLists,ec2:CreateVolume,ec2:CreateSecurityGroup",
-    "Effect": "Allow",
-    "Resource": "*"
-  },
-  {
-    "Action": "s3:CreateBucket",
-    "Effect": "Allow",
-    "Resource": "*"
-  },
-  {
-    "Action": "ssm:GetParameter,ssm:SendCommand",
-    "Effect": "Allow",
-    "Resource": "*"
-  }
-]
+**Option A — simplest (recommended):** delete the Deny statement from
+`p-pzq2xcu4` (or detach the policy from OU `o-snrun5i7ii`). This restores full
+access. Re-attach any remaining deny rules you still want afterwards.
+
+**Option B — narrow by action:** edit the Deny statement's `Action` list and
+remove these 9 actions from it:
+
+```
+cloudformation:ValidateTemplate
+cloudformation:DescribeStacks
+ec2:DescribeVpcs
+ec2:DescribeManagedPrefixLists
+ec2:CreateVolume
+ec2:CreateSecurityGroup
+s3:CreateBucket
+ssm:GetParameter
+ssm:SendCommand
 ```
 
-Add these as new Statement entries in the policy so any existing deny for other actions is preserved.
+**Option C — narrow by account:** add a `Condition` to the Deny statement so it
+does not apply to this account, e.g.:
+
+```json
+"Condition": {
+  "StringNotEquals": {
+    "aws:PrincipalAccount": "856324327908"
+  }
+}
+```
+
+After any of these, run `npm run check:aws:perms` to confirm.
 
 ## How to Verify Before and After
 
