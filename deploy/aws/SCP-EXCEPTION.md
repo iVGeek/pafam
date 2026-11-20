@@ -2,7 +2,13 @@
 
 ## What We're Asking For
 
-The Perfumes platform needs to run in your AWS account (`752796320611`, region `us-east-1`) behind an organizational SCP that **explicitly denies** every way to create or inspect compute resources:
+The Perfumes platform needs to run in your AWS account (tested in both
+`752796320611` and `856324327908`, region `us-east-1`) behind an organizational
+SCP that **explicitly denies** every way to create or inspect compute resources.
+Both accounts are affected because the deny is attached to the organization OU
+`o-snrun5i7ii`, not to a single account — switching accounts does not help.
+Verified by `npm run check:aws:perms` on 2026-11-20: the same 9 actions fail in
+both accounts with the same policy ARN.
 
 | Action | Why It's Needed | Current SCP Denial |
 |---|---|---|
