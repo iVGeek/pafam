@@ -1463,7 +1463,7 @@ routes.settings = async () => {
   const s = await GET('/settings');
   const fx = await GET('/fx');
   $('#view').innerHTML = `
-    <div class="split">
+    <div class="settings-layout">
       <div class="panel"><h2>Platform settings</h2>
         <div class="muted small" style="margin-bottom:10px"><b>require_offer_approval</b> = <code>1</code> makes staff sign-off mandatory: an offer that has not been approved cannot win a sourcing comparison or drive a buying recommendation. Left as <code>0</code>, the review state is still recorded and shown on the Supplier Offers page but does not block trading. <b>followup_days</b> sets how long a captured lead has before its follow-up task is overdue.</div>
         ${Object.entries(s).map(([k, v]) => `<div class="field" style="margin-bottom:8px"><label>${esc(k)}</label><input data-k="${esc(k)}" value="${esc(v)}" /></div>`).join('')}

@@ -262,6 +262,12 @@ svg.spark polyline { fill: none; stroke: var(--accent); stroke-width: 2; stroke-
 
 .split { display: grid; grid-template-columns: 1fr 320px; gap: 16px; align-items: start; }
 @media (max-width: 1000px) { .split { grid-template-columns: 1fr; } .layout { grid-template-columns: 1fr; } .sidebar { position: static; height: auto; } }
+
+/* Settings & FX needs two usable columns: the generic .split sidebar (320px)
+   crushes the FX table and its add-rate inputs. Both panels get equal width,
+   and the grid stacks automatically when the window is too narrow. */
+.settings-layout { display: grid; grid-template-columns: repeat(auto-fit, minmax(420px, 1fr)); gap: 16px; align-items: start; }
+.settings-layout > .panel { min-width: 0; }
 .modal-bg { position: fixed; inset: 0; background: rgba(0, 0, 0, .72); display: flex; align-items: center; justify-content: center; z-index: 40; }
 .modal { background: var(--panel); border: 1px solid var(--border-strong); border-radius: 12px; padding: 20px; width: min(520px, 92vw); max-height: 88vh; overflow: auto; }
 
