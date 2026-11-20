@@ -48,6 +48,29 @@ test('vendor profiles: L\'Oréal analysis sheet uses NEW CP as cost and SP as re
   assert.strictEqual(o.currency, 'USD');
 });
 
+test('vendor profiles: raw L\'Oréal EXWHK list uses EXWHK USD as cost', () => {
+  const headers = ['BRAND', 'EAN', 'DESCRIPTION', 'EXWHK USD', 'QTY'];
+  assert.strictEqual(detectProfile(headers).id, 'LOREAL');
+
+  const file = workbook('loreal-raw.xlsx', [
+    headers,
+    ['Armani', '3614274222142', 'EMPORIO CLASSIC HE EDT 100ML', '35.29', 800],
+    ['', '', '', '', 29600], // totals/footer row
+  ]);
+  const out = extract(file, { supplierId: 'LOREAL', supplierName: "L'Oréal" });
+  assert.strictEqual(out.profile.id, 'LOREAL');
+  assert.strictEqual(out.offers.length, 1, 'footer row skipped');
+
+  const o = out.offers[0];
+  assert.strictEqual(o.gtinSource, '3614274222142');
+  assert.strictEqual(o._gtin.valid, true);
+  assert.strictEqual(o.price, 35.29, 'EXWHK USD is our cost');
+  assert.strictEqual(o.rrp, null, 'no reference price in the raw list');
+  assert.strictEqual(o.availableQuantity, 800);
+  assert.strictEqual(o.quantityUnit, 'units');
+  assert.strictEqual(o.currency, 'USD');
+});
+
 test('vendor profiles: GE Wholesale keeps leading zeros and reads stock as units', () => {
   const headers = ['SKU', 'UPC', 'Brand', 'Description', 'Price (USD)', 'Stock'];
   assert.strictEqual(detectProfile(headers).id, 'GEWHOLESALE');

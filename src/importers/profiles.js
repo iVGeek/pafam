@@ -151,21 +151,25 @@ const PROFILES = [
     name: "L'Oréal",
     currency: 'USD',
     quantityUnit: 'units',
-    // Recognition: BRAND / EAN / NEW CP / GCS CP / SP analysis sheet.
-    // ASSUMED (client confirmation pending — see checklist Q10): NEW CP is our
+    // Recognition: either the BRAND / EAN / NEW CP / SP analysis sheet, or the
+    // raw supplier list (BRAND / EAN / EXWHK USD / QTY) it was derived from.
+    // ASSUMED (client confirmation pending — checklist Q10): NEW CP is our
     // acquisition cost, SP a selling-price reference, QTY units. GCS CP and
-    // (-+)CP Var are client analysis columns, not vendor cost fields. The
-    // sheet's own J-column formula ((SP-NEW CP)/SP) supports the cost reading.
+    // (-+)CP Var are client analysis columns, not vendor cost fields.
+    // Verified 2026-11-20: on the 11.17 file, NEW CP equals EXWHK USD on all 39
+    // matching rows (price, quantity and description), so both read as cost.
     match: (headers) =>
       headers.some((h) => /^brand$/i.test(h)) &&
       headers.some((h) => /^ean$/i.test(h)) &&
-      headers.some((h) => /^new\s*cp$/i.test(h)) &&
-      headers.some((h) => /^sp$/i.test(h)),
+      (
+        (headers.some((h) => /^new\s*cp$/i.test(h)) && headers.some((h) => /^sp$/i.test(h))) ||
+        (headers.some((h) => /exwhk/i.test(h)) && headers.some((h) => /^qty$/i.test(h)))
+      ),
     fields: {
       gtinSource: [/^ean$/i],
       description: [/^descrip/i],
       availableQuantity: [/^qty$/i],
-      price: [/^new\s*cp$/i], // assumed acquisition cost (see checklist Q10)
+      price: [/^new\s*cp$/i, /exwhk/i], // acquisition cost; SP/GCS CP never used
       rrp: [/^sp$/i], // reference only — never used as our cost
       category: null,
       sizeLiters: null,
