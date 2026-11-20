@@ -84,8 +84,8 @@ routes.imports = async () => {
             <select id="impSupplier"><option value="">Auto-detect from file</option>${supOpts}</select></div>
           <div class="field" style="margin-bottom:10px"><label>File (xls / xlsx)</label>
             <input type="file" id="impFile" accept=".xls,.xlsx" /></div>
-          <div class="field" style="margin-bottom:10px"><label>…or server-side path</label>
-            <input id="impPath" placeholder="C:\\path\\to\\list.xlsx" /></div>
+          <div class="field" style="margin-bottom:10px"><label>…or filename on server</label>
+            <input id="impPath" placeholder="list.xlsx (in /var/data/imports)" /></div>
           <div class="field" style="margin-bottom:10px"><label>List date</label>
             <input type="date" id="impDate" /></div>
           <button id="impGo">Import</button>

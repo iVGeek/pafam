@@ -8,10 +8,16 @@ const multer = require('multer');
 const { importFile } = require('../services/importer');
 const { parseList, diffLists } = require('../services/listdiff');
 const auth = require('../services/auth');
+const { resolveImportPath } = require('../services/safePath');
 
 const DATA_DIR = process.env.PTP_DATA_DIR || path.join(__dirname, '..', '..', 'data');
 const UPLOAD_DIR = process.env.UPLOAD_DIR || path.join(DATA_DIR, 'uploads');
+// Files referenced by "server-side path" must live here. This keeps the
+// feature (an admin copies a list onto the server) without exposing arbitrary
+// host files to the importer.
+const IMPORT_DIR = process.env.IMPORT_DIR || path.join(DATA_DIR, 'imports');
 if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+if (!fs.existsSync(IMPORT_DIR)) fs.mkdirSync(IMPORT_DIR, { recursive: true });
 const upload = multer({ dest: UPLOAD_DIR, limits: { fileSize: 50 * 1024 * 1024 } });
 
 // Import from an uploaded file (multipart field "file") or a server-side path.
@@ -23,7 +29,8 @@ router.post('/import', auth.requireRole('buyer'), upload.single('file'), (req, r
       filePath = req.file.path;
       cleanup = true;
     } else if (req.body && req.body.path) {
-      filePath = req.body.path;
+      // Confine server-side paths to the import directory (no host-file reads).
+      filePath = resolveImportPath(req.body.path, IMPORT_DIR);
     }
     if (!filePath) return res.status(400).json({ error: 'Provide a file upload or a "path".' });
     if (!fs.existsSync(filePath)) return res.status(400).json({ error: 'File not found: ' + filePath });

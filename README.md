@@ -87,6 +87,7 @@ Important settings for a hosted instance:
 | `PTP_SECURE_COOKIES` | `1` | Send the session cookie over HTTPS only |
 | `PTP_AUTO_SEED` | `true` | Load supplier lists + demo data on the first (empty) boot |
 | `PTP_SEED_DEMO_USERS` | `false` | Optional: skip the demo buyer/analyst/viewer accounts |
+| `IMPORT_DIR` | `<PTP_DATA_DIR>/imports` | Only `.xls`/`.xlsx`/`.csv` files inside this directory can be imported by "server-side path"; copy lists here before typing the filename |
 
 Node **24.x** is pinned via `engines` in `package.json` (the app uses the
 built-in `node:sqlite`).

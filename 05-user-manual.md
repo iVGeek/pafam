@@ -93,7 +93,9 @@ admin can reset any user from **Users & Roles**.
 1. In the left menu choose **Import Lists**.
 2. **Supplier** — pick the vendor (e.g. `ALCODIS`, `IGAN`).
 3. **File** — choose the `.xls`/`.xlsx` downloaded from the supplier. (Or type a
-   server-side path if you copied the file onto the server.)
+   filename if you copied the file into the server's import directory,
+   `<PTP_DATA_DIR>/imports` — e.g. `/var/data/imports/list.xlsx` on the live
+   server. Only `.xls`/`.xlsx`/`.csv` files from that directory are accepted.)
 4. **List date** — the date the list was published.
 5. Press **Import**.
 6. The upload appears in the list below with its row count and data-quality

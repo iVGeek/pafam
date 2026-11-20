@@ -341,6 +341,41 @@ test('http: exports require a session, like every other route', async () => {
   assert.strictEqual(t.status, 401, 'ad-hoc export requires auth');
 });
 
+test('http: /api/import refuses server-side paths outside the import directory', async () => {
+  const dataDir = path.dirname(TMP_DB);
+  const importDir = path.join(dataDir, 'imports');
+  // A real spreadsheet just outside the allowed directory: even with the right
+  // extension it must be rejected, and its full host path must not leak.
+  const secret = path.join(dataDir, 'secret-list.xlsx');
+  fs.writeFileSync(secret, 'not a real xlsx, but the path check must stop it first');
+  try {
+    const post = (body) => fetch(`${base}/api/import`, {
+      method: 'POST',
+      headers: { cookie, 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    let r = await post({ path: secret });
+    assert.strictEqual(r.status, 400, 'absolute path outside import dir is refused');
+    let j = await r.json();
+    assert.match(j.error, /inside the import directory/);
+    assert.doesNotMatch(j.error, /secret-list\.xlsx/);
+
+    r = await post({ path: '../secret-list.xlsx' });
+    assert.strictEqual(r.status, 400, 'traversal is refused');
+    j = await r.json();
+    assert.match(j.error, /inside the import directory/);
+
+    r = await post({ path: path.join(dataDir, 'ptp.db') });
+    assert.strictEqual(r.status, 400, 'the SQLite database cannot be imported by path');
+    j = await r.json();
+    assert.match(j.error, /Only .xls/);
+
+    assert.ok(fs.existsSync(importDir), 'import directory exists for legitimate uploads');
+  } finally {
+    fs.unlinkSync(secret);
+  }
+});
+
 test('http: /api/integrations advertises the real surface — GL, stock, webhook — and its limits', async () => {
   const r = await fetch(`${base}/api/integrations`, { headers: { cookie } });
   assert.strictEqual(r.status, 200);
