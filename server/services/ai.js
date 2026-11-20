@@ -30,8 +30,18 @@ const { parseList, diffLists } = require('./listdiff');
 const { SYSTEM_PROMPT } = require('./aiKnowledge');
 
 const MAX_STEPS_DEFAULT = 12;
+const MAX_TOKENS_DEFAULT = 4096;
 
 /* ------------------------------ configuration ------------------------------ */
+
+// Providers may pre-check credit against a model's own maximum output length
+// when the request omits max_tokens (up to 65536 on some models). That turns a
+// cheap turn into a 402 and silently pushes it to the next fallback model.
+// Always send a bounded value; callers and tests can still override it.
+function maxTokens() {
+  const n = Number(process.env.AI_MAX_TOKENS);
+  return Number.isFinite(n) && n > 0 ? Math.floor(n) : MAX_TOKENS_DEFAULT;
+}
 
 const DEFAULT_MODEL = 'gpt-4o-mini';
 
@@ -86,6 +96,7 @@ function status() {
     provider: baseUrl(),
     hasKey: Boolean(apiKey()),
     baseUrlSet: Boolean(process.env.AI_BASE_URL),
+    maxTokens: maxTokens(),
   };
 }
 
@@ -1814,6 +1825,7 @@ async function attempt(id, payload, onDelta) {
   const timeout = setTimeout(() => controller.abort(), Number(process.env.AI_TIMEOUT_MS) || 45000);
   try {
     const body = Object.assign({}, payload, { model: id });
+    if (!body.max_tokens && !body.max_completion_tokens) body.max_tokens = maxTokens();
     if (typeof onDelta === 'function') body.stream = true;
     const res = await httpFetch(baseUrl() + '/chat/completions', {
       method: 'POST',

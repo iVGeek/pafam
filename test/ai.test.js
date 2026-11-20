@@ -20,7 +20,7 @@ const ai = require('../server/services/ai');
 const { db } = require('../server/db');
 
 const SAVED = {};
-for (const k of ['AI_MODEL', 'AI_MODELS', 'AI_BASE_URL', 'AI_API_KEY', 'PTP_AI_MOCK', 'AI_TIMEOUT_MS', 'AI_AUTO_DISCOVER', 'AI_AUTO_DISCOVER_MAX', 'AI_DISCOVER_MAX_PRICE', 'AI_MAX_STEPS']) SAVED[k] = process.env[k];
+for (const k of ['AI_MODEL', 'AI_MODELS', 'AI_BASE_URL', 'AI_API_KEY', 'PTP_AI_MOCK', 'AI_TIMEOUT_MS', 'AI_AUTO_DISCOVER', 'AI_AUTO_DISCOVER_MAX', 'AI_DISCOVER_MAX_PRICE', 'AI_MAX_STEPS', 'AI_MAX_TOKENS']) SAVED[k] = process.env[k];
 
 function setEnv(vars) {
   for (const k of Object.keys(SAVED)) delete process.env[k];
@@ -51,6 +51,31 @@ test('status exposes the configured fallback chain', () => {
   const s = ai.status();
   assert.deepStrictEqual(s.models, ['first:id', 'second:id']);
   assert.strictEqual(s.model, 'first:id');
+});
+
+test('provider requests carry a bounded max_tokens', async () => {
+  setEnv({ AI_MODELS: 'first:id' });
+  const sent = [];
+  ai.setFetch(async (_url, opts) => {
+    const body = JSON.parse(opts.body);
+    sent.push(body);
+    return json(200, { choices: [{ message: { role: 'assistant', content: 'ok' } }] });
+  });
+  const out = await ai.chat({ messages: [{ role: 'user', content: 'hi' }] });
+  assert.strictEqual(out.reply, 'ok');
+  assert.strictEqual(sent[0].max_tokens, 4096);
+  assert.strictEqual(ai.status().maxTokens, 4096);
+});
+
+test('AI_MAX_TOKENS overrides the provider max_tokens', async () => {
+  setEnv({ AI_MODELS: 'first:id', AI_MAX_TOKENS: '2048' });
+  let sent;
+  ai.setFetch(async (_url, opts) => {
+    sent = JSON.parse(opts.body);
+    return json(200, { choices: [{ message: { role: 'assistant', content: 'ok' } }] });
+  });
+  await ai.chat({ messages: [{ role: 'user', content: 'hi' }] });
+  assert.strictEqual(sent.max_tokens, 2048);
 });
 
 test('a retired model is skipped and the next model answers', async () => {
