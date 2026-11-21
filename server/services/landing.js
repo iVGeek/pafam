@@ -47,7 +47,13 @@ function selectTier(tiersJson, quantity, basePrice, baseBasis) {
   for (const t of sorted) {
     if (q >= t.min && (t.max == null || q <= t.max)) { chosen = t; break; }
   }
-  if (!chosen && sorted.length && q > sorted[sorted.length - 1].max) chosen = sorted[sorted.length - 1];
+  // A bounded top tier may be extended above its max (bulk buyers keep the
+  // last price). An OPEN-ended top tier (max = null) already matched inside the
+  // loop, so `q > null` is `q > 0` — treating that as a fallback handed the
+  // cheapest bulk price to quantities below every minimum. Only extend when
+  // the top tier actually has a numeric max.
+  const top = sorted[sorted.length - 1];
+  if (!chosen && top && top.max != null && q > top.max) chosen = top;
   if (!chosen) return { price: basePrice, basis: baseBasis, tier: null, applied: false };
   return { price: chosen.price, basis: chosen.basis || baseBasis, tier: chosen, applied: true };
 }

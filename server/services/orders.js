@@ -2,6 +2,7 @@
 
 const { db } = require('../db');
 const pricing = require('./pricing');
+const fx = require('./fx');
 const { clampLimit } = require('./listLimit');
 
 function round2(n) {
@@ -29,8 +30,23 @@ function realise(order, payments) {
 
   let paidOut = 0;
   let paidIn = 0;
+  const fxAssumptions = [];
+  const cash = (p) => {
+    // `baseAmount` is the payment converted into the order currency at the
+    // payment date. Fall back to the raw amount only for callers that supply
+    // no currency context (pure calculations and legacy tests).
+    const raw = Number(p.amount) || 0;
+    const converted = Number(p.baseAmount);
+    if (p.baseAmount != null && Number.isFinite(converted)) {
+      if (p.fxMissing) {
+        fxAssumptions.push(p.fxAssumption || 'FX rate missing; parity (1:1) assumed');
+      }
+      return converted;
+    }
+    return raw;
+  };
   for (const p of payments || []) {
-    const amt = Number(p.amount) || 0;
+    const amt = cash(p);
     if (normaliseDirection(p.direction) === 'outbound') paidOut += amt;
     else paidIn += amt;
   }
@@ -52,7 +68,7 @@ function realise(order, payments) {
   const dated = (payments || [])
     .map((p) => ({
       date: p.paid_date || p.paidDate || null,
-      amount: normaliseDirection(p.direction) === 'outbound' ? -(Number(p.amount) || 0) : (Number(p.amount) || 0),
+      amount: normaliseDirection(p.direction) === 'outbound' ? -cash(p) : cash(p),
     }))
     .filter((f) => f.date);
   // A money-weighted return on an order that is still open is not a result,
@@ -69,6 +85,10 @@ function realise(order, payments) {
     costOutstanding, revenueOutstanding,
     costSettled, revenueSettled, settled,
     marginVariance,
+    // Mixed-currency payments are converted into the order currency before
+    // netting. A missing dated rate is never hidden: the figure stays usable
+    // but carries this assumption for the UI/AI to surface.
+    fxAssumptions,
     xirrPct: xirrResult.xirrPct,
     xirrReason: xirrResult.xirrPct == null ? (xirrResult.reason || null) : null,
     daysFunded: funding ? funding.daysFunded : null,
@@ -88,8 +108,29 @@ function paymentsFor(orderId) {
   return db.prepare('SELECT * FROM payments WHERE order_id = ? ORDER BY paid_date, id').all(orderId);
 }
 
+// Convert a payment into the order currency at the payment date. A rate booked
+// later must not revalue an old receipt; if no rate existed on that date the
+// conversion is flagged rather than silently presented as a real number.
+function paymentInOrderCurrency(p, orderCurrency, orderDate) {
+  const amount = Number(p.amount) || 0;
+  const currency = p.currency || orderCurrency;
+  if (!orderCurrency || !currency || currency === orderCurrency) {
+    return { ...p, baseAmount: amount, fxRateToOrder: 1, fxMissing: false };
+  }
+  const date = p.paid_date || p.paidDate || orderDate || null;
+  const rate = fx.getRate(currency, orderCurrency, date);
+  if (rate == null) {
+    return {
+      ...p, baseAmount: amount, fxRateToOrder: 1, fxMissing: true,
+      fxAssumption: `FX rate ${currency} -> ${orderCurrency} as of ${date || 'unknown'} is missing; parity (1:1) assumed`,
+    };
+  }
+  return { ...p, baseAmount: round2(amount * rate), fxRateToOrder: rate, fxMissing: false };
+}
+
 function withRealised(order) {
-  const payments = paymentsFor(order.id);
+  const payments = paymentsFor(order.id)
+    .map((p) => paymentInOrderCurrency(p, order.currency, order.order_date));
   return { ...order, payments, realised: realise(order, payments) };
 }
 

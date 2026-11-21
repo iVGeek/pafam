@@ -552,3 +552,38 @@ test('http: product merge is atomic and reassigns FK-protected references', asyn
   assert.strictEqual(bad.status, 400);
   assert.ok(db.prepare('SELECT id FROM products WHERE id = ?').get(dst), 'target still exists');
 });
+
+test('http: exception sign-off actor comes from the session, not the request body', async () => {
+  const mk = () => Number(db.prepare(
+    `INSERT INTO exceptions(type, detail) VALUES ('mismatch', 'actor attribution test')`
+  ).run().lastInsertRowid);
+  const single = mk();
+  const bulk = mk();
+
+  const post = (url, body) => fetch(`${base}${url}`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie },
+    body: JSON.stringify(body),
+  });
+
+  let r = await post(`/api/exceptions/${single}/resolve`, { actor: 'Client PO' });
+  assert.strictEqual(r.status, 200);
+  assert.strictEqual(
+    db.prepare('SELECT resolved_by FROM exceptions WHERE id = ?').get(single).resolved_by,
+    'admin',
+    'a forged actor cannot attribute a resolution to the client PO'
+  );
+
+  r = await post('/api/exceptions/resolve-many', { ids: [bulk], actor: 'Client PO' });
+  assert.strictEqual(r.status, 200);
+  assert.strictEqual(
+    db.prepare('SELECT resolved_by FROM exceptions WHERE id = ?').get(bulk).resolved_by,
+    'admin',
+    'bulk resolution uses the same session-derived actor'
+  );
+
+  const forged = db.prepare(
+    "SELECT COUNT(*) n FROM audit_log WHERE action = 'resolve-exception' AND actor = 'Client PO'"
+  ).get().n;
+  assert.strictEqual(forged, 0, 'audit log cannot be poisoned with a client-supplied name');
+});

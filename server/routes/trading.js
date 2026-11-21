@@ -59,7 +59,7 @@ router.post('/pricing/offer', (req, res) => {
     if (!offer) return res.status(404).json({ error: 'offer not found' });
     const acq = pricing.unitAcquisitionPrice(offer, { discountOffRrpPct: b.discountOffRrpPct });
     if (!Number.isFinite(acq.perBottle)) return res.status(400).json({ error: 'offer has no usable price' });
-    const rate = b.fxRate != null ? Number(b.fxRate) : (fx.getRate(offer.currency, base) || 1);
+    const rate = b.fxRate != null ? Number(b.fxRate) : (fx.getRate(offer.currency, base, offer.list_date) || 1);
     offerId = offer.id;
     acquisition = {
       perBottle: pricing.round4(acq.perBottle), currency: offer.currency, rate,
@@ -70,7 +70,7 @@ router.post('/pricing/offer', (req, res) => {
     const costPrice = Number(b.costPrice);
     if (!Number.isFinite(costPrice)) return res.status(400).json({ error: 'costPrice or offerId required' });
     const costCurrency = b.costCurrency || base;
-    const rate = b.fxRate != null ? Number(b.fxRate) : (fx.getRate(costCurrency, base) || 1);
+    const rate = b.fxRate != null ? Number(b.fxRate) : (fx.getRate(costCurrency, base, b.fxDate) || 1);
     acquisition = {
       perBottle: costPrice, currency: costCurrency, rate,
       perBottleBase: pricing.round4(costPrice * rate), source: 'cost', notes: '',

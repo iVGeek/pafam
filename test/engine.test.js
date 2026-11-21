@@ -244,6 +244,21 @@ test('selectTier picks the quantity break', () => {
   assert.equal(selectTier(null, 5, 99, 'unit').price, 99);
 });
 
+test('selectTier: an open-ended top tier is not applied below every minimum', () => {
+  // `q > null` is `q > 0`: without a guard a 6-unit order inherited the 60+
+  // bulk price, understating landed cost on exactly the small orders a pilot
+  // is most likely to price.
+  const tiers = [{ min: 12, max: 59, price: 28.5 }, { min: 60, price: 27 }];
+  const small = selectTier(tiers, 6, 30, 'unit');
+  assert.equal(small.applied, false);
+  assert.equal(small.price, 30, 'base price is used below the first minimum');
+  assert.equal(selectTier(tiers, 30, 30, 'unit').price, 28.5);
+  assert.equal(selectTier(tiers, 600, 30, 'unit').price, 27, 'open top tier still applies above its min');
+  // A bounded top tier may still be extended above its max for bulk buyers.
+  const bounded = [{ min: 12, max: 59, price: 28.5 }, { min: 60, max: 199, price: 27 }];
+  assert.equal(selectTier(bounded, 500, 30, 'unit').price, 27);
+});
+
 test('landed cost: EXW buyer pays every component', () => {
   const offer = { id: 1, supplier_code: 'S', price: 10, price_basis: 'unit', price_type: 'cost', currency: 'EUR', incoterm: 'EXW' };
   const supplier = { freight_per_unit: 0.5, insurance_pct: 2, duty_pct: 5, brokerage_per_unit: 0.1, handling_per_unit: 0.05, other_tax_pct: 0 };

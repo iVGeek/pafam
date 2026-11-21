@@ -52,7 +52,7 @@ function buildDeal(input) {
   let supplierSummary = null;
   let fxRateMissing = false;
   if (offer) {
-    const foundRate = fx.getRate(offer.currency, base);
+    const foundRate = fx.getRate(offer.currency, base, offer.list_date);
     fxRateMissing = foundRate == null && offer.currency !== base;
     const rate = foundRate == null ? 1 : foundRate;
     landed = computeLanded(offer, supplierFromRow(offer), {

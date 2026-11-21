@@ -28,7 +28,9 @@ function normalizeOffer(offer, baseCurrency) {
   let fxRate = 1;
   let fxMissing = false;
   if (perBottle != null) {
-    fxRate = fx.getRate(offer.currency, base);
+    // Use the rate in force on the list date, not the newest booked rate: a
+    // later rate must not silently revalue a signed-off historical offer.
+    fxRate = fx.getRate(offer.currency, base, offer.list_date);
     if (fxRate == null) {
       // Never silently treat a missing rate as parity: keep the number usable
       // but mark it so the UI and the AI cannot present it as a firm cost.

@@ -111,9 +111,12 @@ router.get('/exceptions', (req, res) => {
 
 router.post('/exceptions/:id/resolve', auth.requireRole('analyst'), (req, res) => {
   const id = Number(req.params.id);
+  // The sign-off name must come from the session, never the request body —
+  // otherwise a caller can attribute a resolution to the client PO.
+  const actor = req.user.username;
   db.prepare('UPDATE exceptions SET resolved = 1, resolved_by = ?, resolved_at = datetime(\'now\') WHERE id = ?')
-    .run(req.body && req.body.actor || 'user', id);
-  audit(req.body && req.body.actor || 'user', 'resolve-exception', 'exception', id);
+    .run(actor, id);
+  audit(actor, 'resolve-exception', 'exception', id);
   res.json({ ok: true });
 });
 
@@ -121,7 +124,7 @@ router.post('/exceptions/:id/resolve', auth.requireRole('analyst'), (req, res) =
 // supplier+type). Capped at 500. Analyst+.
 router.post('/exceptions/resolve-many', auth.requireRole('analyst'), (req, res) => {
   const b = req.body || {};
-  const actor = b.actor || 'user';
+  const actor = req.user.username;
   let ids = Array.isArray(b.ids) ? b.ids.map(Number).filter((n) => n > 0).slice(0, 500) : [];
   if (!ids.length && (b.supplier || b.type)) {
     const where = ['resolved = 0'];

@@ -19,7 +19,8 @@ const FIELD_GROUPS = {
   ],
   'Price and quantity': [
     'currency', 'price', 'priceBasis', 'unitsPerCase', 'availableQuantity',
-    'quantityUnit', 'moq', 'orderMultiple', 'tierMin', 'tierMax', 'rrp',
+    'quantityUnit', 'moq', 'orderMultiple', 'tierMin', 'tierMax', 'tierPrice',
+    'tiersJson', 'rrp',
   ],
   'Logistics and terms': [
     'stockCountry', 'stockWarehouse', 'countryOfOrigin', 'incoterm',

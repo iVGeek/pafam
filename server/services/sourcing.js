@@ -60,10 +60,12 @@ function sourceLowest({ productId, gtin: rawGtin, quantity, destination, baseCur
   const rateCache = {};
   const approvalEnforced = approvals.approvalRequired();
   const results = rows.map((r) => {
-    const key = r.currency;
+    // A rate is only valid for offers on/after its rate_date. Two offers in the
+    // same currency but from different list dates must not share one rate.
+    const key = `${r.currency}|${r.list_date || ''}`;
     if (!(key in rateCache)) {
-      const rate = fx.getRate(key, base);
-      rateCache[key] = { rate: rate == null ? 1 : rate, missing: rate == null && key !== base };
+      const rate = fx.getRate(r.currency, base, r.list_date);
+      rateCache[key] = { rate: rate == null ? 1 : rate, missing: rate == null && r.currency !== base };
     }
     const supplier = {
       name: r.supplier_name,
@@ -89,7 +91,7 @@ function sourceLowest({ productId, gtin: rawGtin, quantity, destination, baseCur
     if (rateCache[key].missing) {
       landed.fxRateMissing = true;
       landed.flags.push('fx-rate-missing');
-      landed.missing.push(`FX rate ${key} -> ${base}`);
+      landed.missing.push(`FX rate ${r.currency} -> ${base}`);
       landed.complete = false;
     }
     // Staff approval (section 3/16): when enforcement is on, an offer that has

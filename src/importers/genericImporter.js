@@ -11,21 +11,31 @@ function toText(v) {
   return String(v).trim();
 }
 
-// Parse a price/quantity cell that may contain currency symbols or EU decimals.
+// Parse a price/quantity cell that may contain currency symbols, EU decimals
+// or a US thousands separator. When both separators are present the one that
+// appears LAST is the decimal separator — assuming "." is always thousands
+// turned "1,234.56" into 1.234 (a 1000x price error). Mirrors listdiff.toNum.
 function parseNumber(v) {
   if (v === null || v === undefined) return null;
-  let s = String(v).trim();
-  if (s === '') return null;
-  s = s.replace(/[^\d.,\-]/g, '');
+  if (typeof v === 'number') return Number.isFinite(v) ? v : null;
+  let s = String(v).trim().replace(/[^\d.,\-]/g, '');
   if (s === '' || s === '-') return null;
   const hasComma = s.includes(',');
   const hasDot = s.includes('.');
-  if (hasComma && !hasDot) {
-    // EU decimal comma
-    s = s.replace(',', '.');
-  } else if (hasComma && hasDot) {
-    // assume '.' thousands, ',' decimal
-    s = s.replace(/\./g, '').replace(',', '.');
+  if (hasComma && hasDot) {
+    if (s.lastIndexOf(',') > s.lastIndexOf('.')) {
+      // 1.234,56 -> EU: dot thousands, comma decimal
+      s = s.replace(/\./g, '').replace(/,/g, '.');
+    } else {
+      // 1,234.56 -> US: comma thousands, dot decimal
+      s = s.replace(/,/g, '');
+    }
+  } else if (hasComma) {
+    const parts = s.split(',');
+    // A lone comma with one or two trailing digits is a decimal comma;
+    // "1,234" is a thousands separator and "1,234,567" is also thousands.
+    if (parts.length === 2 && parts[1].length <= 2) s = s.replace(',', '.');
+    else s = s.replace(/,/g, '');
   }
   const n = Number(s);
   return Number.isFinite(n) ? n : null;
@@ -80,6 +90,22 @@ function resolveColumns(profile, headers) {
   // in column C). A profile can bind those by zero-based column index.
   for (const [field, idx] of Object.entries(profile.indexFields || {})) {
     if (map[field] === undefined && Number.isInteger(idx)) map[field] = idx;
+  }
+  // Quantity price breaks are widespread but most profiles do not declare
+  // them. Detect the common header names generically so a real tier price is
+  // never silently dropped (brief section 5/7). An explicit profile mapping
+  // always wins over these defaults.
+  const GENERIC_TIER_FIELDS = {
+    tierMin: [/^tier\s*min/i, /^min(?:imum)?\s*qty/i, /^qty\s*from/i, /^break\s*from/i],
+    tierMax: [/^tier\s*max/i, /^max(?:imum)?\s*qty/i, /^qty\s*to/i, /^break\s*to/i],
+    tierPrice: [/^tier\s*price/i, /^price\s*break/i, /^break\s*price/i, /^price\s*\d+\s*\+/i],
+  };
+  for (const [field, patterns] of Object.entries(GENERIC_TIER_FIELDS)) {
+    if (map[field] !== undefined) continue;
+    for (const re of patterns) {
+      const c = headers.findIndex((h) => h && re.test(h));
+      if (c >= 0) { map[field] = c; break; }
+    }
   }
   return map;
 }
@@ -144,6 +170,18 @@ function extract(filePath, supplier) {
     offer.orderMultiple = parseNumber(get('orderMultiple'));
     offer.tierMin = parseNumber(get('tierMin'));
     offer.tierMax = parseNumber(get('tierMax'));
+    offer.tierPrice = parseNumber(get('tierPrice'));
+    // A vendor adapter may supply a full multi-tier JSON array. Otherwise build
+    // one tier from the detected columns, but only when a price is present —
+    // a "tier" with no price cannot change landed cost and must not be invented.
+    if (!offer.tiersJson && offer.tierPrice != null) {
+      offer.tiersJson = JSON.stringify([{
+        min: offer.tierMin != null ? offer.tierMin : 0,
+        max: offer.tierMax != null ? offer.tierMax : null,
+        price: offer.tierPrice,
+        basis: offer.priceBasis || 'unit',
+      }]);
+    }
 
     // Dates / logistics / eligibility (captured when the column exists, else blank).
     offer.validUntil = get('validUntil') || null;

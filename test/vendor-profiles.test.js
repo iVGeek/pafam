@@ -9,7 +9,7 @@ const fs = require('fs');
 const XLSX = require('xlsx');
 
 const { detectProfile } = require('../src/importers/profiles');
-const { extract } = require('../src/importers/genericImporter');
+const { extract, parseNumber } = require('../src/importers/genericImporter');
 
 const dir = path.join(os.tmpdir(), `ptp-vendor-profiles-${process.pid}`);
 fs.mkdirSync(dir, { recursive: true });
@@ -99,4 +99,34 @@ test('vendor profiles: GE Wholesale keeps leading zeros and reads stock as units
 
 test('vendor profiles: the new matchers do not steal the existing Igan layout', () => {
   assert.strictEqual(detectProfile(['CodigoEAN', 'Descripcion', 'PVP']).id, 'IGAN');
+});
+
+test('parseNumber: US and EU formats are not confused by 1000x', () => {
+  // XLSX with raw:false hands the importer formatted text. Treating '.' as
+  // always-thousands turned the ordinary US price "1,234.56" into 1.234.
+  assert.strictEqual(parseNumber('1,234.56'), 1234.56, 'US comma thousands');
+  assert.strictEqual(parseNumber('$1,234.56'), 1234.56, 'currency symbol ignored');
+  assert.strictEqual(parseNumber('1.234,56'), 1234.56, 'EU dot thousands');
+  assert.strictEqual(parseNumber('1,234'), 1234, 'bare comma thousands');
+  assert.strictEqual(parseNumber('1,234,567.89'), 1234567.89, 'multiple US separators');
+  assert.strictEqual(parseNumber('1.234.567,89'), 1234567.89, 'multiple EU separators');
+  assert.strictEqual(parseNumber('31.76'), 31.76, 'plain decimal');
+  assert.strictEqual(parseNumber('31,76'), 31.76, 'EU decimal comma');
+  assert.strictEqual(parseNumber('1,2'), 1.2, 'single decimal digit after comma');
+  assert.strictEqual(parseNumber(17.5), 17.5, 'numeric cell untouched');
+  assert.strictEqual(parseNumber(''), null);
+  assert.strictEqual(parseNumber('abc'), null);
+});
+
+test('vendor profiles: a detected tier price is serialised into tiersJson', () => {
+  const headers = ['SKU', 'UPC', 'Description', 'Price (USD)', 'Stock', 'Tier Min', 'Tier Max', 'Tier Price'];
+  const file = workbook('ge-tiers.xlsx', [
+    headers,
+    ['GXP-1', '085715167613', 'Tiered item', '17.50', 500, '60', '199', '15.75'],
+  ]);
+  const out = extract(file, { supplierId: 'GEWHOLESALE', supplierName: 'GE Wholesale' });
+  const o = out.offers[0];
+  assert.strictEqual(o.price, 17.5, 'base price still captured');
+  const tiers = JSON.parse(o.tiersJson);
+  assert.deepStrictEqual(tiers, [{ min: 60, max: 199, price: 15.75, basis: 'unit' }]);
 });

@@ -172,7 +172,9 @@ expiry_date, notes, cap_type, refillable, product_id, status, units_per_case_sou
         default_discount_pct: supplier.defaultDiscount || 0,
       });
       if (acqHist.perBottle != null) {
-        const fxr = fx.getRate(o.currency || supplier.currency, baseCur) || 1;
+        // Price history is dated: use the rate in force on the list date so a
+        // later rate cannot rewrite the historical cost series.
+        const fxr = fx.getRate(o.currency || supplier.currency, baseCur, listDate) || 1;
         unitCostBase = pricing.round4(acqHist.perBottle * fxr);
       }
     }

@@ -38,7 +38,7 @@ router.post('/import', auth.requireRole('buyer'), upload.single('file'), (req, r
     const result = importFile(filePath, {
       supplierCode: req.body && req.body.supplierCode,
       listDate: req.body && req.body.listDate,
-      actor: req.body && req.body.actor || 'user',
+      actor: req.user.username,
       force: req.body && req.body.force === 'true',
     });
     if (cleanup) { try { fs.unlinkSync(filePath); } catch (_) {} }
