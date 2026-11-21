@@ -19,7 +19,17 @@ const counts = seedData({ log: (m) => console.log('  ' + m) });
 
 console.log('Users:', counts.users, '| captures:', counts.captures);
 console.log('Seed complete.');
-console.log(`  login: ${process.env.PTP_ADMIN_USER || 'admin'}/${process.env.PTP_ADMIN_PASS || 'admin123'}`);
+// Never present a source-code-known password as a production login. With no
+// PTP_ADMIN_PASS, a non-demo seed generates a random password (logged above by
+// seedData) and forces a change; a local demo seed keeps the documented default.
+const adminUser = process.env.PTP_ADMIN_USER || 'admin';
+if (process.env.PTP_ADMIN_PASS) {
+  console.log(`  login: ${adminUser}/${process.env.PTP_ADMIN_PASS}`);
+} else if (process.env.PTP_SEED_DEMO_USERS === 'false') {
+  console.log(`  login: ${adminUser}/<generated random password printed above — change at first login>`);
+} else {
+  console.log(`  local demo login: ${adminUser}/admin123 (demo only — never use on a public host)`);
+}
 console.log('  products:', counts.products);
 console.log('  offers:  ', counts.offers);
 console.log('  exceptions:', counts.exceptions);
