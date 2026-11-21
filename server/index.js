@@ -44,8 +44,10 @@ app.use(express.static(PUBLIC_DIR));
 app.use('/api', require('./routes/auth'));
 app.use('/api', require('./routes/captures'));
 
-// Everything else requires an authenticated user.
+// Everything else requires an authenticated user, and a generated bootstrap
+// password must be changed before anything else is reachable.
 app.use('/api', auth.requireAuth);
+app.use('/api', auth.requirePasswordChanged);
 
 app.use('/api', require('./routes/meta'));
 app.use('/api', require('./routes/imports'));
@@ -98,7 +100,12 @@ if (require.main === module) {
     console.log(' Created bootstrap admin account:');
     console.log('   username: ' + boot.username);
     console.log('   password: ' + boot.password);
-    console.log(' Change it after first login (Account > Change password).');
+    if (boot.generated) {
+      console.log(' This password was GENERATED (no PTP_ADMIN_PASS was set).');
+      console.log(' The rest of the API is locked until you change it via');
+      console.log(' POST /api/auth/password (Account > Change password).');
+    }
+    console.log(' Store it in a secret manager; do not commit it to source.');
     console.log('============================================================');
   }
 

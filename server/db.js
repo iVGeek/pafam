@@ -604,6 +604,10 @@ function migrate() {
   ensureColumn('uploads', 'cleaned_path', 'TEXT');
   ensureColumn('uploads', 'cleaned_rows', 'INTEGER');
   ensureColumn('uploads', 'cleaned_at', 'TEXT');
+
+  // A bootstrap admin whose password was generated (not chosen via
+  // PTP_ADMIN_PASS) must change it before using the rest of the app.
+  ensureColumn('users', 'must_change_password', 'INTEGER NOT NULL DEFAULT 0');
 }
 
 function init() {

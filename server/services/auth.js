@@ -32,7 +32,7 @@ function validateUsername(username) {
   return /^[a-z0-9_.-]{3,32}$/i.test(String(username || ''));
 }
 
-function createUser({ username, password, role = 'viewer', displayName, email, active = 1 }) {
+function createUser({ username, password, role = 'viewer', displayName, email, active = 1, mustChangePassword = false }) {
   if (!username || !password) throw Object.assign(new Error('username and password required'), { status: 400 });
   if (!validateUsername(username)) throw Object.assign(new Error('username must be 3-32 characters: letters, digits, _ . -'), { status: 400 });
   if (String(password).length < 6) throw Object.assign(new Error('password must be at least 6 characters'), { status: 400 });
@@ -40,8 +40,11 @@ function createUser({ username, password, role = 'viewer', displayName, email, a
   const exists = db.prepare('SELECT id FROM users WHERE username = ?').get(username);
   if (exists) throw Object.assign(new Error('username already exists'), { status: 409 });
   const info = db.prepare(
-    'INSERT INTO users(username, display_name, email, password_hash, role, active) VALUES (?,?,?,?,?,?)'
-  ).run(username, displayName || username, email || null, hashPassword(password), role, active ? 1 : 0);
+    'INSERT INTO users(username, display_name, email, password_hash, role, active, must_change_password) VALUES (?,?,?,?,?,?,?)'
+  ).run(
+    username, displayName || username, email || null, hashPassword(password), role,
+    active ? 1 : 0, mustChangePassword ? 1 : 0
+  );
   audit('system', 'create-user', 'user', Number(info.lastInsertRowid), `${username} (${role})${active ? '' : ' pending approval'}`);
   return Number(info.lastInsertRowid);
 }
@@ -59,7 +62,17 @@ function pendingUsers() {
 }
 
 function setPassword(userId, password) {
-  db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(hashPassword(password), userId);
+  // Revoke every existing session when a password changes (self-service or
+  // admin reset). Otherwise a stolen or stale 7-day token keeps working.
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    db.prepare('UPDATE users SET password_hash = ?, must_change_password = 0 WHERE id = ?').run(hashPassword(password), userId);
+    db.prepare('DELETE FROM sessions WHERE user_id = ?').run(userId);
+    db.exec('COMMIT');
+  } catch (e) {
+    db.exec('ROLLBACK');
+    throw e;
+  }
   audit('system', 'set-password', 'user', userId);
 }
 
@@ -113,7 +126,7 @@ function pruneSessions() {
 function userFromToken(token) {
   if (!token) return null;
   const row = db.prepare(
-    `SELECT u.id, u.username, u.display_name, u.email, u.role, u.active
+    `SELECT u.id, u.username, u.display_name, u.email, u.role, u.active, u.must_change_password
      FROM sessions s JOIN users u ON u.id = s.user_id
      WHERE s.token = ? AND s.expires_at > datetime('now')`
   ).get(token);
@@ -157,6 +170,19 @@ function requireRole(minRole) {
   };
 }
 
+// A bootstrap admin with a generated password must change it before any other
+// API is reachable. The auth routes are mounted before this middleware, so
+// POST /api/auth/password stays available to clear the flag.
+function requirePasswordChanged(req, res, next) {
+  if (req.user && req.user.must_change_password) {
+    return res.status(403).json({
+      error: 'You must change your generated password before using the platform.',
+      code: 'PASSWORD_CHANGE_REQUIRED',
+    });
+  }
+  next();
+}
+
 function setSessionCookie(res, token, maxAgeMs) {
   const parts = [
     `${COOKIE}=${token}`,
@@ -176,14 +202,24 @@ function clearSessionCookie(res) {
 }
 
 // Ensure there is at least one admin so a fresh install is reachable.
+// NEVER fall back to a source-code-known password: the acceptance runbook sets
+// PTP_AUTO_SEED=false, so a fresh acceptance DB takes this exact path. When no
+// PTP_ADMIN_PASS is provided we generate a strong random secret, print it once
+// to the console, and force a password change before any other API is usable.
 function ensureBootstrapAdmin() {
   const n = db.prepare("SELECT COUNT(*) n FROM users WHERE role = 'admin'").get().n;
   if (n === 0) {
-    const total = db.prepare('SELECT COUNT(*) n FROM users').get().n;
     const username = process.env.PTP_ADMIN_USER || 'admin';
-    const password = process.env.PTP_ADMIN_PASS || (total === 0 ? 'admin123' : crypto.randomBytes(6).toString('hex'));
-    const id = createUser({ username, password, role: 'admin', displayName: 'Administrator' });
-    return { created: true, username, password, id };
+    const chosen = process.env.PTP_ADMIN_PASS;
+    const password = chosen && String(chosen).length >= 6
+      ? String(chosen)
+      : crypto.randomBytes(24).toString('hex');
+    const generated = !chosen;
+    const id = createUser({
+      username, password, role: 'admin', displayName: 'Administrator',
+      mustChangePassword: generated,
+    });
+    return { created: true, username, password, generated, id };
   }
   return { created: false };
 }
@@ -194,5 +230,5 @@ module.exports = {
   setPassword, listUsers, getById, updateUser,
   authenticate, createSession, destroySession, pruneSessions, userFromToken,
   parseCookies, attachUser, requireAuth, requireRole,
-  setSessionCookie, clearSessionCookie, ensureBootstrapAdmin,
+  setSessionCookie, clearSessionCookie, ensureBootstrapAdmin, requirePasswordChanged,
 };

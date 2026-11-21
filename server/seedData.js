@@ -174,8 +174,19 @@ const addInv = db.prepare(
   // Users (roles). Passwords are env-overridable so a hosted instance is not
   // left on known demo credentials.
   const demoUsers = process.env.PTP_SEED_DEMO_USERS !== 'false';
+  const adminPass = process.env.PTP_ADMIN_PASS;
+  // The known 'admin123' is only a local-demo convenience. A non-demo seed
+  // (PTP_SEED_DEMO_USERS=false) must never produce a source-code-known admin.
+  const generatedAdminPass = !adminPass && !demoUsers;
+  const generatedPassword = generatedAdminPass ? require('crypto').randomBytes(24).toString('hex') : null;
+  if (generatedPassword) log('Generated admin password (change it at first login): ' + generatedPassword);
   const users = [
-    { username: process.env.PTP_ADMIN_USER || 'admin', password: process.env.PTP_ADMIN_PASS || 'admin123', role: 'admin', displayName: 'Administrator', email: 'admin@ptp.local' },
+    {
+      username: process.env.PTP_ADMIN_USER || 'admin',
+      password: adminPass || generatedPassword || 'admin123',
+      role: 'admin', displayName: 'Administrator', email: 'admin@ptp.local',
+      mustChangePassword: generatedAdminPass,
+    },
   ];
   if (demoUsers) {
     users.push(

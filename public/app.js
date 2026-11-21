@@ -170,7 +170,14 @@ $('#pwBtn').addEventListener('click', () => {
     bg.querySelector('#cpGo').addEventListener('click', async () => {
       try {
         await POST('/auth/password', { currentPassword: bg.querySelector('#cpCur').value, newPassword: bg.querySelector('#cpNew').value });
-        bg.remove(); toast('Password updated', 'ok');
+        // All sessions (including this one) are revoked on password change, so
+        // send the user back to login rather than leaving a dead session behind.
+        bg.remove();
+        state.user = null;
+        updateUserUI();
+        showLogin();
+        $('#loginErr').style.color = 'var(--good)';
+        $('#loginErr').textContent = 'Password updated — sign in again with your new password.';
       } catch (e) { toast(e.message, 'err'); }
     });
   });
