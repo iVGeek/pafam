@@ -188,7 +188,10 @@ function planForSupplier(supplierCode) {
     if (!offer) continue;
     const acq = pricing.unitAcquisitionPrice(offer);
     const upc = Number(offer.units_per_case) > 0 ? Number(offer.units_per_case) : null;
-    const suggested = it.orderQuantity;
+    // consolidateDemands() names this field orderQty (recommendationFor()
+    // calls it orderQuantity). Reading the wrong name made every auto-PO a
+    // single box and every preview total zero.
+    const suggested = it.orderQty;
     const fb = upc ? toFullBoxes(suggested, upc) : { boxes: null, units: suggested };
     lines.push({
       productId: it.productId,
@@ -322,11 +325,15 @@ function generateFromPlan(opts = {}) {
         status: 'draft',
         notes: 'Auto-generated from purchase plan' + (skipped ? ` (${skipped} line(s) skipped: not executable)` : ''),
         createdBy: opts.actor || 'user',
+        // Pass units, never a fallback of one box: normalizeLine rounds them
+        // up to whole boxes using the offer's pack size, and an offer with no
+        // pack size still orders the full demanded quantity (1 box = 1 unit).
         lines: currencyLines.map((l) => ({
           productId: l.productId,
           offerId: l.offerId,
           description: l.description,
-          boxes: l.suggestedBoxes != null ? l.suggestedBoxes : 1,
+          unitsPerCase: l.unitsPerCase,
+          units: l.suggestedUnits,
           unitCost: l.unitCost,
         })),
       });

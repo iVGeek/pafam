@@ -111,9 +111,9 @@ If a field is genuinely unavailable, please mark it **"unavailable"** in the
 file rather than leaving it blank — we will not invent values. If it is easier,
 we can walk through the templates together in a short call.
 
-The critical path is **items 1 and 6 first** (supplier master + FX), then the
-real documents, then the history. That order lets us start validating while the
-rest is being gathered.
+The critical path is **checklist items 1 and 6 first** (supplier master and
+base currencies / FX), then the real documents, then the history. That order
+lets us start validating while the rest is being gathered.
 
 Kind regards,
 [Name]

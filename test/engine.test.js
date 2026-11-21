@@ -1660,6 +1660,47 @@ test('mixed currencies: totals stay per-currency, never one fake scalar', () => 
   }
 });
 
+test('purchase plan carries real order quantities into drafts and previews', () => {
+  const p = require('../server/services/placements');
+  const { consolidateDemands } = require('../server/services/purchasePlan');
+  const plan = p.planForSupplier();
+  assert.ok(plan.lines.length > 0, 'fixture has actionable plan lines');
+  const qtyByOffer = new Map(
+    consolidateDemands().items.map((i) => [i.supplier && i.supplier.offerId, i.orderQty])
+  );
+  for (const l of plan.lines) {
+    assert.ok(Number.isFinite(l.suggestedUnits) && l.suggestedUnits > 0,
+      'suggestedUnits is a real quantity, not undefined');
+    const expected = qtyByOffer.get(l.offerId);
+    if (expected != null) assert.strictEqual(l.suggestedUnits, expected, 'plan uses orderQty from consolidateDemands');
+  }
+
+  const preview = ai.runTool('auto_purchase_preview', {}).result;
+  const capital = Object.values(preview.capitalByCurrency).reduce((s, v) => s + v, 0);
+  assert.ok(capital > 0, 'preview reports real capital, not zeros');
+  for (const s of preview.suppliers) {
+    if (!s.lines) continue;
+    assert.ok(s.units > 0, 'preview units are non-zero for an orderable supplier');
+  }
+
+  const out = p.generateFromPlan({ actor: 'test' });
+  try {
+    assert.ok(out.created.length > 0, 'drafts are actually created');
+    for (const c of out.created) {
+      const full = p.getPlacement(c.id);
+      assert.ok(full.lines.some((l) => Number(l.units) > 1),
+        'draft PO orders the demanded quantity, not a single box');
+      assert.ok(Number(full.totals.total) > 0, 'draft PO total is non-zero');
+    }
+  } finally {
+    const { db: d } = require('../server/db');
+    for (const c of out.created) {
+      d.prepare('DELETE FROM purchase_order_lines WHERE po_id = ?').run(c.id);
+      d.prepare('DELETE FROM purchase_orders WHERE id = ?').run(c.id);
+    }
+  }
+});
+
 test('supplier scorecards: grades are real, missing data never zeroes out', () => {
   const sc = require('../server/services/supplierScorecard');
   assert.equal(sc.termsDays('Net 30'), 30);
