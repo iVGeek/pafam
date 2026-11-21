@@ -42,7 +42,7 @@ test('app.js: chat wiring, icons, finder, stepper all present', () => {
     'decorateNav', 'ROUTE_ICONS', 'icon(',
     'globalFind', 'dealStepper', 'installTableSorting',
     'renderChatInto', 'aiBody', 'aiList', 'aiInput', 'deleteChat',
-    'copyText', "icon('paperclip'",
+    'copyText', "icon('paperclip'", 'const warningHtml = (r.warnings || []).length',
   ]) {
     assert.ok(js.includes(needle), 'UI missing: ' + needle);
   }

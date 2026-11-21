@@ -599,6 +599,9 @@ function renderDealResult(el, r) {
   const m = r.deal.metrics;
   const cf = r.deal.cashflow;
   const ok = m.passesPolicy;
+  const warningHtml = (r.warnings || []).length
+    ? `<div class="badge warn" style="margin-bottom:10px">${(r.warnings || []).map(esc).join(' · ')}</div>`
+    : '';
   const landedLines = r.landed ? [
     ['Purchase / bottle', money(r.landed.purchaseUSD, r.baseCurrency)],
     ['Freight', money(r.landed.components.freight.value, r.baseCurrency)],
@@ -610,6 +613,7 @@ function renderDealResult(el, r) {
   ] : [];
   el.innerHTML = `
     <h2>Deal result <span class="badge ${ok ? 'good' : 'bad'}">${ok ? 'meets policy' : 'below policy'}</span></h2>
+    ${warningHtml}
     <div class="kpi-inline" style="margin-bottom:14px">
       <div class="item"><div class="k">Margin %</div><div class="v ${m.marginPct >= 15 ? 'best' : ''}">${pct(m.marginPct)}</div></div>
       <div class="item"><div class="k">Markup / unit</div><div class="v">${money(m.markup, r.baseCurrency)}</div></div>
