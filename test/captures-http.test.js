@@ -46,7 +46,8 @@ before(async () => {
   assert.strictEqual(r.status, 200, 'login works in-process');
   cookie = r.headers.get('set-cookie');
   assert.ok(cookie, 'session cookie issued');
-  captureSecret = (db.prepare("SELECT value FROM settings WHERE key = 'capture_secret'").get() || {}).value || 'change-me-capture-secret';
+  captureSecret = (db.prepare("SELECT value FROM settings WHERE key = 'capture_secret'").get() || {}).value;
+  assert.ok(captureSecret && captureSecret !== 'change-me-capture-secret', 'a generated secret exists for the webhook tests');
 });
 
 after(() => { if (server) server.close(); });
