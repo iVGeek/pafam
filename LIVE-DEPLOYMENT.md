@@ -22,7 +22,7 @@ blueprints only).
 | IAM role | none (IMDSv2 required) |
 | Security group | port 22 only — **no** public HTTP port |
 | Public URL | `https://soa-land-sarah-sega.trycloudflare.com` (temporary Cloudflare quick tunnel) |
-| Login | seeded admin account — see `05-user-manual.md`; rotate before loading client data |
+| Login | rotated random passwords — see *Credentials* below; the demo passwords in `05-user-manual.md` no longer work |
 
 The Cloudflare quick-tunnel URL is **ephemeral**: it changes when the tunnel or
 instance restarts. A stable hostname needs a Cloudflare account and a named
@@ -39,6 +39,27 @@ tunnel; that is not yet configured.
   `AI_MODEL=openai/gpt-6-luna`,
   `AI_MODELS=openai/gpt-6-luna,anthropic/claude-haiku-5.5,mistralai/mistral-small-3.2-24b-instruct`,
   `AI_MAX_TOKENS=4096`. ZDR stays enabled in the OpenRouter account.
+
+## Credentials
+
+The demo passwords documented in `05-user-manual.md` were **rotated** on this
+instance before any client data was loaded. Each of the four accounts
+(`admin`, `buyer`, `analyst`, `viewer`) now has an independent random
+48-hex-character password. The secrets are stored **only** in the root-owned,
+mode-600 file `/root/.ptp-credentials` on the EC2 host; they are deliberately
+not in this repo, in `.env`, or in source code. `PTP_ADMIN_PASS` was removed
+from `.env` so a fresh bootstrap generates its own random password and forces a
+change at first login.
+
+Retrieve them with (you need SSH access to the instance):
+
+```bash
+sudo cat /root/.ptp-credentials
+```
+
+The deploy helper sources this file for its login smoke check, so deploys keep
+working after the rotation. If the instance is replaced, generate new secrets
+and rotate the database users again — do not reuse these values.
 
 ## SSH access
 

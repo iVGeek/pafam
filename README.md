@@ -403,7 +403,11 @@ After `npm run seed` (or a first hosted boot) the demo accounts are:
 | `analyst` | `analyst123` | analyst |
 | `viewer` | `viewer123` | viewer |
 
-Change these for any public deployment (see *Deploy on Render*).
+Change these for any public deployment (see *Deploy on Render*). These are
+**local demo defaults only**: a fresh bootstrap with no `PTP_ADMIN_PASS` now
+generates a random admin password and forces a change at first login, and the
+live EC2 instance has already rotated all four accounts to random secrets
+(stored in `/root/.ptp-credentials` on that host — see `LIVE-DEPLOYMENT.md`).
 
 ## Architecture
 
