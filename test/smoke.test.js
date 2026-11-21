@@ -75,6 +75,43 @@ test('fonts: all three variable font files exist and are non-trivial', () => {
   }
 });
 
+test('http: /pricing/offer flags an assumed 1:1 rate instead of hiding it', async () => {
+  const auth = require('../server/services/auth');
+  try { auth.createUser({ username: 'admin', password: 'admin123', role: 'admin' }); } catch (e) { if (e.status !== 409) throw e; }
+  const app = require('../server');
+  const server = http.createServer(app);
+  await new Promise((r) => server.listen(0, '127.0.0.1', r));
+  const base = 'http://127.0.0.1:' + server.address().port;
+  try {
+    const login = await fetch(base + '/api/auth/login', {
+      method: 'POST', headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ username: 'admin', password: 'admin123' }),
+    });
+    const cookie = login.headers.get('set-cookie');
+    const price = (costCurrency) => fetch(base + '/api/pricing/offer', {
+      method: 'POST',
+      headers: { cookie, 'content-type': 'application/json' },
+      body: JSON.stringify({ costPrice: 10, costCurrency, baseCurrency: 'USD', quantity: 1 }),
+    }).then((r) => r.json());
+
+    const missing = await price('NOFX');
+    assert.strictEqual(missing.fxMissing, true, 'no rate is flagged');
+    assert.strictEqual(missing.fxRate, 1, 'parity is exposed as the fallback it is');
+    assert.match(missing.warning, /1:1 rate was assumed/);
+    assert.match(missing.warning, /NOFX/);
+
+    const same = await price('USD');
+    assert.strictEqual(same.fxMissing, false, 'same-currency costing is not flagged');
+    assert.strictEqual(same.warning, null);
+  } finally {
+    server.closeAllConnections && server.closeAllConnections();
+    await Promise.race([
+      new Promise((r) => server.close(r)),
+      new Promise((r) => setTimeout(r, 2000)),
+    ]);
+  }
+});
+
 test('http: serves the shell + assets 200', async () => {
   const auth = require('../server/services/auth');
   try { auth.createUser({ username: 'admin', password: 'admin123', role: 'admin' }); } catch (e) { if (e.status !== 409) throw e; }

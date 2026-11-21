@@ -608,6 +608,11 @@ function migrate() {
   // A bootstrap admin whose password was generated (not chosen via
   // PTP_ADMIN_PASS) must change it before using the rest of the app.
   ensureColumn('users', 'must_change_password', 'INTEGER NOT NULL DEFAULT 0');
+
+  // Price-history points whose source currency had no dated rate to base are
+  // marked, never stored as a silent 1:1 "base" cost that trends would report
+  // as a real movement.
+  ensureColumn('price_history', 'fx_missing', 'INTEGER NOT NULL DEFAULT 0');
 }
 
 function init() {

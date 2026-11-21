@@ -52,6 +52,8 @@ router.post('/pricing/offer', (req, res) => {
   // ---- Acquisition cost per bottle, expressed in the base currency ----
   let acquisition;
   let offerId = null;
+  let fxMissing = false;
+  let fxDate = b.fxDate || null;
   if (b.offerId) {
     const offer = db.prepare(
       `SELECT o.*, s.default_discount_pct FROM offers o JOIN suppliers s ON s.code = o.supplier_code WHERE o.id = ?`
@@ -59,7 +61,11 @@ router.post('/pricing/offer', (req, res) => {
     if (!offer) return res.status(404).json({ error: 'offer not found' });
     const acq = pricing.unitAcquisitionPrice(offer, { discountOffRrpPct: b.discountOffRrpPct });
     if (!Number.isFinite(acq.perBottle)) return res.status(400).json({ error: 'offer has no usable price' });
-    const rate = b.fxRate != null ? Number(b.fxRate) : (fx.getRate(offer.currency, base, offer.list_date) || 1);
+    fxDate = offer.list_date || fxDate;
+    const foundRate = b.fxRate != null ? Number(b.fxRate) : fx.getRate(offer.currency, base, offer.list_date);
+    const usable = Number.isFinite(foundRate) && foundRate > 0;
+    fxMissing = offer.currency !== base && !usable;
+    const rate = usable ? foundRate : 1;
     offerId = offer.id;
     acquisition = {
       perBottle: pricing.round4(acq.perBottle), currency: offer.currency, rate,
@@ -70,7 +76,10 @@ router.post('/pricing/offer', (req, res) => {
     const costPrice = Number(b.costPrice);
     if (!Number.isFinite(costPrice)) return res.status(400).json({ error: 'costPrice or offerId required' });
     const costCurrency = b.costCurrency || base;
-    const rate = b.fxRate != null ? Number(b.fxRate) : (fx.getRate(costCurrency, base, b.fxDate) || 1);
+    const foundRate = b.fxRate != null ? Number(b.fxRate) : fx.getRate(costCurrency, base, b.fxDate);
+    const usable = Number.isFinite(foundRate) && foundRate > 0;
+    fxMissing = costCurrency !== base && !usable;
+    const rate = usable ? foundRate : 1;
     acquisition = {
       perBottle: costPrice, currency: costCurrency, rate,
       perBottleBase: pricing.round4(costPrice * rate), source: 'cost', notes: '',
@@ -102,6 +111,10 @@ router.post('/pricing/offer', (req, res) => {
 
   res.json({
     baseCurrency: base, costCurrency: acquisition.currency, fxRate: acquisition.rate,
+    fxDate, fxMissing,
+    warning: fxMissing
+      ? `No ${base} FX rate for ${acquisition.currency}${fxDate ? ' on ' + fxDate : ''} — a 1:1 rate was assumed for costing. Add the dated rate in Settings & FX and recalculate before quoting or signing off.`
+      : null,
     quantity, offerId, acquisition, landed, targetMarginPct, options,
     policy: { minMarginPct, minMarkup },
   });

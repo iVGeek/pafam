@@ -73,8 +73,8 @@ expiry_date, notes, cap_type, refillable, product_id, status, units_per_case_sou
   );
   const insertHistory = db.prepare(
     `INSERT INTO price_history(supplier_code, gtin_canonical, product_id, upload_id, offer_id,
-       observed_at, list_date, currency, price, price_basis, price_type, units_per_case, unit_cost_base)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`
+       observed_at, list_date, currency, price, price_basis, price_type, units_per_case, unit_cost_base, fx_missing)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
   );
   const insertException = db.prepare(
     'INSERT INTO exceptions(upload_id, offer_id, type, detail) VALUES (?,?,?,?)'
@@ -158,6 +158,7 @@ expiry_date, notes, cap_type, refillable, product_id, status, units_per_case_sou
     // Record a price-history point for trend analysis (even for exceptions,
     // but prefer normalised acquisition cost where possible).
     let unitCostBase = null;
+    let fxMissing = false;
     // A per-case price with an unknown pack size cannot be converted to a
     // per-bottle cost. We record "unknown" rather than dividing by 1, so the
     // trend series shows a gap instead of a fictional figure (section 6).
@@ -173,15 +174,19 @@ expiry_date, notes, cap_type, refillable, product_id, status, units_per_case_sou
       });
       if (acqHist.perBottle != null) {
         // Price history is dated: use the rate in force on the list date so a
-        // later rate cannot rewrite the historical cost series.
-        const fxr = fx.getRate(o.currency || supplier.currency, baseCur, listDate) || 1;
-        unitCostBase = pricing.round4(acqHist.perBottle * fxr);
+        // later rate cannot rewrite the historical cost series. With no rate
+        // there is NO base-currency cost — recording parity would make trends
+        // and alerts report a 1:1 assumption as a real price movement.
+        const srcCur = o.currency || supplier.currency;
+        const rate = fx.getRate(srcCur, baseCur, listDate);
+        fxMissing = rate == null && srcCur !== baseCur;
+        if (!fxMissing) unitCostBase = pricing.round4(acqHist.perBottle * (rate == null ? 1 : rate));
       }
     }
     insertHistory.run(
       supplier.code, canonical, productId, uploadId, offerId,
       new Date().toISOString(), listDate, o.currency || supplier.currency, price, priceBasis, priceType,
-      unitsPerCase, unitCostBase
+      unitsPerCase, unitCostBase, fxMissing ? 1 : 0
     );
 
     if (isBlank) {

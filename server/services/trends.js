@@ -26,7 +26,7 @@ function collapseByUpload(rows) {
 // `rows` must be ordered oldest -> newest; each row should carry unit_cost_base.
 function computeTrend(rows) {
   const points = collapseByUpload(rows || [])
-    .filter((r) => r && r.unit_cost_base != null && Number.isFinite(Number(r.unit_cost_base)));
+    .filter((r) => r && !r.fx_missing && r.unit_cost_base != null && Number.isFinite(Number(r.unit_cost_base)));
   if (!points.length) {
     return { latest: null, previous: null, change: null, changePct: null, direction: 'none', observations: 0 };
   }
@@ -124,7 +124,7 @@ function productTrends(productId) {
 // Full observation list for one (supplier x barcode) series, oldest first.
 function seriesFor(supplierCode, gtin) {
   return db.prepare(HISTORY_SELECT).all(supplierCode, gtin)
-    .filter((r) => r.unit_cost_base != null && Number.isFinite(Number(r.unit_cost_base)))
+    .filter((r) => !r.fx_missing && r.unit_cost_base != null && Number.isFinite(Number(r.unit_cost_base)))
     .map((r) => ({
       observedAt: r.observed_at,
       listDate: r.list_date,

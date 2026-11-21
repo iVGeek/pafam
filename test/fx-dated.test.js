@@ -75,6 +75,30 @@ test('buildDeal uses the offer list date for FX', () => {
   assert.strictEqual(out.fxRateMissing, false);
 });
 
+test('buildDeal converts an offer-derived selling price at the same dated rate', () => {
+  const productId = seededProductWithOffers();
+  db.prepare('INSERT OR IGNORE INTO suppliers(code, name, currency) VALUES (?, ?, ?)')
+    .run('SELLFX', 'Sell FX Test', PAIR);
+  const info = db.prepare(
+    `INSERT INTO offers(upload_id, supplier_code, description, currency, price, rrp, price_basis, price_type, units_per_case, product_id, status, list_date)
+     VALUES (1, 'SELLFX', 'Sell FX offer', ?, 10, 22, 'unit', 'cost', 1, ?, 'new', ?)`
+  ).run(PAIR, productId, '2026-02-01');
+
+  const out = buildDeal({ offerId: Number(info.lastInsertRowid), quantity: 1 });
+  assert.strictEqual(out.found, true);
+  assert.strictEqual(out.baseCurrency, 'USD');
+  assert.strictEqual(out.fxRateMissing, false);
+  assert.strictEqual(out.selling.currency, 'USD');
+  // 22 TST at the 2026-02-01 rate of 1.10 = 24.20 real USD, not labelled-base TST.
+  assert.strictEqual(out.selling.rrp, 24.2);
+  assert.strictEqual(out.selling.sellingUnitPrice, 24.2);
+
+  // A newer rate must not revalue the old offer's selling price.
+  fx.setRate(PAIR, 'USD', 1.50, { rateDate: '2026-06-01', source: 'dated-test' });
+  const again = buildDeal({ offerId: Number(info.lastInsertRowid), quantity: 1 });
+  assert.strictEqual(again.selling.sellingUnitPrice, 24.2);
+});
+
 test('sourceLowest keeps separate rates for the same currency on different dates', () => {
   const productId = seededProductWithOffers();
   db.prepare('INSERT OR IGNORE INTO suppliers(code, name, currency) VALUES (?, ?, ?)')

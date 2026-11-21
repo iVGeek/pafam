@@ -764,9 +764,14 @@ function renderBuilderResult(r, customers) {
     return { ...o, est, sp };
   }).sort((a, b) => a.est - b.est) : [];
   const bestId = supplierRows[0] ? supplierRows[0].offerId : null;
+  const fxNote = r.acquisition.currency === cur ? ''
+    : (r.fxMissing
+      ? ` × FX <b style="color:var(--bad)">1 (1:1 assumed — not a real rate)</b> = ${money(r.acquisition.perBottleBase, cur)}`
+      : ` × FX ${r.fxRate} = ${money(r.acquisition.perBottleBase, cur)}`);
   $('#obOut').innerHTML = `
     <h2>Selling price at ${pct(r.targetMarginPct)}</h2>
-    <div class="muted small" style="margin:4px 0 12px">Cost ${money(r.acquisition.perBottle, r.acquisition.currency)}${r.acquisition.currency !== cur ? ` × FX ${r.fxRate} = ${money(r.acquisition.perBottleBase, cur)}` : ''} · landed ${money(r.landed.total, cur)} / bottle · qty ${num(r.quantity)}</div>
+    ${r.fxMissing ? `<div class="badge bad" style="display:block;margin:4px 0 10px;padding:8px">${esc(r.warning || 'FX rate missing — a 1:1 rate was assumed. Add the dated rate in Settings & FX before quoting.')}</div>` : ''}
+    <div class="muted small" style="margin:4px 0 12px">Cost ${money(r.acquisition.perBottle, r.acquisition.currency)}${fxNote} · landed ${money(r.landed.total, cur)} / bottle · qty ${num(r.quantity)}</div>
     <div class="grid cards" style="grid-template-columns:1fr 1fr">${opts.map(card).join('')}</div>
     <div class="row" style="margin-top:14px;gap:10px;align-items:flex-end">
       <div class="field" style="flex:1"><label>Customer (to save as a quote)</label>
@@ -787,6 +792,7 @@ function renderBuilderResult(r, customers) {
       <div class="muted small" style="margin-top:6px">Estimated landed applies the freight/duty inputs above to each supplier's quoted cost; open the Deal Calculator for a full per-supplier costing.</div>` : ''}`;
   const save = async () => {
     if (!can('buyer')) return toast('Buyer role required to save', 'err');
+    if (r.fxMissing) return toast('Add the dated FX rate in Settings & FX and recalculate before saving this quote', 'err');
     if (!builderLast || !builderLast.productId) return toast('Pick a product first', 'err');
     const cust = $('#obCust') ? $('#obCust').value : '';
     if (!cust) return toast('Pick a customer', 'err');

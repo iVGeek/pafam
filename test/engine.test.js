@@ -430,6 +430,19 @@ test('trend: single observation has no change', () => {
   assert.equal(t.observations, 1);
 });
 
+test('trend: missing-FX history points are excluded, not treated as parity', () => {
+  const rows = [
+    { upload_id: 1, observed_at: '2026-01-01', unit_cost_base: 10, fx_missing: 0 },
+    { upload_id: 2, observed_at: '2026-02-01', unit_cost_base: 10, fx_missing: 1 }, // parity assumption
+    { upload_id: 3, observed_at: '2026-03-01', unit_cost_base: 12, fx_missing: 0 },
+  ];
+  const t = trends.computeTrend(rows);
+  assert.equal(t.observations, 2, 'only real base-currency points count');
+  assert.equal(t.previous.unitCostBase, 10);
+  assert.equal(t.latest.unitCostBase, 12);
+  assert.equal(t.change, 2, 'the parity point never creates a fake movement');
+});
+
 test('severity bands scale with the alert threshold', () => {
   assert.equal(trends.severityForChange(3, 10), 'info');
   assert.equal(trends.severityForChange(-12, 10), 'warning');
@@ -1657,6 +1670,33 @@ test('mixed currencies: totals stay per-currency, never one fake scalar', () => 
     assert.ok(s.estTotalByCurrency && Object.keys(s.estTotalByCurrency).length >= 1);
     assert.deepStrictEqual(s.currencies, Object.keys(s.estTotalByCurrency));
     assert.ok(s.estTotal === null || typeof s.estTotal === 'number');
+  }
+});
+
+test('import: no dated FX rate is flagged, never stored as a parity base cost', () => {
+  const { db: d, getSetting, setSetting } = require('../server/db');
+  const originalBase = getSetting('base_currency', 'USD');
+  const file = path.join(os.tmpdir(), `ptp-nofx-import-${process.pid}.xlsx`);
+  const ws = XLSX.utils.aoa_to_sheet([
+    ['EAN', 'DUN', 'Descripcion', 'Precio'],
+    ['3614274222143', '12345678901235', 'No-FX import acceptance item', '30.00'],
+  ]);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Prices');
+  XLSX.writeFile(wb, file);
+  try {
+    // ZZZ has no rates from any currency, so this list cannot produce a real
+    // base-currency cost — the importer must say so instead of assuming parity.
+    setSetting('base_currency', 'ZZZ');
+    const result = importFile(file, { supplierCode: 'ALCODIS', listDate: '2026-02-01', actor: 'nofx-test' });
+    assert.strictEqual(result.imported, 1);
+    const h = d.prepare('SELECT * FROM price_history WHERE upload_id = ?').get(result.uploadId);
+    assert.ok(h, 'history point recorded');
+    assert.strictEqual(h.fx_missing, 1, 'missing rate is flagged on the history row');
+    assert.strictEqual(h.unit_cost_base, null, 'no fictional 1:1 base cost');
+  } finally {
+    setSetting('base_currency', originalBase);
+    try { fs.unlinkSync(file); } catch (_) { /* ignore */ }
   }
 });
 

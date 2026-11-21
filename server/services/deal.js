@@ -51,10 +51,12 @@ function buildDeal(input) {
   let landed = null;
   let supplierSummary = null;
   let fxRateMissing = false;
+  let offerRate = null;
   if (offer) {
     const foundRate = fx.getRate(offer.currency, base, offer.list_date);
-    fxRateMissing = foundRate == null && offer.currency !== base;
-    const rate = foundRate == null ? 1 : foundRate;
+    offerRate = foundRate == null ? null : Number(foundRate);
+    fxRateMissing = offerRate == null && offer.currency !== base;
+    const rate = offerRate == null ? 1 : offerRate;
     landed = computeLanded(offer, supplierFromRow(offer), {
       quantity, destination: dest, baseCurrency: base, settings, fxRate: rate,
     });
@@ -76,9 +78,21 @@ function buildDeal(input) {
   }
 
   // ---- Sell side: price to customer ----
-  const rrp = input.rrp != null ? Number(input.rrp) : (offer ? offer.rrp : null);
+  // An explicit input price is already in `base`. An offer price is in the
+  // offer's own currency and must use the SAME dated rate as the landed cost
+  // before it can be netted against that base-currency cost. Without this a
+  // EUR sell price was compared directly to a USD landed cost and labelled base.
+  function fromOffer(v) {
+    const n = Number(v);
+    if (!Number.isFinite(n)) return null;
+    if (offer.currency === base || offerRate == null) return n; // parity, already flagged
+    return pricing.round4(n * offerRate);
+  }
+  const offerRrp = offer && offer.rrp != null ? fromOffer(offer.rrp) : null;
+  const offerFallback = offer ? fromOffer(offer.rrp || offer.price) : null;
+  const rrp = input.rrp != null ? Number(input.rrp) : offerRrp;
   const sellingUnitPrice = input.sellingUnitPrice != null ? Number(input.sellingUnitPrice)
-    : (rrp != null ? rrp : (offer ? offer.rrp || offer.price : null));
+    : (rrp != null ? rrp : offerFallback);
 
   // ---- Terms ----
   const supplierTermsText = offer ? offer.supplier_payment_terms : null;
@@ -131,7 +145,12 @@ function buildDeal(input) {
   // when it reads only deal metrics (§8: no silent 1:1 FX).
   const warnings = [];
   if (fxRateMissing && offer) {
-    warnings.push(`No ${base} FX rate for ${offer.currency} — 1:1 was assumed; add the rate in Settings & FX before trading on this deal.`);
+    const usedOfferPrice = input.sellingUnitPrice == null && offerFallback != null;
+    warnings.push(
+      `No ${base} FX rate for ${offer.currency} on ${offer.list_date} — 1:1 was assumed for landed cost` +
+      (usedOfferPrice ? ' and the offer-derived selling price' : '') +
+      '; add the rate in Settings & FX before trading on this deal.'
+    );
   }
 
   return {
