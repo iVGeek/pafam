@@ -56,7 +56,15 @@ Go to the app URL. You get the sign-in card:
 1. Type your **Username** and **Password**.
 2. Click **Sign in** (or press Enter).
 
-Demo accounts shipped with the sample data:
+> **Live instance — these demo passwords no longer work.** The four accounts
+> on the running EC2 instance were rotated to independent random passwords
+> during hardening. Ask the instance owner for the current credentials, or
+> retrieve them from the root-only file `/root/.ptp-credentials` on the host
+> (`sudo cat /root/.ptp-credentials`). See `LIVE-DEPLOYMENT.md` → *Credentials*.
+> If you get `401`, you are using an old password — not a broken service.
+
+Demo accounts shipped with the **local** sample data only (use these for a
+local `npm run seed`, never on a public host):
 
 | Username | Password | Role | Can do |
 |---|---|---|---|
@@ -68,7 +76,8 @@ Demo accounts shipped with the sample data:
 Change a password any time with **Password** in the top bar (see §2), or an
 admin can reset any user from **Users & Roles**.
 
-> **First thing to do:** change the `admin` password (top bar → **Password**).
+> **First thing to do on a fresh local demo:** change the `admin` password
+> (top bar → **Password**). On the live instance this has already been done.
 
 ## 2. The layout
 
