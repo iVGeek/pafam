@@ -20,7 +20,8 @@ New to the system? The step-by-step, screenshot-illustrated
 
 Signing off the pilot? The [**Acceptance Runbook**](ACCEPTANCE-RUNBOOK.md) turns
 the ten SOW §4 criteria into a step-by-step test with evidence and a PO sign-off
-block.
+block. Before requesting client data, fill in the open PO/currency/FX decisions
+in [**Client Decisions Needed**](CLIENT-DECISIONS-NEEDED.md).
 
 ## Supported supplier list layouts
 

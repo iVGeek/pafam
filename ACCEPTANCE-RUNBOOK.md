@@ -7,7 +7,10 @@ client's product owner (PO) can sign.
 > **Rule:** pilot is accepted only when all ten criteria pass **on the client's
 > representative real data**. Automated tests (`npm test`) prove the engine on
 > the sample fixture; they are supporting evidence, **not** a substitute for
-> this run. Any "N/A" needs a written waiver from the PO.
+> this run. Any "N/A" needs a written waiver from the PO. Confirm the open
+> decisions in `CLIENT-DECISIONS-NEEDED.md` (PO, base currency, FX source,
+> destination, column mappings) before starting — a blank answer is not a
+> default and an assumed value cannot be signed off.
 
 ## Run metadata
 

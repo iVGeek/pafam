@@ -124,4 +124,6 @@ Kind regards,
 §19–32 and §497, `02-pilot-sow.md` §5, and `ACCEPTANCE-RUNBOOK.md` §1. The two
 price lists cover only checklist item 3a for L'Oréal and GE. Open questions 10
 and 11 hold the unconfirmed column mappings; correcting them is a one-line
-supplier-default change plus re-import.*
+supplier-default change plus re-import. Before sending, fill the PO/recipient,
+base currency and destination decisions in `CLIENT-DECISIONS-NEEDED.md` — D1
+and D2 are hard blockers.*
