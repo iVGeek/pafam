@@ -434,6 +434,21 @@ test('realise: overpayment shows positive margin variance once settled', () => {
   assert.equal(r.marginVariance, 25);
 });
 
+test('realise: direction is case/whitespace tolerant, not silently flipped', () => {
+  const order = { quantity: 100, unit_cost: 10, unit_price: 15 };
+  const r = orders.realise(order, [
+    { direction: ' Outbound ', amount: 1000 },
+    { direction: 'INBOUND', amount: 1600 },
+  ]);
+  assert.equal(r.paidOut, 1000, 'mixed-case outbound is still money paid out');
+  assert.equal(r.paidIn, 1600);
+  assert.equal(r.realisedMargin, 600);
+  assert.equal(r.settled, true);
+  assert.equal(orders.normaliseDirection(' Outbound '), 'outbound');
+  assert.equal(orders.normaliseDirection('out'), 'outbound');
+  assert.equal(orders.normaliseDirection(undefined), 'inbound');
+});
+
 test('scenarios: base, conservative, upside and stress cases', () => {
   const s = pricing.scenarios({
     quantity: 1000, landedUnitCost: 33, sellingUnitPrice: 40,
@@ -613,6 +628,21 @@ test('reservations: in-transit stock is not available to sell', () => {
   const lotId = seedLot({ onHand: 0, inTransit: 500 });
   assert.equal(reservations.availableToSell(lotId), 0);
   assert.equal(reservations.reserve({ lotId, quantity: 1 }).ok, false);
+});
+
+test('reservations: fulfil refuses when stock was adjusted down after reserving', () => {
+  const lotId = seedLot({ onHand: 40 });
+  const r = reservations.reserve({ lotId, quantity: 25 });
+  assert.ok(r.ok);
+  // Stock correction in the warehouse between reservation and shipment.
+  db.prepare('UPDATE inventory_lots SET on_hand = 10 WHERE id = ?').run(lotId);
+  const f = reservations.fulfil(r.id);
+  assert.equal(f.ok, false);
+  assert.match(f.error, /insufficient stock to fulfil/);
+  const lot = db.prepare('SELECT on_hand, reserved FROM inventory_lots WHERE id = ?').get(lotId);
+  assert.equal(lot.on_hand, 10, 'stock is not driven negative');
+  assert.equal(lot.reserved, 25, 'reservation is still active for investigation');
+  assert.equal(db.prepare("SELECT status FROM reservations WHERE id = ?").get(r.id).status, 'active');
 });
 
 test('xirr: annualises dated cash flows and declines when unsupported', () => {

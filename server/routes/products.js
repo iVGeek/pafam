@@ -60,20 +60,42 @@ router.get('/compare', (req, res) => {
   res.json({ found: true, query: raw, analysis: g, product, ...result });
 });
 
-// Merge two products (dedupe resolution). Moves offers/aliases/inventory from `from` to `to`.
+// Merge two products (dedupe resolution). Reassigns every reference to the
+// source before deleting it, all in one transaction: several dependent tables
+// have product_id FKs with no cascade (quotes/orders/purchase_order_lines), so
+// leaving one behind made the DELETE fail *after* the other moves had committed
+// — a half-merged product with no source row to retry against.
+const MERGE_TABLES = [
+  'offers', 'product_aliases', 'inventory_lots', 'demands',
+  'quotes', 'orders', 'price_history', 'purchase_order_lines',
+  'alerts', 'shipment_allocations',
+];
 router.post('/products/merge', auth.requireRole('admin'), (req, res) => {
   const { from, to } = req.body || {};
   if (!from || !to) return res.status(400).json({ error: 'from and to required' });
-  const src = db.prepare('SELECT * FROM products WHERE id = ?').get(Number(from));
-  const dst = db.prepare('SELECT * FROM products WHERE id = ?').get(Number(to));
+  const srcId = Number(from);
+  const dstId = Number(to);
+  if (!Number.isInteger(srcId) || !Number.isInteger(dstId)) {
+    return res.status(400).json({ error: 'from and to must be product ids' });
+  }
+  if (srcId === dstId) return res.status(400).json({ error: 'from and to must be different products' });
+  const src = db.prepare('SELECT * FROM products WHERE id = ?').get(srcId);
+  const dst = db.prepare('SELECT * FROM products WHERE id = ?').get(dstId);
   if (!src || !dst) return res.status(404).json({ error: 'product not found' });
-  db.prepare('UPDATE offers SET product_id = ? WHERE product_id = ?').run(dst.id, src.id);
-  db.prepare('UPDATE product_aliases SET product_id = ? WHERE product_id = ?').run(dst.id, src.id);
-  db.prepare('UPDATE inventory_lots SET product_id = ? WHERE product_id = ?').run(dst.id, src.id);
-  db.prepare('UPDATE demands SET product_id = ? WHERE product_id = ?').run(dst.id, src.id);
-  db.prepare('DELETE FROM products WHERE id = ?').run(src.id);
-  audit('user', 'merge-products', 'product', dst.id, `merged ${src.id} -> ${dst.id}`);
-  res.json({ ok: true, merged: { from: src.id, to: dst.id } });
+
+  try {
+    db.exec('BEGIN IMMEDIATE');
+    for (const table of MERGE_TABLES) {
+      db.prepare(`UPDATE ${table} SET product_id = ? WHERE product_id = ?`).run(dstId, srcId);
+    }
+    db.prepare('DELETE FROM products WHERE id = ?').run(srcId);
+    db.exec('COMMIT');
+  } catch (e) {
+    try { db.exec('ROLLBACK'); } catch (_) { /* already rolled back */ }
+    return res.status(409).json({ error: 'merge failed; no changes applied: ' + e.message });
+  }
+  audit('user', 'merge-products', 'product', dstId, `merged ${srcId} -> ${dstId}`);
+  res.json({ ok: true, merged: { from: srcId, to: dstId } });
 });
 
 module.exports = router;

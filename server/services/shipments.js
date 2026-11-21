@@ -13,6 +13,7 @@
 // reported as `reconciled: false` rather than being quietly rounded away.
 
 const { db, audit } = require('../db');
+const { clampLimit } = require('./listLimit');
 
 const DRIVERS = {
   weight: { label: 'Chargeable weight (kg)', column: 'total_weight_kg' },
@@ -186,7 +187,7 @@ function list(opts = {}) {
        FROM shipments s
        ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
        ORDER BY s.id DESC LIMIT ?`
-  ).all(...params, Number(opts.limit) || 100);
+  ).all(...params, clampLimit(opts.limit, 100));
   return rows.map((r) => ({
     ...r,
     difference: round2(round2(r.allocated_total) - round2(r.total_cost)),

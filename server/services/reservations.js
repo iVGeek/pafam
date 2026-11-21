@@ -17,6 +17,7 @@
 // recomputes from the reservations table so drift is detectable.
 
 const { db, audit } = require('../db');
+const { clampLimit } = require('./listLimit');
 
 function round4(n) { return Math.round((Number(n) + Number.EPSILON) * 10000) / 10000; }
 
@@ -116,6 +117,18 @@ function fulfil(reservationId, actor) {
   const lot = getLot(r.lot_id);
   const qty = Number(r.quantity) || 0;
   if (!lot) return { ok: false, error: 'lot not found' };
+  // A stock adjustment (or quarantine) after the reservation was placed can
+  // leave less physical stock than the reservation holds. Never ship more than
+  // is actually there — refuse with a clear reason instead of driving on_hand
+  // negative and corrupting the lot.
+  const usable = usableStock(lot);
+  if (qty > usable + 1e-9) {
+    return {
+      ok: false,
+      error: `insufficient stock to fulfil: only ${usable} usable, reservation needs ${qty}`,
+      lotId: r.lot_id, usable, requested: qty,
+    };
+  }
   db.prepare('UPDATE inventory_lots SET on_hand = on_hand - ?, reserved = reserved - ? WHERE id = ?')
     .run(qty, qty, Number(r.lot_id));
   db.prepare("UPDATE reservations SET status = 'fulfilled', released_at = datetime('now') WHERE id = ?")
@@ -142,7 +155,7 @@ function list(opts = {}) {
      ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
      ORDER BY r.created_at DESC, r.id DESC
      LIMIT ?`;
-  params.push(Number(opts.limit) || 200);
+  params.push(clampLimit(opts.limit, 200));
   const rows = db.prepare(sql).all(...params);
   for (const r of rows) {
     r.usable = usableStock(r);

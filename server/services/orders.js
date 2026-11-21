@@ -2,9 +2,18 @@
 
 const { db } = require('../db');
 const pricing = require('./pricing');
+const { clampLimit } = require('./listLimit');
 
 function round2(n) {
   return Math.round((Number(n) + Number.EPSILON) * 100) / 100;
+}
+
+// Directions arrive from forms, imports and client exports in mixed case and
+// with stray whitespace. Normalise once: treating "Outbound"/" outbound " as
+// inbound silently flips the sign of realised margin and the XIRR cash flow.
+function normaliseDirection(value) {
+  const s = String(value == null ? '' : value).trim().toLowerCase();
+  return s === 'outbound' || s === 'out' ? 'outbound' : 'inbound';
 }
 
 // Pure realised-vs-forecast calculation for one order given its payments.
@@ -22,7 +31,7 @@ function realise(order, payments) {
   let paidIn = 0;
   for (const p of payments || []) {
     const amt = Number(p.amount) || 0;
-    if (p.direction === 'outbound') paidOut += amt;
+    if (normaliseDirection(p.direction) === 'outbound') paidOut += amt;
     else paidIn += amt;
   }
   paidOut = round2(paidOut);
@@ -43,7 +52,7 @@ function realise(order, payments) {
   const dated = (payments || [])
     .map((p) => ({
       date: p.paid_date || p.paidDate || null,
-      amount: p.direction === 'outbound' ? -(Number(p.amount) || 0) : (Number(p.amount) || 0),
+      amount: normaliseDirection(p.direction) === 'outbound' ? -(Number(p.amount) || 0) : (Number(p.amount) || 0),
     }))
     .filter((f) => f.date);
   // A money-weighted return on an order that is still open is not a result,
@@ -80,11 +89,13 @@ function paymentsFor(orderId) {
 }
 
 function withRealised(order) {
-  return { ...order, payments: paymentsFor(order.id), realised: realise(order, paymentsFor(order.id)) };
+  const payments = paymentsFor(order.id);
+  return { ...order, payments, realised: realise(order, payments) };
 }
 
 function listOrders(limit = 300) {
-  return db.prepare(`${ORDER_SELECT} ORDER BY o.id DESC LIMIT ?`).all(limit).map(withRealised);
+  const n = clampLimit(limit, 300);
+  return db.prepare(`${ORDER_SELECT} ORDER BY o.id DESC LIMIT ?`).all(n).map(withRealised);
 }
 
 function getOrder(id) {
@@ -133,7 +144,7 @@ function createOrder(body = {}) {
 function recordPayment(orderId, body = {}) {
   const order = db.prepare('SELECT * FROM orders WHERE id = ?').get(Number(orderId));
   if (!order) return { error: 'order not found' };
-  const direction = body.direction === 'outbound' ? 'outbound' : 'inbound';
+  const direction = normaliseDirection(body.direction);
   const amount = Number(body.amount);
   if (!Number.isFinite(amount) || amount === 0) return { error: 'amount required' };
   const info = db.prepare(
@@ -152,4 +163,4 @@ function updateStatus(id, status) {
   return { ok: true };
 }
 
-module.exports = { realise, listOrders, getOrder, createOrder, recordPayment, updateStatus, round2 };
+module.exports = { realise, listOrders, getOrder, createOrder, recordPayment, updateStatus, round2, normaliseDirection };

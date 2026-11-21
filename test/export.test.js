@@ -360,6 +360,21 @@ test('http: login is rate-limited after repeated failures', async () => {
   assert.strictEqual(other.status, 401, 'another username is not blocked');
 });
 
+test('http: public registration is rate-limited even when every attempt succeeds', async () => {
+  const post = (name) => fetch(`${base}/api/auth/register`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ username: name, password: 'strong-pass-123', confirmPassword: 'strong-pass-123' }),
+  });
+  for (let i = 0; i < 10; i += 1) {
+    const r = await post(`reg_probe_${process.pid}_${i}`);
+    assert.strictEqual(r.status, 200, 'successful registration ' + (i + 1));
+  }
+  const blocked = await post(`reg_probe_${process.pid}_blocked`);
+  assert.strictEqual(blocked.status, 429, 'the next registration is throttled');
+  assert.ok(blocked.headers.get('retry-after'));
+});
+
 test('http: /api/import refuses server-side paths outside the import directory', async () => {
   const dataDir = path.dirname(TMP_DB);
   const importDir = path.join(dataDir, 'imports');
@@ -467,4 +482,73 @@ test('http: forecast withholds thin history and the backtest never grades noise'
       assert.ok(row.mape != null && row.mape >= 0, 'MAPE is a measured number, not a placeholder');
     }
   }
+});
+
+test('http: capture_secret is generated, admin-only, and redacted from AI tools', async () => {
+  const secret = db.prepare("SELECT value FROM settings WHERE key = 'capture_secret'").get().value;
+  assert.ok(secret && secret.length >= 32, 'a real secret is generated on first boot');
+  assert.notStrictEqual(secret, 'change-me-capture-secret', 'no source-code-known placeholder');
+
+  const adminSettings = await (await fetch(`${base}/api/settings`, { headers: { cookie } })).json();
+  assert.strictEqual(adminSettings.capture_secret, secret, 'admin can copy the webhook secret');
+
+  const authSvc = require('../server/services/auth');
+  const viewerName = `viewer_secret_${process.pid}`;
+  authSvc.createUser({ username: viewerName, password: 'viewer-pass-123', role: 'viewer', active: 1 });
+  const login = await fetch(`${base}/api/auth/login`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ username: viewerName, password: 'viewer-pass-123' }),
+  });
+  assert.strictEqual(login.status, 200);
+  const viewerCookie = login.headers.get('set-cookie');
+  const viewerSettings = await (await fetch(`${base}/api/settings`, { headers: { cookie: viewerCookie } })).json();
+  assert.strictEqual(viewerSettings.capture_secret, '[redacted]', 'viewer cannot read the webhook secret');
+
+  const ai = require('../server/services/ai');
+  const fromAi = ai.runTool('get_settings', {}).result.settings;
+  assert.strictEqual(fromAi.capture_secret, '[redacted]', 'AI tools cannot leak the webhook secret');
+});
+
+test('http: product merge is atomic and reassigns FK-protected references', async () => {
+  const stamp = process.pid;
+  const src = Number(db.prepare(
+    `INSERT INTO products(canonical_gtin, display_name) VALUES (?, ?)`
+  ).run(`999999${stamp}001`, 'merge source').lastInsertRowid);
+  const dst = Number(db.prepare(
+    `INSERT INTO products(canonical_gtin, display_name) VALUES (?, ?)`
+  ).run(`999999${stamp}002`, 'merge target').lastInsertRowid);
+  const cust = db.prepare('SELECT id FROM customers LIMIT 1').get().id;
+
+  // quotes.product_id has an FK with no cascade: the old merge updated four
+  // tables, then DELETE failed here, leaving a half-applied merge behind.
+  const quoteId = Number(db.prepare(
+    `INSERT INTO quotes(customer_id, product_id, quantity, unit_price) VALUES (?,?,?,?)`
+  ).run(cust, src, 1, 10).lastInsertRowid);
+  db.prepare('INSERT INTO price_history(supplier_code, product_id, observed_at) VALUES (?,?,?)')
+    .run('MERGE-TEST', src, new Date().toISOString());
+
+  const r = await fetch(`${base}/api/products/merge`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie },
+    body: JSON.stringify({ from: src, to: dst }),
+  });
+  assert.strictEqual(r.status, 200, 'merge succeeded: ' + await r.text());
+
+  assert.strictEqual(db.prepare('SELECT id FROM products WHERE id = ?').get(src), undefined, 'source deleted');
+  assert.strictEqual(db.prepare('SELECT product_id FROM quotes WHERE id = ?').get(quoteId).product_id, dst, 'quote reassigned');
+  assert.strictEqual(
+    db.prepare('SELECT product_id FROM price_history WHERE supplier_code = ? AND product_id = ?').get('MERGE-TEST', dst).product_id,
+    dst,
+    'price history reassigned'
+  );
+
+  // Merging a product into itself is rejected rather than deleting it.
+  const bad = await fetch(`${base}/api/products/merge`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie },
+    body: JSON.stringify({ from: dst, to: dst }),
+  });
+  assert.strictEqual(bad.status, 400);
+  assert.ok(db.prepare('SELECT id FROM products WHERE id = ?').get(dst), 'target still exists');
 });

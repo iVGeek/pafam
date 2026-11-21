@@ -6,7 +6,7 @@
 // tools and *proposes* drafts that the UI applies under the signed-in user's
 // own role. Numbers always come from the services below, never from the model.
 
-const { db, getSetting, setSetting } = require('../db');
+const { db, getSetting, setSetting, settingsFor } = require('../db');
 const pricing = require('./pricing');
 const { compareProduct } = require('./comparison');
 const { sourceLowest } = require('./sourcing');
@@ -224,9 +224,8 @@ function toolListDemands({ status, limit } = {}) {
 }
 
 function toolGetSettings() {
-  const out = {};
-  db.prepare('SELECT key, value FROM settings').all().forEach((r) => { out[r.key] = r.value; });
-  return { settings: out };
+  // The assistant runs for every role: secrets are always redacted here.
+  return { settings: settingsFor(false) };
 }
 
 /* ------------------------- wider system read tools ------------------------- */

@@ -79,13 +79,16 @@ router.post('/auth/register', (req, res) => {
     res.setHeader('Retry-After', String(Math.ceil(LOGIN_WINDOW_MS / 1000)));
     return res.status(429).json({ error: 'Too many registration attempts. Retry in a few minutes.' });
   }
+  // Count every attempt, including successful ones: a loop of unique valid
+  // registrations runs scrypt + two INSERTs each and was previously unthrottled.
+  arr.push(now);
+  REG_FAILS.set(ip, arr);
   const { username, password, confirmPassword, displayName, email } = req.body || {};
-  if (password !== confirmPassword) { arr.push(now); REG_FAILS.set(ip, arr); return res.status(400).json({ error: 'Passwords do not match' }); }
+  if (password !== confirmPassword) return res.status(400).json({ error: 'Passwords do not match' });
   try {
     const id = auth.registerUser({ username, password, displayName, email });
     res.json({ ok: true, id, message: 'Account requested. An admin will approve it and assign your role — you can sign in after that.' });
   } catch (e) {
-    arr.push(now); REG_FAILS.set(ip, arr);
     res.status(e.status || 400).json({ error: e.message });
   }
 });

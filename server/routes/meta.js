@@ -2,7 +2,7 @@
 
 const express = require('express');
 const router = express.Router();
-const { db, getSetting, setSetting, audit } = require('../db');
+const { db, getSetting, setSetting, audit, settingsFor } = require('../db');
 const { listSuppliers } = require('../services/suppliers');
 const fx = require('../services/fx');
 const analytics = require('../services/analytics');
@@ -142,10 +142,10 @@ router.post('/exceptions/resolve-many', auth.requireRole('analyst'), (req, res) 
 });
 
 router.get('/settings', (req, res) => {
-  const rows = db.prepare('SELECT key, value FROM settings ORDER BY key').all();
-  const out = {};
-  for (const r of rows) out[r.key] = r.value;
-  res.json(out);
+  // Admins need the real webhook secret to configure devices; everyone else
+  // gets a redacted value so a viewer cannot write to the public capture webhook.
+  const isAdmin = Boolean(req.user && req.user.role === 'admin');
+  res.json(settingsFor(isAdmin));
 });
 
 router.post('/settings', auth.requireRole('admin'), (req, res) => {

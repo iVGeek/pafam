@@ -2,6 +2,7 @@
 
 const path = require('path');
 const fs = require('fs');
+const crypto = require('node:crypto');
 const { DatabaseSync } = require('node:sqlite');
 
 // Configurable so a hosted deploy can point at a persistent disk
@@ -640,10 +641,31 @@ function init() {
     auto_clean_imports: '1',
     followup_days: '2',
     session_hours: '168',
-    capture_secret: 'change-me-capture-secret',
   };
   const stmt = db.prepare('INSERT OR IGNORE INTO settings(key, value) VALUES (?, ?)');
   for (const [k, v] of Object.entries(defaults)) stmt.run(k, v);
+
+  // The capture webhook is public. Never ship a source-code-known secret:
+  // generate one on first boot and replace any legacy placeholder.
+  const stored = db.prepare("SELECT value FROM settings WHERE key = 'capture_secret'").get();
+  if (!stored || !stored.value || stored.value === 'change-me-capture-secret') {
+    db.prepare("INSERT INTO settings(key, value) VALUES ('capture_secret', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value")
+      .run(crypto.randomBytes(24).toString('hex'));
+  }
+}
+
+// Settings that must never reach a non-admin response or an AI tool result.
+const SENSITIVE_SETTINGS = new Set(['capture_secret']);
+function isSensitiveSetting(key) {
+  const k = String(key || '').toLowerCase();
+  return SENSITIVE_SETTINGS.has(k) || /(^|[_-])(secret|password|passwd|token|apikey|api_key)$/i.test(k);
+}
+function settingsFor(includeSensitive = false) {
+  const out = {};
+  for (const r of db.prepare('SELECT key, value FROM settings ORDER BY key').all()) {
+    out[r.key] = includeSensitive || !isSensitiveSetting(r.key) ? r.value : '[redacted]';
+  }
+  return out;
 }
 
 function getSetting(key, fallback = null) {
@@ -663,4 +685,4 @@ function audit(actor, action, entity, entityId, detail) {
 
 init();
 
-module.exports = { db, DB_PATH, init, getSetting, setSetting, audit };
+module.exports = { db, DB_PATH, init, getSetting, setSetting, audit, isSensitiveSetting, settingsFor };

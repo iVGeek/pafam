@@ -17,6 +17,7 @@
 //     reported, never silently dropped.
 
 const { db, getSetting, audit } = require('../db');
+const { clampLimit } = require('./listLimit');
 
 const OPEN = 'open';
 
@@ -117,7 +118,7 @@ function list(opts = {}) {
      ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
      ORDER BY t.status = 'done', t.due_date IS NULL, t.due_date, t.id DESC
      LIMIT ?`;
-  params.push(Number(opts.limit) || 200);
+  params.push(clampLimit(opts.limit, 200));
   const today = todayIso();
   return db.prepare(sql).all(...params).map((r) => ({
     ...r,

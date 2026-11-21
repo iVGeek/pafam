@@ -19,7 +19,8 @@
    "new file in Plaud export folder").
 2. Action = **Webhook by Zapier** POST to:
    `https://YOUR-HOST/api/captures/webhook`
-   Header: `x-capture-secret: <Settings capture_secret>`
+   Header: `x-capture-secret: <Admin → Settings → capture_secret>` (admin only;
+   generated randomly on first boot and redacted for other roles)
    Body (JSON): `{ "source": "plaud", "title": "<CUSTOMER-YYYYMMDD-STAFF>", "text": "<transcript>" }`
 3. Send one test recording, confirm it lands in Capture Inbox as `source=webhook`,
    then promote it to a demand.
