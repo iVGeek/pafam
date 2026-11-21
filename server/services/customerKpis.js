@@ -12,6 +12,14 @@
 // delivered orders. Overdue debt: inbound outstanding past customer_due.
 
 const { db } = require('../db');
+const orders = require('./orders');
+const pricing = require('./pricing');
+
+function singleCurrencyTotal(byCurrency, empty = 0) {
+  const keys = Object.keys(byCurrency);
+  if (!keys.length) return empty;
+  return keys.length === 1 ? byCurrency[keys[0]] : null;
+}
 
 function customerKpis() {
   const quoteByStatus = db.prepare('SELECT status, COUNT(*) n FROM quotes GROUP BY status').all();
@@ -35,17 +43,33 @@ function customerKpis() {
   ).all();
   const repeaters = repeat.map((r) => ({ customerId: r.id, customer: r.name, orders: r.n }));
 
-  // Overdue debt: open orders past customer_due with inbound outstanding
-  const overdue = db.prepare(
-    `SELECT o.id, o.ref, o.customer_id, c.name customer, o.customer_due, o.quantity, o.unit_price,
-            (SELECT COALESCE(SUM(amount),0) FROM payments p WHERE p.order_id = o.id AND p.direction = 'inbound') paid_in
+  // Overdue debt: open orders past customer_due with inbound outstanding.
+  // The outstanding amount is in the ORDER currency (payments were converted
+  // into it at the payment date). Adding amounts from orders in different
+  // currencies and calling the sum a debt is false, so group per currency and
+  // leave the scalar null when more than one is present.
+  const overdueRows = db.prepare(
+    `SELECT o.id, o.ref, o.customer_id, c.name customer, o.customer_due, o.quantity, o.unit_price, o.currency
        FROM orders o JOIN customers c ON c.id = o.customer_id
       WHERE o.status NOT IN ('closed','cancelled','delivered') AND o.customer_due IS NOT NULL AND o.customer_due < date('now')`
-  ).all().map((o) => ({
-    ...o,
-    outstanding: Math.round((Number(o.quantity) * (Number(o.unit_price) || 0) - Number(o.paid_in || 0)) * 100) / 100,
-  })).filter((o) => o.outstanding > 0);
-  const overdueDebt = Math.round(overdue.reduce((s, o) => s + o.outstanding, 0) * 100) / 100;
+  ).all();
+  const overdue = overdueRows.map((o) => {
+    const realised = orders.getOrder(o.id);
+    return {
+      ...o,
+      // Reuse the app's realised calculation so a mixed-currency receipt is
+      // converted at its payment date instead of being summed as a raw amount.
+      outstanding: realised && realised.realised ? realised.realised.revenueOutstanding : 0,
+    };
+  }).filter((o) => o.outstanding > 0);
+
+  const overdueDebtByCurrency = {};
+  for (const o of overdue) {
+    const cur = o.currency || 'UNKNOWN';
+    overdueDebtByCurrency[cur] = pricing.round2((overdueDebtByCurrency[cur] || 0) + o.outstanding);
+  }
+  const overdueDebt = singleCurrencyTotal(overdueDebtByCurrency);
+  const mixedCurrency = Object.keys(overdueDebtByCurrency).length > 1;
 
   // Realised vs expected (from settled orders)
   const realised = db.prepare(
@@ -56,7 +80,13 @@ function customerKpis() {
     quotes: { byStatus: qb, decided, conversionPct: conversion },
     lostReasons: { count: rejected.length, withReason: lostReasons.length, samples: lostReasonsText },
     repeatPurchases: { customers: repeaters, count: repeaters.length },
-    overdueDebt, overdueOrders: overdue.length,
+    overdueDebt,
+    overdueDebtByCurrency,
+    mixedCurrency,
+    currencyWarning: mixedCurrency
+      ? 'Overdue orders span multiple currencies. The single debt total is null; use overdueDebtByCurrency. There is no single amount without an explicit, dated FX conversion.'
+      : null,
+    overdueOrders: overdue.length,
     settledOrders: realised,
   };
 }

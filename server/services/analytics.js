@@ -14,6 +14,22 @@ function safeNum(v, d = 0) {
   return Number.isFinite(n) ? pricing.round2(n, d) : 0;
 }
 
+// A realised figure belongs to the currency of its order: payments were
+// converted into the order currency at the payment date, never into a shared
+// base. Adding figures from orders in different currencies and labelling the
+// sum "base" is a false total, so aggregate per currency and only expose a
+// scalar when every amount shares one currency (same rule as mixed POs).
+function addMoney(byCurrency, currency, amount) {
+  const cur = currency || 'UNKNOWN';
+  byCurrency[cur] = pricing.round2((Number(byCurrency[cur]) || 0) + (Number(amount) || 0));
+}
+
+function singleCurrencyTotal(byCurrency, empty = 0) {
+  const keys = Object.keys(byCurrency);
+  if (!keys.length) return empty;
+  return keys.length === 1 ? byCurrency[keys[0]] : null;
+}
+
 function overview() {
   const base = getSetting('base_currency', 'USD');
   const offers = db.prepare('SELECT COUNT(*) n FROM offers').get().n;
@@ -36,7 +52,10 @@ function overview() {
 
   const allOrders = orders.listOrders(1000);
   const settled = allOrders.filter((o) => o.realised.settled);
-  const realisedMargin = pricing.round2(settled.reduce((s, o) => s + o.realised.realisedMargin, 0));
+  const realisedMarginByCurrency = {};
+  for (const o of settled) addMoney(realisedMarginByCurrency, o.currency, o.realised.realisedMargin);
+  const realisedMargin = singleCurrencyTotal(realisedMarginByCurrency);
+  const mixedCurrency = new Set(allOrders.map((o) => o.currency).filter(Boolean)).size > 1;
   const ordersOpen = allOrders.filter((o) => !o.realised.settled).length;
   // A converted payment with no dated rate is an assumption, not a measured
   // result. Carry the count so dashboards cannot present the total as signable.
@@ -51,6 +70,8 @@ function overview() {
     orders: allOrders.length,
     ordersOpen,
     realisedMargin,
+    realisedMarginByCurrency,
+    mixedCurrency,
     fxAssumedOrders,
   };
 }
@@ -159,17 +180,48 @@ function kpis(opts = {}) {
   const allOrders = orders.listOrders(1000);
   const settled = allOrders.filter((o) => o.realised.settled);
   const delivered = settled.filter((o) => o.status === 'delivered');
+  const mixedCurrency = new Set(allOrders.map((o) => o.currency).filter(Boolean)).size > 1;
 
-  const revenue = pricing.round2(settled.reduce((s, o) => s + (o.realised.paidIn || 0), 0));
-  const costPaid = pricing.round2(settled.reduce((s, o) => s + (o.realised.paidOut || 0), 0));
-  const grossProfit = pricing.round2(revenue - costPaid);
-  const grossMarginPct = revenue > 0 ? pricing.round2((grossProfit / revenue) * 100) : 0;
+  // Settled cash flows stay in each order's own currency: payments were
+  // converted into that currency at the payment date, not into a shared base.
+  const revenueByCurrency = {};
+  const costPaidByCurrency = {};
+  for (const o of settled) {
+    addMoney(revenueByCurrency, o.currency, o.realised.paidIn || 0);
+    addMoney(costPaidByCurrency, o.currency, o.realised.paidOut || 0);
+  }
+  const revenue = singleCurrencyTotal(revenueByCurrency);
+  const costPaid = singleCurrencyTotal(costPaidByCurrency);
+
+  const grossProfitByCurrency = {};
+  const grossMarginPctByCurrency = {};
+  for (const cur of new Set([...Object.keys(revenueByCurrency), ...Object.keys(costPaidByCurrency)])) {
+    const profit = pricing.round2((revenueByCurrency[cur] || 0) - (costPaidByCurrency[cur] || 0));
+    grossProfitByCurrency[cur] = profit;
+    grossMarginPctByCurrency[cur] = revenueByCurrency[cur] > 0
+      ? pricing.round2((profit / revenueByCurrency[cur]) * 100, 1) : null;
+  }
+  const grossProfit = singleCurrencyTotal(grossProfitByCurrency);
+  const grossMarginPct = singleCurrencyTotal(grossMarginPctByCurrency);
 
   const openOrders = allOrders.filter((o) => !o.realised.settled);
-  const ar = pricing.round2(openOrders.reduce((s, o) => s + (o.realised.revenueOutstanding || 0), 0));
-  const ap = pricing.round2(openOrders.reduce((s, o) => s + (o.realised.costOutstanding || 0), 0));
+  const arByCurrency = {};
+  const apByCurrency = {};
+  for (const o of openOrders) {
+    addMoney(arByCurrency, o.currency, o.realised.revenueOutstanding || 0);
+    addMoney(apByCurrency, o.currency, o.realised.costOutstanding || 0);
+  }
+  const ar = singleCurrencyTotal(arByCurrency);
+  const ap = singleCurrencyTotal(apByCurrency);
+  const workingCapitalByCurrency = {};
+  for (const cur of new Set([...Object.keys(arByCurrency), ...Object.keys(apByCurrency)])) {
+    workingCapitalByCurrency[cur] = pricing.round2((arByCurrency[cur] || 0) - (apByCurrency[cur] || 0));
+  }
+  const workingCapital = singleCurrencyTotal(workingCapitalByCurrency);
 
   const inventoryCost = pricing.round2(db.prepare('SELECT COALESCE(SUM(on_hand * unit_cost),0) n FROM inventory_lots WHERE unit_cost IS NOT NULL').get().n);
+  // A turnover ratio mixing base-currency stock with multi-currency cost paid
+  // has no meaning without a dated conversion; costPaid is null when mixed.
   const daysInventory = inventoryCost > 0 && costPaid > 0 ? pricing.round2((inventoryCost / costPaid) * 30) : null;
   const inventoryTurn = daysInventory ? pricing.round2(360 / daysInventory) : null;
 
@@ -183,21 +235,35 @@ function kpis(opts = {}) {
 
   return {
     baseCurrency: base,
+    mixedCurrency,
+    currencyWarning: mixedCurrency
+      ? 'Orders span multiple currencies. Single totals are null; use the *ByCurrency breakdowns. There is no single amount without an explicit, dated FX conversion.'
+      : null,
     summary: {
-      revenue: safeNum(revenue),
-      costPaid: safeNum(costPaid),
-      grossProfit: safeNum(grossProfit),
-      grossMarginPct: safeNum(grossMarginPct, 1),
-      realisedMargin: ov.realisedMargin,
+      // Mixed-currency scalars stay null. safeNum() would turn null into 0 and
+      // present a fake zero balance, so it is only applied to real numbers.
+      revenue: revenue == null ? null : safeNum(revenue),
+      costPaid: costPaid == null ? null : safeNum(costPaid),
+      grossProfit: grossProfit == null ? null : safeNum(grossProfit),
+      grossMarginPct: grossMarginPct == null ? null : safeNum(grossMarginPct, 1),
+      realisedMargin: ov.realisedMargin == null ? null : safeNum(ov.realisedMargin),
       fxAssumedOrders: ov.fxAssumedOrders,
       ordersSettled: settled.length,
       ordersDelivered: delivered.length,
       ordersOpen: openOrders.length,
+      revenueByCurrency,
+      costPaidByCurrency,
+      grossProfitByCurrency,
+      grossMarginPctByCurrency,
+      realisedMarginByCurrency: ov.realisedMarginByCurrency,
     },
     cash: {
-      ar: safeNum(ar),
-      ap: safeNum(ap),
-      workingCapital: safeNum(pricing.round2(ar - ap)),
+      ar: ar == null ? null : safeNum(ar),
+      ap: ap == null ? null : safeNum(ap),
+      workingCapital: workingCapital == null ? null : safeNum(workingCapital),
+      arByCurrency,
+      apByCurrency,
+      workingCapitalByCurrency,
       capitalRequired: plan.totals.capital,
       capitalLimit,
       overCapital: plan.totals.overLimit,
@@ -226,4 +292,4 @@ function kpis(opts = {}) {
   };
 }
 
-module.exports = { kpis, overview, opportunities, supplierStats, winsByType };
+module.exports = { kpis, overview, opportunities, supplierStats, winsByType, addMoney, singleCurrencyTotal };

@@ -2070,20 +2070,42 @@ routes.performance = async () => {
   const q = k.quality || {};
   const alertTotals = (q.alerts && q.alerts.total) || 0;
   const card = (label, value, sub) => `<div class="card"><div class="k">${esc(label)}</div><div class="v">${value}</div><div class="s">${sub || ''}</div></div>`;
+  // A null scalar means the underlying orders span currencies. Never label
+  // such a sum with the base currency: show the real per-currency amounts.
+  const moneyCell = (value, byCurrency) => {
+    if (value != null) return money(value, k.baseCurrency);
+    const keys = byCurrency ? Object.keys(byCurrency).sort() : [];
+    if (keys.length > 1) {
+      return `<span class="small" style="line-height:1.4">mixed — ${keys.map((cur) => esc(money(byCurrency[cur], cur))).join('<br>')}</span>`;
+    }
+    return '—';
+  };
+  const pctCell = (value, byCurrency) => {
+    if (value != null) return pct(value);
+    const keys = byCurrency ? Object.keys(byCurrency).sort() : [];
+    if (keys.length > 1) {
+      return `<span class="small" style="line-height:1.4">mixed — ${keys.map((cur) => `${esc(cur)} ${pct(byCurrency[cur])}`).join('<br>')}</span>`;
+    }
+    return '—';
+  };
+  const banner = k.mixedCurrency
+    ? `<div class="badge warn" style="display:block;margin-bottom:12px;padding:10px">${esc(k.currencyWarning || 'Multiple currencies present.')}</div>`
+    : '';
   $('#view').innerHTML = `
+    ${banner}
     <div class="panel"><h2>Profitability</h2>
       <div class="grid cards">
-        ${card('Revenue (collected)', money(s.revenue, k.baseCurrency), 'from settled orders')}
-        ${card('Cost paid', money(s.costPaid, k.baseCurrency), 'cash out')}
-        ${card('Gross profit', money(s.grossProfit, k.baseCurrency), 'revenue − cost')}
-        ${card('Gross margin', pct(s.grossMarginPct), `${num(s.ordersSettled)} settled · ${num(s.ordersOpen)} open`)}
+        ${card('Revenue (collected)', moneyCell(s.revenue, s.revenueByCurrency), 'from settled orders')}
+        ${card('Cost paid', moneyCell(s.costPaid, s.costPaidByCurrency), 'cash out')}
+        ${card('Gross profit', moneyCell(s.grossProfit, s.grossProfitByCurrency), 'revenue − cost')}
+        ${card('Gross margin', pctCell(s.grossMarginPct, s.grossMarginPctByCurrency), `${num(s.ordersSettled)} settled · ${num(s.ordersOpen)} open`)}
       </div>
     </div>
     <div class="panel" style="margin-top:16px"><h2>Cash &amp; capital</h2>
       <div class="grid cards">
-        ${card('Receivable (AR)', money(c.ar, k.baseCurrency), 'owed by customers')}
-        ${card('Payable (AP)', money(c.ap, k.baseCurrency), 'owed to suppliers')}
-        ${card('Working capital', money(c.workingCapital, k.baseCurrency), 'AR − AP')}
+        ${card('Receivable (AR)', moneyCell(c.ar, c.arByCurrency), 'owed by customers')}
+        ${card('Payable (AP)', moneyCell(c.ap, c.apByCurrency), 'owed to suppliers')}
+        ${card('Working capital', moneyCell(c.workingCapital, c.workingCapitalByCurrency), 'AR − AP')}
         ${card('Capital required', money(c.capitalRequired, k.baseCurrency), `limit ${money(c.capitalLimit)} · ${c.overCapital ? '<span class="badge bad">over</span>' : '<span class="badge ok">within</span>'}`)}
       </div>
     </div>
