@@ -11,6 +11,7 @@ const useCache = process.env.PTP_TEST_NO_CACHE !== '1' && fs.existsSync(SNAP);
 
 process.env.PTP_DATA_DIR = path.dirname(TMP_DB);
 process.env.PTP_DB = TMP_DB;
+process.env.CAPTURE_WEBHOOK_PER_HOUR = '3'; // 1 used by the text/payload test below, 2 by the throttle test
 process.on('exit', () => {
   for (const suffix of ['', '-wal', '-shm']) {
     try { fs.unlinkSync(TMP_DB + suffix); } catch (e) { /* ignore */ }
@@ -99,4 +100,21 @@ test('http: the webhook refuses a PDF payload but accepts text', async () => {
   });
   assert.strictEqual(text.status, 200);
   assert.strictEqual((await text.json()).ok, true);
+});
+
+test('http: the public capture webhook is rate limited per source', async () => {
+  const post = () => fetch(`${base}/api/captures/webhook`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', 'x-capture-secret': captureSecret },
+    body: JSON.stringify({ source: 'webhook-throttle-test', text: 'CUST42 needs 12 units' }),
+  });
+  // The previous test already wrote one capture with this secret/IP (cap = 3).
+  for (const expected of [200, 200]) {
+    const r = await post();
+    assert.strictEqual(r.status, expected, 'valid notes within the hourly cap are accepted');
+  }
+  const blocked = await post();
+  assert.strictEqual(blocked.status, 429, 'the next note is throttled');
+  assert.strictEqual(blocked.headers.get('retry-after'), '3600');
+  assert.match((await blocked.json()).error, /limit reached/i);
 });

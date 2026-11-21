@@ -10,7 +10,15 @@ const {
   plaudText, uploadTextProblem, contentTextProblem, webhookTextProblem,
 } = require('../../src/lib/captureText');
 const tasks = require('../services/tasks');
+const { createLimiter } = require('../services/rateLimit');
 const memUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
+
+// The webhook is public (shared-secret auth), so bound how many captures one
+// source can write per hour. 0 disables for a trusted single-device install.
+const rawWebhookCap = process.env.CAPTURE_WEBHOOK_PER_HOUR;
+const parsedWebhookCap = rawWebhookCap == null ? 120 : Number(rawWebhookCap);
+const WEBHOOK_CAP = Number.isFinite(parsedWebhookCap) && parsedWebhookCap >= 0 ? Math.floor(parsedWebhookCap) : 120;
+const webhookLimiter = createLimiter({ max: WEBHOOK_CAP || Number.MAX_SAFE_INTEGER, windowMs: 60 * 60 * 1000 });
 
 // Meeting naming convention (brief section 15):
 //   CUSTOMERCODE-YYYYMMDD-STAFF  (e.g. CUST42-20261010-AL)
@@ -50,6 +58,12 @@ router.post('/captures/webhook', (req, res) => {
   if (!text) return res.status(400).json({ error: 'no text/transcript provided' });
   const rejected = webhookTextProblem(text);
   if (rejected) return res.status(rejected.status).json({ error: rejected.error });
+  // Consume only on a valid, about-to-be-written capture: malformed bursts are
+  // cheap, while each successful note writes a capture and may open a task.
+  if (WEBHOOK_CAP > 0 && !webhookLimiter.consume(req.ip || 'unknown')) {
+    res.setHeader('Retry-After', '3600');
+    return res.status(429).json({ error: 'Capture webhook limit reached for this hour. Try again later.' });
+  }
   const { id, taskId } = insertCapture({ source: b.source || 'webhook', title: b.title, text, createdBy: 'webhook' });
   audit('webhook', 'capture-ingest', 'capture', id, b.source || 'webhook');
   res.json({ ok: true, id, taskId });

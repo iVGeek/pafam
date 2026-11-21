@@ -14,6 +14,7 @@ const {
   uploadTextProblem,
   contentTextProblem,
   webhookTextProblem,
+  MAX_TEXT,
 } = require('../src/lib/captureText');
 
 const PDF = Buffer.from('%PDF-1.7\n%\xE2\xE3\xCF\xD3\n1 0 obj\n<<>>\nendobj\n');
@@ -65,6 +66,13 @@ test('capture text: webhook accepts text but refuses PDF/images and non-strings'
   assert.strictEqual(webhookTextProblem('iVBORw0KGgoAAAANSUhEUg').status, 415);
   assert.strictEqual(webhookTextProblem({ file: 'note.pdf' }).status, 400);
   assert.match(webhookTextProblem('%PDF-1.7').error, /text-only|no OCR/i);
+});
+
+test('capture text: webhook refuses oversized notes instead of storing them', () => {
+  const big = webhookTextProblem('x'.repeat(MAX_TEXT + 1));
+  assert.strictEqual(big.status, 413);
+  assert.match(big.error, /Split the text/i);
+  assert.strictEqual(webhookTextProblem('x'.repeat(MAX_TEXT)), null, 'exactly at the cap is allowed');
 });
 
 test('capture text: plaudText strips SRT cues, flattens JSON and passes plain text', () => {

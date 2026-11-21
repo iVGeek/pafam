@@ -128,6 +128,12 @@ function webhookTextProblem(text) {
       error: 'Images are not accepted by the capture webhook (text-only, no OCR). Convert the note to text first.',
     };
   }
+  if (text.length > MAX_TEXT) {
+    return {
+      status: 413,
+      error: `The capture webhook accepts notes up to ${MAX_TEXT} characters. Split the text into smaller notes and post them separately.`,
+    };
+  }
   if (isBinaryNoise(text)) {
     return {
       status: 400,

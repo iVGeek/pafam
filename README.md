@@ -88,6 +88,7 @@ Important settings for a hosted instance:
 | `PTP_AUTO_SEED` | `true` | Load supplier lists + demo data on the first (empty) boot |
 | `PTP_SEED_DEMO_USERS` | `false` | Optional: skip the demo buyer/analyst/viewer accounts |
 | `IMPORT_DIR` | `<PTP_DATA_DIR>/imports` | Only `.xls`/`.xlsx`/`.csv` files inside this directory can be imported by "server-side path"; copy lists here before typing the filename |
+| `CAPTURE_WEBHOOK_PER_HOUR` | `120` | Max successful text captures the public webhook accepts per source IP per hour (`0` disables); notes are also capped at 200,000 characters |
 
 Node **24.x** is pinned via `engines` in `package.json` (the app uses the
 built-in `node:sqlite`).
