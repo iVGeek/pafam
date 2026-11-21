@@ -50,11 +50,22 @@ function buildDeal(input) {
   let landedUnitCost;
   let landed = null;
   let supplierSummary = null;
+  let fxRateMissing = false;
   if (offer) {
-    const rate = fx.getRate(offer.currency, base) || 1;
+    const foundRate = fx.getRate(offer.currency, base);
+    fxRateMissing = foundRate == null && offer.currency !== base;
+    const rate = foundRate == null ? 1 : foundRate;
     landed = computeLanded(offer, supplierFromRow(offer), {
       quantity, destination: dest, baseCurrency: base, settings, fxRate: rate,
     });
+    if (fxRateMissing) {
+      // Same shape as sourcing/comparison: the parity number stays usable but
+      // is explicitly marked as an assumption, never a real converted cost.
+      landed.fxRateMissing = true;
+      landed.flags.push('fx-rate-missing');
+      landed.missing.push(`FX rate ${offer.currency} -> ${base}`);
+      landed.complete = false;
+    }
     landedUnitCost = landed.landedUnitCost;
     supplierSummary = { code: offer.supplier_code, name: offer.supplier_name, incoterm: landed.incoterm };
   } else {
@@ -116,8 +127,17 @@ function buildDeal(input) {
 
   const discountOffRrpPct = rrp != null ? pricing.discountOffRrpPct(sellingUnitPrice, rrp) : null;
 
+  // Surface the assumption at the top level too, so the UI/AI cannot miss it
+  // when it reads only deal metrics (§8: no silent 1:1 FX).
+  const warnings = [];
+  if (fxRateMissing && offer) {
+    warnings.push(`No ${base} FX rate for ${offer.currency} — 1:1 was assumed; add the rate in Settings & FX before trading on this deal.`);
+  }
+
   return {
     found: true,
+    fxRateMissing,
+    warnings,
     baseCurrency: base,
     destination: dest,
     quantity,

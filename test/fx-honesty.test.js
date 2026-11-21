@@ -19,6 +19,7 @@ const assert = require('node:assert');
 const { db, setSetting } = require('../server/db');
 const { normalizeOffer } = require('../server/services/comparison');
 const { sourceLowest } = require('../server/services/sourcing');
+const { buildDeal } = require('../server/services/deal');
 
 require('../server/seedData').seedData({ log: () => {} });
 setSetting('base_currency', 'USD');
@@ -62,4 +63,26 @@ test('sourceLowest surfaces missing FX rates in warnings and result', () => {
   assert.ok(flagged.flags.includes('fx-rate-missing'));
   assert.ok(flagged.missing.some((m) => /FX rate ZZZ -> USD/.test(m)));
   assert.strictEqual(flagged.complete, false);
+});
+
+test('buildDeal flags missing FX in landed cost and in the response', () => {
+  const product = db.prepare('SELECT id FROM products WHERE id IN (SELECT product_id FROM offers) LIMIT 1').get();
+  assert.ok(product, 'seeded product with offers');
+  db.prepare("INSERT OR IGNORE INTO suppliers(code, name, currency) VALUES ('DEALFX', 'Deal FX Test', 'QQQ')").run();
+  const info = db.prepare(`INSERT INTO offers(upload_id, supplier_code, description, currency, price, price_basis, price_type, units_per_case, product_id, status)
+    VALUES (1, 'DEALFX', 'Deal FX test offer', 'QQQ', 10, 'unit', 'cost', 1, ?, 'new')`).run(product.id);
+
+  const out = buildDeal({ offerId: Number(info.lastInsertRowid), quantity: 1 });
+  assert.strictEqual(out.found, true);
+  assert.strictEqual(out.fxRateMissing, true);
+  assert.ok(out.warnings.some((w) => /no USD FX rate for QQQ/i.test(w)), 'top-level warning names the missing rate');
+  assert.strictEqual(out.landed.fxRateMissing, true);
+  assert.ok(out.landed.flags.includes('fx-rate-missing'));
+  assert.ok(out.landed.missing.some((m) => /FX rate QQQ -> USD/.test(m)));
+  assert.strictEqual(out.landed.complete, false);
+  assert.strictEqual(out.landed.fxRate, 1, 'parity is still computed, but flagged');
+
+  const manual = buildDeal({ landedUnitCost: 10, quantity: 1 });
+  assert.strictEqual(manual.fxRateMissing, false, 'manual landed cost has no FX assumption');
+  assert.deepStrictEqual(manual.warnings, []);
 });
