@@ -31,6 +31,8 @@ const { SYSTEM_PROMPT } = require('./aiKnowledge');
 
 const MAX_STEPS_DEFAULT = 12;
 const MAX_TOKENS_DEFAULT = 4096;
+const TOOL_RESULT_MAX_CHARS_DEFAULT = 20_000;
+const TOOL_CONTEXT_MAX_CHARS_DEFAULT = 60_000;
 
 /* ------------------------------ configuration ------------------------------ */
 
@@ -41,6 +43,26 @@ const MAX_TOKENS_DEFAULT = 4096;
 function maxTokens() {
   const n = Number(process.env.AI_MAX_TOKENS);
   return Number.isFinite(n) && n > 0 ? Math.floor(n) : MAX_TOKENS_DEFAULT;
+}
+
+// A 500-row comparison or a long transcript can blow the provider's context
+// even though every individual tool already caps its own rows. Bound both one
+// result and the whole turn, with an explicit marker so the model never treats
+// a truncated answer as complete data.
+function toolResultMaxChars() {
+  const n = Number(process.env.AI_TOOL_RESULT_MAX_CHARS);
+  return Number.isFinite(n) && n >= 2000 ? Math.floor(n) : TOOL_RESULT_MAX_CHARS_DEFAULT;
+}
+function toolContextMaxChars() {
+  const n = Number(process.env.AI_TOOL_CONTEXT_MAX_CHARS);
+  return Number.isFinite(n) && n >= 2000 ? Math.floor(n) : TOOL_CONTEXT_MAX_CHARS_DEFAULT;
+}
+function boundToolResult(result, cap = toolResultMaxChars()) {
+  let s;
+  try { s = JSON.stringify(result); } catch (_) { s = '"[unserializable tool result]"'; }
+  if (s.length <= cap) return s;
+  const notice = `\n…[TRUNCATED: this tool result was ${s.length} characters. Narrow the query (lower limit or more filters) and rerun before relying on these numbers.]`;
+  return s.slice(0, Math.max(0, cap - notice.length)) + notice;
 }
 
 const DEFAULT_MODEL = 'gpt-4o-mini';
@@ -895,7 +917,6 @@ function toolPriceCalculate(b = {}) {
 
 function toolDealCompute(b = {}) {
   // Scenarios: base / conservative / upside / stress for one deal.
-  const base = pricing.computeDeal ? null : null;
   if (typeof pricing.computeDeal !== 'function') return { error: 'deal engine unavailable' };
   return { deal: pricing.computeDeal(b) };
 }
@@ -2116,6 +2137,8 @@ async function chat({ messages, onEvent } = {}) {
   }
   const proposals = [];
   const proposalKeys = new Set();
+  let toolChars = 0;
+  const toolContextCap = toolContextMaxChars();
   let usedModel = model();
   let forcedAttempts = 0;
   const emit = (event) => { if (typeof onEvent === 'function') { try { onEvent(event); } catch (_) { /* listener must not break the turn */ } } };
@@ -2173,7 +2196,12 @@ async function chat({ messages, onEvent } = {}) {
         const key = out.proposal.type + '|' + JSON.stringify(out.proposal.apply && out.proposal.apply.body);
         if (!proposalKeys.has(key)) { proposalKeys.add(key); proposals.push(out.proposal); }
       }
-      convo.push({ role: 'tool', tool_call_id: call.id, content: JSON.stringify(out.result) });
+      const remaining = toolContextCap - toolChars;
+      const content = remaining <= 2000
+        ? JSON.stringify({ omitted: true, reason: 'Earlier tool results used the context budget for this turn. Rerun this tool with narrower filters if you need these numbers.' })
+        : boundToolResult(out.result, Math.min(toolResultMaxChars(), remaining));
+      toolChars += content.length;
+      convo.push({ role: 'tool', tool_call_id: call.id, content });
     }
   }
   // Keep whatever was drafted: the proposals are still valid and applicable.
@@ -2191,6 +2219,9 @@ module.exports = {
   diagnose,
   chat,
   runTool,
+  boundToolResult,
+  toolResultMaxChars,
+  toolContextMaxChars,
   setTransport,
   setFetch,
   _resetDiscovery: resetDiscovery,
