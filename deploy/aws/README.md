@@ -1,5 +1,11 @@
 # Perfumes on AWS (free tier)
 
+> **This stack is a blueprint, not the current live deployment.** The running
+> instance today is a manually launched EC2 box behind a temporary Cloudflare
+> quick tunnel; see [`../../LIVE-DEPLOYMENT.md`](../../LIVE-DEPLOYMENT.md) for the
+> real host, URL, deploy command, backups and blockers. The CloudFormation path
+> below needs AWS CLI credentials that are not currently available.
+
 One CloudFormation stack hosts the whole platform in **us-east-2 by default**,
 without a domain. Region is configurable with `--region` or `AWS_REGION`; do not
 use `us-east-1` in this organization (an SCP denies compute there):

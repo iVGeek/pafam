@@ -38,6 +38,9 @@ function overview() {
   const settled = allOrders.filter((o) => o.realised.settled);
   const realisedMargin = pricing.round2(settled.reduce((s, o) => s + o.realised.realisedMargin, 0));
   const ordersOpen = allOrders.filter((o) => !o.realised.settled).length;
+  // A converted payment with no dated rate is an assumption, not a measured
+  // result. Carry the count so dashboards cannot present the total as signable.
+  const fxAssumedOrders = allOrders.filter((o) => (o.realised.fxAssumptions || []).length).length;
 
   return {
     baseCurrency: base,
@@ -48,6 +51,7 @@ function overview() {
     orders: allOrders.length,
     ordersOpen,
     realisedMargin,
+    fxAssumedOrders,
   };
 }
 
@@ -185,6 +189,7 @@ function kpis(opts = {}) {
       grossProfit: safeNum(grossProfit),
       grossMarginPct: safeNum(grossMarginPct, 1),
       realisedMargin: ov.realisedMargin,
+      fxAssumedOrders: ov.fxAssumedOrders,
       ordersSettled: settled.length,
       ordersDelivered: delivered.length,
       ordersOpen: openOrders.length,

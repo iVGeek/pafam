@@ -27,6 +27,7 @@ const { normalizeOffer } = require('../server/services/comparison');
 const { sourceLowest } = require('../server/services/sourcing');
 const { buildDeal } = require('../server/services/deal');
 const orders = require('../server/services/orders');
+const analytics = require('../server/services/analytics');
 
 if (!useCache) require('../server/seedData').seedData({ log: () => {} });
 
@@ -128,4 +129,7 @@ test('realise converts mixed-currency payments at the payment date', () => {
   assert.ok(flagged.realised.fxAssumptions.some((a) => /NON -> USD/.test(a)),
     'missing rate is surfaced as an assumption, not hidden as parity');
   assert.strictEqual(flagged.payments.find((p) => p.currency === 'NON').fxMissing, true);
+
+  const overview = analytics.overview();
+  assert.ok(overview.fxAssumedOrders >= 1, 'dashboards carry the assumption count, not just the total');
 });

@@ -1766,12 +1766,14 @@ routes.orders = async () => {
   const rows = await GET('/orders');
   const customers = await loadCustomers();
   const canEdit = can('buyer');
-  const totalRealised = rows.filter(o => o.realised.settled).reduce((s, o) => s + o.realised.realisedMargin, 0);
+  const settledRows = rows.filter(o => o.realised.settled);
+  const totalRealised = settledRows.reduce((s, o) => s + o.realised.realisedMargin, 0);
   const open = rows.filter(o => !o.realised.settled).length;
+  const assumedCount = rows.filter(o => (o.realised.fxAssumptions || []).length).length;
   $('#view').innerHTML = `
     <div class="panel">
       <div class="row" style="justify-content:space-between">
-        <div><h2>Orders &amp; payments</h2><div class="small muted">${rows.length} orders · ${open} open · realised margin ${money(totalRealised)}</div></div>
+        <div><h2>Orders &amp; payments</h2><div class="small muted">${rows.length} orders · ${open} open · realised margin ${money(totalRealised)}${assumedCount ? ` · <span class="badge warn">${assumedCount} margin(s) use an assumed FX rate — not sign-off ready</span>` : ''}</div></div>
       </div>
       <div class="table-wrap" style="margin-top:12px"><table><thead><tr>
         <th>Ref</th><th>Customer</th><th>Product</th><th>Supplier</th><th>Status</th><th class="num">Qty</th>
@@ -1781,7 +1783,10 @@ routes.orders = async () => {
         ${rows.map((o) => {
           const r = o.realised;
           const marginCell = r.forecastMarginPct != null ? `<span class="badge ${r.forecastMarginPct >= 15 ? 'good' : 'bad'}">${money(r.forecastMargin)} / ${pct(r.forecastMarginPct)}</span>` : '—';
-          const realCell = r.settled ? `<span class="badge good">${money(r.realisedMargin)}${r.marginVariance != null ? ` (${r.marginVariance >= 0 ? '+' : ''}${money(r.marginVariance)})` : ''}</span>` : '<span class="badge muted">open</span>';
+          const assumptions = r.fxAssumptions || [];
+          const realCell = r.settled
+            ? `<span class="badge ${assumptions.length ? 'warn' : 'good'}" title="${esc(assumptions.join('; ') || 'No FX assumptions')}">${money(r.realisedMargin)}${r.marginVariance != null ? ` (${r.marginVariance >= 0 ? '+' : ''}${money(r.marginVariance)})` : ''}</span>${assumptions.length ? `<div class="small" style="color:var(--warn,#b8860b)">FX assumed — add the dated rate</div>` : ''}`
+            : '<span class="badge muted">open</span>';
           const outstanding = (!r.costSettled || !r.revenueSettled) ? `${money(r.costOutstanding)} / ${money(r.revenueOutstanding)}` : '<span class="badge good">settled</span>';
           const xirrCell = r.xirrPct != null
             ? `<span class="badge info" title="Money-weighted annualised return on the actual dated payments">${pct(r.xirrPct)}</span><div class="small muted">${num(r.daysFunded)}d funded</div>`
@@ -1818,7 +1823,7 @@ routes.orders = async () => {
         <div class="muted small" style="margin-top:8px">Create from a saved deal on the Deals page to prefill cost/price.</div>
       </div>
       <div class="panel"><h2>How realised margin works</h2>
-        <div class="small muted">Each order carries a forecast cost and price. As payments are booked — outbound to the supplier, inbound from the customer — the platform recomputes the <b>realised</b> margin from cash actually moved, and compares it to the forecast once both sides are settled.</div>
+        <div class="small muted">Each order carries a forecast cost and price. As payments are booked — outbound to the supplier, inbound from the customer — the platform recomputes the <b>realised</b> margin from cash actually moved, and compares it to the forecast once both sides are settled. Payments in another currency are converted at the dated rate in force on their payment date; if no rate exists that day the margin is marked <b>FX assumed</b> and must not be signed off until a real rate is booked.</div>
       </div>
     </div>` : ''}`;
   if (canEdit) mountProductPicker($('#view'));
@@ -1957,7 +1962,7 @@ routes.reports = async () => {
   ];
   $('#view').innerHTML = `
     <div class="grid cards">
-      <div class="card"><div class="k">Realised margin</div><div class="v">${money(o.realisedMargin)}</div><div class="s">from settled orders</div></div>
+      <div class="card"><div class="k">Realised margin</div><div class="v">${money(o.realisedMargin)}</div><div class="s">from settled orders${o.fxAssumedOrders ? ` · <span class="badge warn">${num(o.fxAssumedOrders)} with assumed FX — not sign-off ready</span>` : ''}</div></div>
       <div class="card"><div class="k">Open orders</div><div class="v">${num(o.ordersOpen)}</div><div class="s">${num(o.orders)} total</div></div>
       <div class="card"><div class="k">Overlap products</div><div class="v">${num(o.overlapProducts)}</div><div class="s">sourced from 2+ suppliers</div></div>
       <div class="card"><div class="k">Open exceptions</div><div class="v">${num(o.openExceptions)}</div><div class="s">need review</div></div>

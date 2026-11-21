@@ -160,6 +160,13 @@ replica, which is what a SQLite volume requires.
 
 ## Deploy on AWS (free tier)
 
+> **Currently live:** a manually launched EC2 instance behind a temporary
+> Cloudflare tunnel — see [`LIVE-DEPLOYMENT.md`](LIVE-DEPLOYMENT.md) for the real
+> host, public URL, deploy command, backups and open blockers. The
+> CloudFormation kit below is a blueprint for the permanent setup and is **not**
+> what is running today (it needs AWS CLI credentials that are not yet
+> available).
+
 A complete CloudFormation kit is in [`deploy/aws/`](deploy/aws/README.md). It
 creates one `t3.micro` in `us-east-2` by default (region is configurable), a retained 20 GB EBS data volume, S3
 backups, an SSM SecureString for secrets, and a CloudFront distribution whose
