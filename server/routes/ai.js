@@ -3,6 +3,20 @@
 const express = require('express');
 const router = express.Router();
 const ai = require('../services/ai');
+const { createLimiter } = require('../services/rateLimit');
+
+// Cap paid AI turns per signed-in user so a single session (or a stuck client
+// retry loop) cannot run up the provider bill. Generous by default; set
+// AI_RATE_LIMIT_PER_HOUR=0 to disable for a trusted single-user install.
+const rawLimit = process.env.AI_RATE_LIMIT_PER_HOUR;
+const parsedLimit = rawLimit == null ? 60 : Number(rawLimit);
+const AI_LIMIT_PER_HOUR = Number.isFinite(parsedLimit) && parsedLimit >= 0 ? Math.floor(parsedLimit) : 60;
+const chatLimiter = createLimiter({ max: AI_LIMIT_PER_HOUR, windowMs: 60 * 60 * 1000 });
+function chatGuard(req, res, next) {
+  if (AI_LIMIT_PER_HOUR === 0 || chatLimiter.consume(req.user.id)) return next();
+  res.setHeader('Retry-After', '3600');
+  return res.status(429).json({ error: 'AI request limit reached for this hour. Try again later.' });
+}
 
 // Is the assistant configured? The UI reads this to show or hide itself.
 router.get('/ai/status', (req, res) => {
@@ -18,7 +32,7 @@ router.get('/ai/diagnose', async (req, res, next) => {
 
 // One turn of the conversation. The model may call read tools and draft tools;
 // drafts come back as proposals for the human to apply. Nothing is written here.
-router.post('/ai/chat', async (req, res, next) => {
+router.post('/ai/chat', chatGuard, async (req, res, next) => {
   try {
     const messages = (req.body && req.body.messages) || [];
     res.json(await ai.chat({ messages }));
@@ -28,7 +42,7 @@ router.post('/ai/chat', async (req, res, next) => {
 // The same turn, streamed as Server-Sent Events so the browser can paint the
 // answer as it arrives: tool = a tool is running, delta = a text fragment,
 // done = the finished reply plus proposals, error = something went wrong.
-router.post('/ai/chat/stream', async (req, res) => {
+router.post('/ai/chat/stream', chatGuard, async (req, res) => {
   const messages = (req.body && req.body.messages) || [];
   res.writeHead(200, {
     'Content-Type': 'text/event-stream; charset=utf-8',

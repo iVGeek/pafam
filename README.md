@@ -205,6 +205,7 @@ logs, AMI pinning, teardown and troubleshooting.
 | `AI_DISCOVER_MAX_PRICE` | Highest prompt price, USD per 1M tokens, for a paid self-heal model | `1` |
 | `AI_MAX_STEPS` | Max tool rounds per turn (raise for wide multi-line drafts) | `12` |
 | `AI_MAX_TOKENS` | Max output tokens per provider request. Keeps the provider's credit pre-check from failing with 402 and silently falling back | `4096` |
+| `AI_RATE_LIMIT_PER_HOUR` | Max AI chat calls per signed-in user per hour (`0` disables the cap) | `60` |
 | `AI_TIMEOUT_MS` | Per-attempt timeout | `45000` |
 
 When the primary model is retired, turned paid or throttled, the assistant
