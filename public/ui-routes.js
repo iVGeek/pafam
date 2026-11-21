@@ -170,15 +170,20 @@ routes.offers = async () => {
         <span class="muted small">${num(data.total)} offers</span>
       </div>
       <div class="table-wrap"><table>
-        <thead><tr><th>Supplier</th><th>Barcode</th><th>Product</th><th>Cat</th><th class="num">Size</th><th class="num">Price</th><th>Basis</th><th>Match</th><th>Approval</th><th></th></tr></thead>
+        <thead><tr><th>Supplier</th><th>Barcode</th><th>Product</th><th>Cat</th><th class="num">Size</th><th class="num">Price</th><th>Basis</th><th>Match</th><th>Approval</th><th>Signed off</th><th></th></tr></thead>
         <tbody>${data.rows.map((o) => {
           const appr = o.approval_status || 'review';
           const apprBadge = appr === 'approved'
-            ? `<span class="badge good" title="${esc(o.approved_by || '')}${o.approved_at ? ' · ' + esc(o.approved_at) : ''}">approved</span>`
+            ? '<span class="badge good">approved</span>'
             : appr === 'rejected'
-              ? `<span class="badge bad" title="${esc(o.review_note || '')}">rejected</span>`
+              ? '<span class="badge bad">rejected</span>'
               : appr === 'expired' ? '<span class="badge muted">expired</span>'
               : '<span class="badge warn">in review</span>';
+          // Sign-off identity and time are acceptance evidence: show them as a
+          // normal cell (and in exports), never only in a hover tooltip.
+          const signOff = (appr === 'approved' || appr === 'rejected')
+            ? `${esc(o.approved_by || 'unknown')}${o.approved_at ? ' · ' + esc(o.approved_at) : ''}${o.review_note ? '<div class="muted">' + esc(o.review_note) + '</div>' : ''}`
+            : (o.review_note ? esc(o.review_note) : '<span class="muted">—</span>');
           return `
           <tr>
             <td><span class="badge info">${esc(o.supplier_code)}</span></td>
@@ -190,9 +195,10 @@ routes.offers = async () => {
             <td class="small">${esc(o.price_basis || '')}${o.units_per_case ? ' ×' + o.units_per_case : ''}</td>
             <td>${o.status === 'exception' ? '<span class="badge warn">exception</span>' : (o.status === 'matched' ? '<span class="badge good">matched</span>' : '<span class="badge muted">new</span>')}</td>
             <td>${apprBadge}</td>
+            <td class="small">${signOff}</td>
             <td class="nowrap">${can('buyer') && appr !== 'approved' ? `<button class="btn sm" data-approve="${o.id}">Approve</button> <button class="btn sm ghost" data-reject="${o.id}">Reject</button>` : ''}</td>
           </tr>`;
-        }).join('') || '<tr><td colspan="10" class="muted">No offers.</td></tr>'}
+        }).join('') || '<tr><td colspan="11" class="muted">No offers.</td></tr>'}
         </tbody>
       </table></div>
       <div class="row" style="margin-top:12px">
@@ -292,17 +298,21 @@ routes.exceptions = async () => {
         <span class="muted small">${rows.length} shown</span>
       </div>
       <div class="table-wrap"><table>
-        <thead><tr><th style="width:32px"><input type="checkbox" id="exAll" style="width:auto" aria-label="Select all on page" /></th><th>Type</th><th>Supplier</th><th>Row</th><th>Barcode</th><th>Detail</th><th></th></tr></thead>
+        <thead><tr><th style="width:32px"><input type="checkbox" id="exAll" style="width:auto" aria-label="Select all on page" /></th><th>Type</th><th>Supplier</th><th>Source file</th><th>Row</th><th>Barcode</th><th>Detail</th><th>Resolution</th><th></th></tr></thead>
         <tbody>${rows.map((e) => `
           <tr>
             <td>${e.resolved ? '' : `<input type="checkbox" data-ex="${e.id}" style="width:auto" aria-label="Select exception ${e.id}" />`}</td>
             <td><span class="badge ${e.type === 'invalid_barcode' ? 'bad' : 'warn'}">${esc(e.type.replace('_', ' '))}</span></td>
             <td>${esc(e.supplier_code || '')}</td>
+            <td class="small mono" title="uploaded ${esc(e.source_uploaded_at || '')}${e.source_list_date ? ' · list date ' + esc(e.source_list_date) : ''}">${esc(e.source_file || '(no source file)')}</td>
             <td class="num">${e.source_row || ''}</td>
             <td class="mono">${esc(e.gtin_source || '')}</td>
             <td class="small">${esc(e.detail || '')}</td>
-            <td>${e.resolved ? '<span class="badge muted">resolved</span>' : `<button class="sm ghost" data-res="${e.id}">Resolve</button>`}</td>
-          </tr>`).join('') || '<tr><td colspan="7" class="muted">No exceptions.</td></tr>'}
+            <td class="small">${e.resolved
+              ? `<span class="badge muted">resolved</span><div class="muted">${esc(e.resolved_by || 'unknown')}${e.resolved_at ? ' · ' + esc(e.resolved_at) : ''}</div>`
+              : '<span class="badge warn">open</span>'}</td>
+            <td>${e.resolved ? '' : `<button class="sm ghost" data-res="${e.id}">Resolve</button>`}</td>
+          </tr>`).join('') || '<tr><td colspan="9" class="muted">No exceptions.</td></tr>'}
         </tbody>
       </table></div>
     </div>`;
@@ -994,7 +1004,10 @@ routes.placements = async () => {
       const r = await POST('/placements/from-plan', {});
       const created = (r.created || []).map((c) => `${c.ref} (${c.supplierCode}, ${c.lines} lines, ${money(c.total, c.currency)})`).join('\n');
       const blocked = (r.blocked || []).map((b) => `Blocked: ${b.supplierCode} — ${b.reason}`).join('\n');
-      toast(`Created ${r.created.length} draft order(s), ${r.lineCount} lines, capital ${money(r.totalCapital)}${blocked ? '\n' + blocked : ''}`, r.created.length ? 'ok' : 'err');
+      const capital = r.totalCapital != null
+        ? money(r.totalCapital)
+        : Object.entries(r.capitalByCurrency || {}).map(([cur, amt]) => money(amt, cur)).join(' · ') || '—';
+      toast(`Created ${r.created.length} draft order(s), ${r.lineCount} lines, capital ${capital}${blocked ? '\n' + blocked : ''}`, r.created.length ? 'ok' : 'err');
       if (created) alert(`Draft orders created:\n\n${created}${blocked ? '\n\n' + blocked : ''}\n\nReview them in Saved placements, then export to send.`);
       loadList();
     } catch (err) { toast(err.message, 'err'); }

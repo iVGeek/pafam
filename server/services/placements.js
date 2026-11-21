@@ -132,6 +132,29 @@ function computeTotals(lines) {
   return { total: round4(total), units, boxes, lineCount: lines.length };
 }
 
+// A purchase order and its total must be expressed in ONE currency. Group by
+// the currency of each offer instead of inheriting the first line's currency.
+function linesByCurrency(lines) {
+  const groups = new Map();
+  for (const l of lines || []) {
+    const currency = l.currency || 'EUR'; // matches createPlacement's legacy default
+    if (!groups.has(currency)) groups.set(currency, []);
+    groups.get(currency).push(l);
+  }
+  return groups;
+}
+
+function addByCurrency(target, currency, amount) {
+  target[currency] = round4((Number(target[currency]) || 0) + (Number(amount) || 0));
+}
+
+// A single number is only meaningful when every amount shares one currency.
+// Mixed plans return null plus the map, so callers cannot present a fake total.
+function singleCurrencyTotal(byCurrency) {
+  const keys = Object.keys(byCurrency);
+  return keys.length === 1 ? byCurrency[keys[0]] : null;
+}
+
 function getPlacement(id) {
   const header = db.prepare(
     `SELECT po.*, s.name AS supplier_name FROM purchase_orders po LEFT JOIN suppliers s ON s.code = po.supplier_code WHERE po.id = ?`
@@ -271,16 +294,8 @@ function placementPdf(id) {
 // reported, never silently dropped. Still drafts — a human reviews and sends.
 function generateFromPlan(opts = {}) {
   const plan = planForSupplier(opts.supplierCode || null);
-  const bySupplier = new Map();
-  for (const l of plan.lines) {
-    const code = l.supplierCode || (plan.suppliers && plan.suppliers[0]) || null;
-    // planForSupplier lines carry no supplierCode per line when unfiltered;
-    // use offer lookup path: lines are grouped by their supplier via plan call per supplier.
-    if (!bySupplier.has(code)) bySupplier.set(code, []);
-    bySupplier.get(code).push(l);
-  }
-  // When unfiltered, planForSupplier returns mixed lines without a per-line
-  // supplier field, so re-run per supplier for a clean grouping.
+  // planForSupplier returns mixed lines without a per-line supplier field, so
+  // re-run per supplier for a clean grouping.
   const groups = new Map();
   const suppliers = (opts.supplierCode ? [opts.supplierCode] : plan.suppliers) || [];
   for (const code of suppliers) {
@@ -289,7 +304,7 @@ function generateFromPlan(opts = {}) {
   }
   const created = [];
   const blocked = [];
-  let totalCapital = 0;
+  const capitalByCurrency = {};
   for (const [code, lines] of groups) {
     // Cheap executable lines only; anything non-executable is flagged, not ordered.
     const orderable = lines.filter((l) => l.executable !== false);
@@ -298,35 +313,47 @@ function generateFromPlan(opts = {}) {
       blocked.push({ supplierCode: code, reason: 'no executable lines', skipped });
       continue;
     }
-    const r = createPlacement({
-      supplierCode: code,
-      currency: orderable[0].currency || 'EUR',
-      status: 'draft',
-      notes: 'Auto-generated from purchase plan' + (skipped ? ` (${skipped} line(s) skipped: not executable)` : ''),
-      createdBy: opts.actor || 'user',
-      lines: orderable.map((l) => ({
-        productId: l.productId,
-        offerId: l.offerId,
-        description: l.description,
-        boxes: l.suggestedBoxes != null ? l.suggestedBoxes : 1,
-        unitCost: l.unitCost,
-      })),
-    });
-    if (r.error) {
-      blocked.push({ supplierCode: code, reason: r.error, skipped });
-      continue;
+    // One PO per currency: stamping orderable[0].currency on every line would
+    // silently reprice a USD offer as EUR (or add EUR to USD in the total).
+    for (const [currency, currencyLines] of linesByCurrency(orderable)) {
+      const r = createPlacement({
+        supplierCode: code,
+        currency,
+        status: 'draft',
+        notes: 'Auto-generated from purchase plan' + (skipped ? ` (${skipped} line(s) skipped: not executable)` : ''),
+        createdBy: opts.actor || 'user',
+        lines: currencyLines.map((l) => ({
+          productId: l.productId,
+          offerId: l.offerId,
+          description: l.description,
+          boxes: l.suggestedBoxes != null ? l.suggestedBoxes : 1,
+          unitCost: l.unitCost,
+        })),
+      });
+      if (r.error) {
+        blocked.push({ supplierCode: code, currency, reason: r.error, skipped });
+        continue;
+      }
+      const full = getPlacement(r.id);
+      const total = round4(Number(full.totals.total) || 0);
+      addByCurrency(capitalByCurrency, currency, total);
+      created.push({ id: r.id, ref: r.ref, supplierCode: code, lines: full.totals.lineCount, total, currency, skipped });
     }
-    const full = getPlacement(r.id);
-    totalCapital += Number(full.totals.total) || 0;
-    created.push({ id: r.id, ref: r.ref, supplierCode: code, lines: full.totals.lineCount, total: full.totals.total, currency: full.currency, skipped });
   }
+  const currencies = Object.keys(capitalByCurrency);
   return {
     ok: created.length > 0,
     created,
     blocked,
-    totalCapital: round4(totalCapital),
+    capitalByCurrency,
+    // Null when mixed — no dated conversion has been requested, so there is no
+    // honest single figure to show. The map is the authoritative result.
+    totalCapital: singleCurrencyTotal(capitalByCurrency),
+    note: currencies.length > 1
+      ? 'Multiple currencies: use capitalByCurrency. There is no single total without an explicit, dated FX conversion.'
+      : null,
     lineCount: created.reduce((s, c) => s + c.lines, 0),
   };
 }
 
-module.exports = { toFullBoxes, normalizeLine, createPlacement, getPlacement, listPlacements, planForSupplier, placementData, placementWorkbook, placementPdf, computeTotals, generateFromPlan };
+module.exports = { toFullBoxes, normalizeLine, createPlacement, getPlacement, listPlacements, planForSupplier, placementData, placementWorkbook, placementPdf, computeTotals, generateFromPlan, linesByCurrency, addByCurrency, singleCurrencyTotal };

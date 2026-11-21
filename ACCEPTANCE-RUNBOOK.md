@@ -58,7 +58,7 @@ Evidence column = the file name you save in `acceptance\<run-id>\<n>\`.
 |---|---|
 | **Where** | **Import Lists**, **Supplier Offers**, **Products & Matching** — `POST /api/import`, `GET /api/offers`, `GET /api/products` |
 | **Do** | Import each real raw list (buyer). Search the product master for a known EAN/UPC with leading zeros and for a UPC↔EAN alias. Open **Supplier Offers** and approve/reject a real row. |
-| **Expect** | Barcodes are text; leading zeros are exactly as in the source cell. One product resolves per canonical GTIN; aliases of that product match. Offer shows normalised price, list date, supplier and approval state (who/when). An offer with no price or invalid barcode cannot be approved. |
+| **Expect** | Barcodes are text; leading zeros are exactly as in the source cell. One product resolves per canonical GTIN; aliases of that product match. Offer shows normalised price, list date, supplier and approval state; the **Signed off** column shows the approving/rejecting user, timestamp and note as visible cells (not a hover tooltip) for export as evidence. An offer with no price or invalid barcode cannot be approved. |
 | **Evidence** | `intake.json`, source-cell screenshot, product-match screenshot, approved-offer screenshot |
 | **Result** | ☐ PASS ☐ FAIL ☐ WAIVED — note: |
 
@@ -68,7 +68,7 @@ Evidence column = the file name you save in `acceptance\<run-id>\<n>\`.
 |---|---|
 | **Where** | **Products & Matching** (tick two → **Compare**), **Exceptions** — `GET /api/products/:id/compare`, `GET /api/exceptions` |
 | **Do** | Find a real case barcode and its bottle; a tester/gift set; two rows with conflicting size. Compare each pair. Resolve one exception (analyst) with the PO's decision. |
-| **Expect** | Case barcode is a separate alias with `packaging_level=case` and verified units/case; no unit conversion until verified. Testers/gift sets stay distinct products. Size clashes land in **Exceptions** with a reason, never silently merged. |
+| **Expect** | Case barcode is a separate alias with `packaging_level=case` and verified units/case; no unit conversion until verified. Testers/gift sets stay distinct products. Size clashes land in **Exceptions** with a reason, never silently merged. Each exception shows its **source filename** (plus upload/list dates) beside the row number, and a resolved one shows the resolving user and timestamp — a row number alone is not evidence. |
 | **Evidence** | compare screenshots, exception-before/after screenshots |
 | **Result** | ☐ PASS ☐ FAIL ☐ WAIVED — note: |
 

@@ -2,7 +2,7 @@
 
 const express = require('express');
 const router = express.Router();
-const { db, getSetting, setSetting, audit, settingsFor } = require('../db');
+const { db, getSetting, setSetting, audit, settingsFor, isSensitiveSetting } = require('../db');
 const { listSuppliers } = require('../services/suppliers');
 const fx = require('../services/fx');
 const analytics = require('../services/analytics');
@@ -99,8 +99,14 @@ router.get('/exceptions', (req, res) => {
   const type = req.query.type;
   const limit = Math.min(Math.max(Number(req.query.limit) || 200, 1), 500);
   const offset = Math.max(0, Number(req.query.offset) || 0);
-  let sql = `SELECT e.*, o.description, o.gtin_source, o.source_row, o.supplier_code
-             FROM exceptions e LEFT JOIN offers o ON o.id = e.offer_id
+  // Carry the source filename so a row number alone cannot be confused with
+  // the same row in another upload from the same supplier.
+  let sql = `SELECT e.*, o.description, o.gtin_source, o.source_row, o.supplier_code,
+                    u.filename AS source_file, u.uploaded_at AS source_uploaded_at,
+                    u.list_date AS source_list_date
+             FROM exceptions e
+             LEFT JOIN offers o ON o.id = e.offer_id
+             LEFT JOIN uploads u ON u.id = o.upload_id
              WHERE e.resolved = ?`;
   const params = [resolved];
   if (supplier) { sql += ' AND o.supplier_code = ?'; params.push(supplier); }
@@ -154,7 +160,15 @@ router.get('/settings', (req, res) => {
 router.post('/settings', auth.requireRole('admin'), (req, res) => {
   const body = req.body || {};
   for (const [k, v] of Object.entries(body)) setSetting(k, v);
-  audit('user', 'update-settings', 'settings', null, JSON.stringify(body));
+  // The Settings screen round-trips every field, including the real
+  // capture_secret. Never copy a secret into the audit trail: a later
+  // /api/audit or AI list_audit read would disclose it to a viewer.
+  const safe = {};
+  for (const [k, v] of Object.entries(body)) {
+    if (isSensitiveSetting(k)) { safe[k] = '[redacted]'; continue; }
+    safe[k] = v;
+  }
+  audit(req.user.username, 'update-settings', 'settings', null, JSON.stringify(safe));
   res.json({ ok: true });
 });
 
@@ -166,8 +180,15 @@ router.post('/fx', auth.requireRole('buyer'), (req, res) => {
   res.json({ ok: true });
 });
 
-router.get('/audit', (req, res) => {
-  res.json(db.prepare('SELECT * FROM audit_log ORDER BY created_at DESC LIMIT 200').all());
+// The UI gates the audit route to admins; enforce the same rule on the API so
+// a viewer cannot read it with a direct call even though the nav item is hidden.
+router.get('/audit', auth.requireRole('admin'), (req, res) => {
+  // Defence in depth: any legacy row written before this fix may still hold a
+  // secret in its detail. Redact on read as well as on write.
+  const rows = db.prepare('SELECT * FROM audit_log ORDER BY created_at DESC LIMIT 200').all();
+  res.json(rows.map((r) => (
+    r.action === 'update-settings' ? { ...r, detail: '[redacted]' } : r
+  )));
 });
 
 module.exports = router;

@@ -37,7 +37,16 @@ XPF XPT XSU XTS XUA XXX YER ZAR ZMW ZWL
 
 const INCOTERMS = new Set(['EXW', 'FOB', 'CIF', 'DAP', 'DDP', 'FCA', 'CPT']);
 const PRICE_BASES = new Set(['cost', 'rrp']);
-const OFFER_FORBIDDEN_TOKENS = ['suppliercode', 'unitcost', 'landedunitcost', 'marginpct', 'markuppct'];
+// Customer copies must never reveal acquisition cost, landed cost, supplier
+// identity or margin. Whole-token blacklisting missed the natural header names
+// clients actually use ("Supplier", "Cost", "Buy price", "margin", "mark-up"),
+// so match words with boundaries instead. CamelCase is split first so
+// "supplierCode" and "LandedUnitCost" are caught too, without matching
+// innocent words such as "costume".
+const OFFER_FORBIDDEN_PATTERNS = [
+  /\bsupplier\b/, /\bcosts?\b/, /\blanded\b/, /\bbuy\s*price\b/,
+  /\bpurchase\s*price\b/, /\bmargins?\b/, /\bmark\s*-?\s*ups?\b/,
+];
 const OFFER_INTERNAL_LABELS = ['approved by', 'status', 'price list basis', 'internal notes'];
 const MEDIA_EXT = /\.(mp4|mov|avi|mkv|webm|png|jpe?g|gif|pdf)$/i;
 
@@ -57,6 +66,21 @@ function normKey(v) {
 
 function compactKey(v) {
   return normKey(v).replace(/[^a-z0-9]/g, '');
+}
+
+// Return the forbidden cost/supplier/margin phrases found in a header or cell.
+function forbiddenOfferTokens(value) {
+  if (isBlank(value)) return [];
+  const words = norm(value)
+    .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+    .replace(/[^A-Za-z]+/g, ' ')
+    .toLowerCase();
+  const hits = [];
+  for (const re of OFFER_FORBIDDEN_PATTERNS) {
+    const m = words.match(re);
+    if (m) hits.push(m[0].trim());
+  }
+  return [...new Set(hits)];
 }
 
 function keyMatches(head, want) {
@@ -597,6 +621,7 @@ function checkFx(ctx) {
     'GBP|USD|2026-10-19|ECB|1.27',
   ]);
   const seen = new Map();
+  let templateExampleRows = 0;
 
   for (const r of rows) {
     const base = isoCurrency(cell(r, 'base'));
@@ -628,6 +653,16 @@ function checkFx(ctx) {
       ctx.report.warn(item, `${label}: booked must be 1 or 0`);
     }
 
+    // The shipped template carries 1.08 / 1.27 examples. A package that still
+    // contains them cannot support a signed-off quote — this is a blocker,
+    // not a warning that a reviewer might skip.
+    if (templateRows.has(
+      `${norm(cell(r, 'base')).toUpperCase()}|${norm(cell(r, 'quote')).toUpperCase()}|${parseDate(cell(r, 'rateDate')).iso || ''}|${norm(cell(r, 'source'))}|${num(cell(r, 'rate'))}`
+    )) {
+      templateExampleRows += 1;
+      ctx.report.blocker(item, `${label}: unchanged template example rate — replace with a real, sourced rate`);
+    }
+
     if (base && quote) {
       const key = `${base}|${quote}|${date.iso || '?'}|${source}`;
       if (seen.has(key)) {
@@ -644,10 +679,8 @@ function checkFx(ctx) {
     }
   }
 
-  if (rows.length && rows.every((r) => templateRows.has(
-    `${norm(cell(r, 'base')).toUpperCase()}|${norm(cell(r, 'quote')).toUpperCase()}|${parseDate(cell(r, 'rateDate')).iso || ''}|${norm(cell(r, 'source'))}|${num(cell(r, 'rate'))}`
-  ))) {
-    ctx.report.warn(item, 'FX rows look like the unchanged template example — replace them with real rates');
+  if (rows.length && templateExampleRows === rows.length) {
+    ctx.report.blocker(item, 'FX rows are all unchanged template examples — replace them with real rates');
   }
 
   const needed = new Map();
@@ -1321,21 +1354,22 @@ function checkOffers(ctx) {
     ctx.report.ok(item, `found ${rel(ctx.dir, customerFile)} (header row ${customer.headerRow})`);
 
     const forbiddenHeaders = customer.header
-      .map(compactKey)
-      .filter((h) => OFFER_FORBIDDEN_TOKENS.includes(h));
+      .map((h) => ({ label: norm(h), hits: forbiddenOfferTokens(h) }))
+      .filter((x) => x.hits.length);
     if (forbiddenHeaders.length) {
-      ctx.report.blocker(item, `customer copy: forbidden internal column(s): ${forbiddenHeaders.join(', ')}`);
+      ctx.report.blocker(item, `customer copy: forbidden internal column(s): ${forbiddenHeaders.map((x) => `${x.label} [${x.hits.join(', ')}]`).join(', ')}`);
     }
 
     // Also catch cost/margin values hidden in a differently-named column or a
-    // stray cell: the customer copy must never contain these tokens.
-    const allText = [];
+    // stray cell: the customer copy must never contain these words.
+    const leaked = [];
     for (const row of customer.rows) {
-      for (const v of row || []) allText.push(compactKey(v));
+      for (const v of row || []) {
+        if (forbiddenOfferTokens(v).length && !isBlank(v)) leaked.push(norm(v));
+      }
     }
-    const leaked = allText.filter((t) => OFFER_FORBIDDEN_TOKENS.some((token) => t.includes(token)));
     if (leaked.length) {
-      ctx.report.blocker(item, `customer copy: cost/margin data leaked (${[...new Set(leaked)].join(', ')})`);
+      ctx.report.blocker(item, `customer copy: cost/margin/supplier data leaked (${[...new Set(leaked)].join(', ')})`);
     }
 
     const internalLabels = OFFER_INTERNAL_LABELS.filter((label) => !isBlank(customer.getLabel(label)));

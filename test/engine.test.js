@@ -51,6 +51,7 @@ const template = require('../server/services/template');
 const listdiff = require('../server/services/listdiff');
 const placements = require('../server/services/placements');
 const pfi = require('../server/services/pfi');
+const { importFile } = require('../server/services/importer');
 const XLSX = require('xlsx');
 
 // No cached fixture: run the real import pipeline so the DB-backed tests
@@ -63,8 +64,13 @@ if (!useCache) {
       // Flush the WAL into the main file first, otherwise the snapshot is
       // missing everything still sitting in the log.
       require('../server/db').db.prepare('PRAGMA wal_checkpoint(TRUNCATE)').get();
-      fs.copyFileSync(TMP_DB, SNAP);
-      for (const suffix of ['-wal', '-shm']) { try { fs.unlinkSync(SNAP + suffix); } catch (e) { /* ignore */ } }
+      // Several test files copy this shared fixture in parallel. Write to a
+      // private path then rename atomically, so no reader ever copies a
+      // half-written snapshot (which made whole test files fail at startup).
+      const staging = `${SNAP}.${process.pid}.tmp`;
+      fs.copyFileSync(TMP_DB, staging);
+      for (const suffix of ['-wal', '-shm']) { try { fs.unlinkSync(staging + suffix); } catch (e) { /* ignore */ } }
+      fs.renameSync(staging, SNAP);
     } catch (e) { /* no snapshot just means we re-seed next time */ }
   }
 }
@@ -257,6 +263,36 @@ test('selectTier: an open-ended top tier is not applied below every minimum', ()
   // A bounded top tier may still be extended above its max for bulk buyers.
   const bounded = [{ min: 12, max: 59, price: 28.5 }, { min: 60, max: 199, price: 27 }];
   assert.equal(selectTier(bounded, 500, 30, 'unit').price, 27);
+});
+
+test('import: a detected tier price reaches tiers_json and changes landed cost', () => {
+  const file = path.join(os.tmpdir(), `ptp-tier-import-${process.pid}.xlsx`);
+  const ws = XLSX.utils.aoa_to_sheet([
+    ['EAN', 'DUN', 'Descripcion', 'Precio', 'Tier Min', 'Tier Max', 'Tier Price'],
+    ['3614274222142', '12345678901234', 'Tier import acceptance item', '30.00', '60', '199', '27.00'],
+  ]);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'Prices');
+  XLSX.writeFile(wb, file);
+  try {
+    const result = importFile(file, { supplierCode: 'ALCODIS', actor: 'tier-test' });
+    assert.strictEqual(result.duplicate, false);
+    assert.strictEqual(result.imported, 1);
+    const row = db.prepare('SELECT * FROM offers WHERE upload_id = ?').get(result.uploadId);
+    assert.ok(row, 'offer persisted');
+    assert.deepStrictEqual(JSON.parse(row.tiers_json), [
+      { min: 60, max: 199, price: 27, basis: 'unit' },
+    ], 'tier price is imported, not silently dropped');
+
+    const opts = { baseCurrency: 'USD', fxRate: 1, settings: {} };
+    const bulk = computeLanded(row, {}, { ...opts, quantity: 100 });
+    assert.strictEqual(bulk.acquisitionPerBottle, 27, 'tier price used inside its range');
+    assert.ok(bulk.flags.includes('tier-applied'));
+    const small = computeLanded(row, {}, { ...opts, quantity: 6 });
+    assert.strictEqual(small.acquisitionPerBottle, 30, 'base price used below the tier minimum');
+  } finally {
+    try { fs.unlinkSync(file); } catch (_) { /* ignore */ }
+  }
 });
 
 test('landed cost: EXW buyer pays every component', () => {
@@ -1560,18 +1596,67 @@ test('auto-purchasing: generateFromPlan creates draft POs per supplier', () => {
   // A known supplier from the seed data; must not throw and must return a shape.
   const out = placements.generateFromPlan({ actor: 'test' });
   assert.ok(Array.isArray(out.created) && Array.isArray(out.blocked));
-  assert.ok(typeof out.totalCapital === 'number');
+  assert.ok(out.capitalByCurrency && typeof out.capitalByCurrency === 'object');
+  assert.ok(out.totalCapital === null || typeof out.totalCapital === 'number');
+  if (Object.keys(out.capitalByCurrency).length > 1) {
+    assert.strictEqual(out.totalCapital, null, 'mixed currencies never produce one fake total');
+    assert.match(out.note, /Multiple currencies/);
+  }
+  for (const c of out.created) {
+    assert.ok(c.currency && c.total > 0, 'each draft PO has its own currency and total');
+  }
   // Any created POs are drafts with refs.
   for (const c of out.created) {
     assert.ok(c.ref && c.supplierCode && c.lines > 0);
     const full = placements.getPlacement(c.id);
     assert.equal(full.status, 'draft');
+    const { db: d } = require('../server/db');
+    const offerCurrencies = new Set(full.lines.map((l) => {
+      const o = d.prepare('SELECT currency FROM offers WHERE id = ?').get(l.offer_id);
+      return o && o.currency;
+    }));
+    assert.ok(
+      [...offerCurrencies].every((cur) => !cur || cur === full.currency),
+      'every line on a draft PO uses the PO currency — no first-line-currency stamping'
+    );
   }
   // Cleanup: delete test-created draft POs so re-runs stay deterministic.
   const { db: d } = require('../server/db');
   for (const c of out.created) {
     d.prepare('DELETE FROM purchase_order_lines WHERE po_id = ?').run(c.id);
     d.prepare('DELETE FROM purchase_orders WHERE id = ?').run(c.id);
+  }
+});
+
+test('mixed currencies: totals stay per-currency, never one fake scalar', () => {
+  const p = require('../server/services/placements');
+  const lines = [
+    { currency: 'EUR', unitCost: 10, suggestedUnits: 2 },
+    { currency: 'USD', unitCost: 20, suggestedUnits: 3 },
+    { currency: 'EUR', unitCost: 5, suggestedUnits: 4 },
+  ];
+  const groups = p.linesByCurrency(lines);
+  assert.deepStrictEqual([...groups.keys()], ['EUR', 'USD']);
+  const by = {};
+  for (const [currency, group] of groups) {
+    p.addByCurrency(by, currency, group.reduce((s, l) => s + l.unitCost * l.suggestedUnits, 0));
+  }
+  assert.deepStrictEqual(by, { EUR: 40, USD: 60 });
+  assert.strictEqual(p.singleCurrencyTotal(by), null, 'mixed currencies have no single total');
+  assert.strictEqual(p.singleCurrencyTotal({ EUR: 40 }), 40);
+
+  const preview = ai.runTool('auto_purchase_preview', {}).result;
+  assert.ok(preview.capitalByCurrency && typeof preview.capitalByCurrency === 'object');
+  assert.ok(preview.totalCapital === null || typeof preview.totalCapital === 'number');
+  if (Object.keys(preview.capitalByCurrency).length > 1) {
+    assert.strictEqual(preview.totalCapital, null, 'AI preview must not add EUR to USD');
+    assert.match(preview.note, /Multiple currencies/);
+  }
+  for (const s of preview.suppliers) {
+    if (!s.lines) continue;
+    assert.ok(s.estTotalByCurrency && Object.keys(s.estTotalByCurrency).length >= 1);
+    assert.deepStrictEqual(s.currencies, Object.keys(s.estTotalByCurrency));
+    assert.ok(s.estTotal === null || typeof s.estTotal === 'number');
   }
 });
 

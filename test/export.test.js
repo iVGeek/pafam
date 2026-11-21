@@ -508,6 +508,32 @@ test('http: capture_secret is generated, admin-only, and redacted from AI tools'
   const ai = require('../server/services/ai');
   const fromAi = ai.runTool('get_settings', {}).result.settings;
   assert.strictEqual(fromAi.capture_secret, '[redacted]', 'AI tools cannot leak the webhook secret');
+
+  // A Settings save round-trips the real secret. It must not end up in the
+  // audit trail, the audit API, or an AI list_audit tool result.
+  const { getSetting } = require('../server/db');
+  const original = getSetting('followup_days', '2');
+  const save = await fetch(`${base}/api/settings`, {
+    method: 'POST',
+    headers: { cookie, 'content-type': 'application/json' },
+    body: JSON.stringify({ capture_secret: secret, followup_days: original }),
+  });
+  assert.strictEqual(save.status, 200);
+  assert.strictEqual(getSetting('capture_secret'), secret, 'the value is still stored correctly');
+
+  const raw = db.prepare("SELECT detail FROM audit_log WHERE action = 'update-settings' ORDER BY id DESC LIMIT 1").get();
+  assert.ok(raw && !raw.detail.includes(secret), 'the secret is never written to audit_log.detail');
+  assert.ok(raw.detail.includes('[redacted]'), 'the redaction is explicit, not a silent omission');
+
+  const viewerAudit = await fetch(`${base}/api/audit`, { headers: { cookie: viewerCookie } });
+  assert.strictEqual(viewerAudit.status, 403, 'a viewer cannot read the audit API directly');
+  const adminAudit = await (await fetch(`${base}/api/audit`, { headers: { cookie } })).json();
+  assert.ok(!JSON.stringify(adminAudit).includes(secret), 'audit API cannot leak the secret');
+
+  const fromAuditTool = ai.runTool('list_audit', { action: 'update-settings', limit: 5 }).result;
+  assert.ok(fromAuditTool.entries.length >= 1);
+  assert.ok(!JSON.stringify(fromAuditTool).includes(secret), 'AI list_audit cannot leak the secret');
+  assert.ok(fromAuditTool.entries.every((e) => e.detail === '[redacted]'));
 });
 
 test('http: product merge is atomic and reassigns FK-protected references', async () => {
@@ -586,4 +612,62 @@ test('http: exception sign-off actor comes from the session, not the request bod
     "SELECT COUNT(*) n FROM audit_log WHERE action = 'resolve-exception' AND actor = 'Client PO'"
   ).get().n;
   assert.strictEqual(forged, 0, 'audit log cannot be poisoned with a client-supplied name');
+});
+
+test('http: exception evidence exposes source file and resolved who/when', async () => {
+  const offer = db.prepare(
+    'SELECT id, upload_id FROM offers WHERE upload_id IS NOT NULL LIMIT 1'
+  ).get();
+  assert.ok(offer, 'a seeded offer with an upload');
+  const upload = db.prepare('SELECT filename FROM uploads WHERE id = ?').get(offer.upload_id);
+  const id = Number(db.prepare(
+    "INSERT INTO exceptions(type, detail, offer_id) VALUES ('mismatch', 'evidence test', ?)"
+  ).run(offer.id).lastInsertRowid);
+  const r = await fetch(`${base}/api/exceptions/${id}/resolve`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', cookie },
+    body: '{}',
+  });
+  assert.strictEqual(r.status, 200);
+  const rows = await (await fetch(`${base}/api/exceptions?resolved=1&limit=500`, { headers: { cookie } })).json();
+  const row = rows.find((x) => x.id === id);
+  assert.ok(row, 'resolved exception returned');
+  assert.strictEqual(row.source_file, upload.filename, 'row number is tied to its source file');
+  assert.ok(row.source_uploaded_at, 'upload time is available for the audit trail');
+  assert.strictEqual(row.resolved_by, 'admin');
+  assert.ok(row.resolved_at, 'resolution time is available for the audit trail');
+});
+
+test('http: offer approval records who/when and exposes it on the offers list', async () => {
+  const offer = db.prepare(
+    `SELECT id, approval_status, approved_by, approved_at, gtin_source FROM offers
+      WHERE product_id IS NOT NULL AND price > 0 AND gtin_canonical IS NOT NULL
+        AND gtin_source IS NOT NULL LIMIT 1`
+  ).get();
+  assert.ok(offer, 'an offer that can be signed off');
+  try {
+    const r = await fetch(`${base}/api/offers/${offer.id}/approve`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', cookie },
+      body: JSON.stringify({ note: 'acceptance evidence check' }),
+    });
+    assert.strictEqual(r.status, 200);
+    const stored = db.prepare('SELECT approval_status, approved_by, approved_at, review_note FROM offers WHERE id = ?').get(offer.id);
+    assert.strictEqual(stored.approval_status, 'approved');
+    assert.strictEqual(stored.approved_by, 'admin');
+    assert.ok(stored.approved_at);
+    const list = await (await fetch(
+      `${base}/api/offers?approval=approved&limit=500&q=${encodeURIComponent(offer.gtin_source)}`,
+      { headers: { cookie } }
+    )).json();
+    const row = list.rows.find((x) => x.id === offer.id);
+    assert.ok(row, 'approved offer is listed');
+    assert.strictEqual(row.approved_by, 'admin', 'UI has the sign-off identity without a tooltip');
+    assert.ok(row.approved_at, 'UI has the sign-off timestamp');
+    assert.strictEqual(row.review_note, 'acceptance evidence check');
+  } finally {
+    db.prepare(
+      `UPDATE offers SET approval_status = ?, approved_by = ?, approved_at = ?, review_note = ? WHERE id = ?`
+    ).run(offer.approval_status, offer.approved_by, offer.approved_at, null, offer.id);
+  }
 });

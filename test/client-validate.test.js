@@ -261,7 +261,42 @@ test('cost data on the customer offer copy is a blocker', (t) => {
   const dir = buildPackage(t, { customerOfferRows: rows });
   const result = validatePackage(dir, { base: 'USD' });
   assert.strictEqual(result.ok, false);
-  assert.match(messages(result, 'BLOCKER'), /forbidden internal column\(s\): unitcost/);
+  assert.match(messages(result, 'BLOCKER'), /forbidden internal column\(s\): unitCost\s+\[cost\]/);
+});
+
+test('customer-friendly cost/supplier/margin headers are blockers too', (t) => {
+  const rows = CUSTOMER_OFFER_ROWS.map((r) => r.slice());
+  // Headers a real client might use instead of the internal template names.
+  rows[6].push('Supplier', 'Cost', 'Buy price', 'Landed cost', 'margin', 'Mark-up');
+  rows[7].push('ALCODIS', 61.5, 61.5, 63.9, '22.6%', '29.1%');
+  rows[8].push('IGAN', 38.1, 38.1, 39.6, '27.9%', '38.6%');
+  const dir = buildPackage(t, { customerOfferRows: rows });
+  const result = validatePackage(dir, { base: 'USD' });
+  assert.strictEqual(result.ok, false, messages(result, 'WARN'));
+  const blockers = messages(result, 'BLOCKER');
+  for (const word of ['Supplier', 'Cost', 'Buy price', 'margin', 'Mark-up']) {
+    assert.match(blockers, new RegExp(word, 'i'), `friendly header "${word}" must be blocked`);
+  }
+});
+
+test('unchanged FX template example rates are a blocker', (t) => {
+  const dir = buildPackage(t, {
+    fxRows: [
+      ['EUR', 'USD', 1.08, '2026-10-19', 'ECB', 1],
+      ['GBP', 'USD', 1.27, '2026-10-19', 'ECB', 1],
+    ],
+  });
+  const result = validatePackage(dir, { base: 'USD' });
+  assert.strictEqual(result.ok, false);
+  assert.match(messages(result, 'BLOCKER'), /unchanged template example rate/);
+});
+
+test('word-boundary detection does not flag innocent product names', (t) => {
+  const rows = CUSTOMER_OFFER_ROWS.map((r) => r.slice());
+  rows[7][4] = 'Costume fragrance EDT 100ml';
+  const dir = buildPackage(t, { customerOfferRows: rows });
+  const result = validatePackage(dir, { base: 'USD' });
+  assert.strictEqual(result.ok, true, messages(result, 'BLOCKER'));
 });
 
 test('a template-only supplier master is a blocker', (t) => {

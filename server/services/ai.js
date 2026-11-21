@@ -805,7 +805,15 @@ function toolListAudit({ actor, action, limit } = {}) {
        FROM audit_log ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
       ORDER BY id DESC LIMIT ?`
   ).all(...params, n);
-  return { count: rows.length, entries: rows };
+  // The assistant runs for every role and the Settings screen round-trips the
+  // real capture_secret. A settings-change detail is never safe to expose;
+  // historical rows written before this fix are redacted here too.
+  return {
+    count: rows.length,
+    entries: rows.map((r) => (
+      r.action === 'update-settings' ? { ...r, detail: '[redacted]' } : r
+    )),
+  };
 }
 
 function toolListFx() {
@@ -830,25 +838,42 @@ function toolAutoPurchasePreview({ supplierCode } = {}) {
   const plan = placements.planForSupplier(supplierCode || null);
   const suppliers = supplierCode ? [supplierCode] : (plan.suppliers || []);
   const out = [];
+  const capitalByCurrency = {};
   for (const code of suppliers) {
     const p = placements.planForSupplier(code);
     if (!p.lines.length) { out.push({ supplierCode: code, lines: 0 }); continue; }
     const orderable = p.lines.filter((l) => l.executable !== false);
-    const total = orderable.reduce((s, l) => s + ((Number(l.unitCost) || 0) * Number(l.suggestedUnits || 0)), 0);
+    // Each offer keeps its own currency. Summing them into one "estTotal" and
+    // stamping the first line's currency on the result invented a conversion.
+    const groups = placements.linesByCurrency(orderable);
+    const estTotalByCurrency = {};
+    let units = 0;
+    for (const [currency, group] of groups) {
+      const amount = group.reduce((s, l) => s + ((Number(l.unitCost) || 0) * Number(l.suggestedUnits || 0)), 0);
+      placements.addByCurrency(estTotalByCurrency, currency, amount);
+      placements.addByCurrency(capitalByCurrency, currency, amount);
+      units += group.reduce((s, l) => s + Number(l.suggestedUnits || 0), 0);
+    }
     out.push({
       supplierCode: code,
       lines: orderable.length,
       skipped: p.lines.length - orderable.length,
-      units: orderable.reduce((s, l) => s + Number(l.suggestedUnits || 0), 0),
-      estTotal: Math.round(total * 10000) / 10000,
-      currency: orderable[0] ? orderable[0].currency : null,
+      units,
+      estTotalByCurrency,
+      estTotal: placements.singleCurrencyTotal(estTotalByCurrency),
+      currencies: Object.keys(estTotalByCurrency),
     });
   }
+  const mixed = Object.keys(capitalByCurrency).length > 1;
   return {
     suppliers: out,
     orderableSuppliers: out.filter((s) => s.lines > 0).length,
-    totalCapital: Math.round(out.reduce((s, x) => s + (x.estTotal || 0), 0) * 10000) / 10000,
-    note: 'Preview only. To actually create the draft POs, the user clicks "⚡ Auto-generate all supplier orders" on the Order Placement screen (or asks for a placement per supplier with draft_placement).',
+    capitalByCurrency,
+    // Null when mixed — the model must quote the per-currency map, not add
+    // EUR to USD and present the result as an exact capital requirement.
+    totalCapital: placements.singleCurrencyTotal(capitalByCurrency),
+    note: 'Preview only. To actually create the draft POs, the user clicks "⚡ Auto-generate all supplier orders" on the Order Placement screen (or asks for a placement per supplier with draft_placement).'
+      + (mixed ? ' Multiple currencies are present: report capitalByCurrency; there is no single total without an explicit, dated FX conversion.' : ''),
   };
 }
 
@@ -1423,7 +1448,7 @@ const TOOLS = [
     type: 'function',
     function: {
       name: 'auto_purchase_preview',
-      description: 'Preview auto-purchasing: for each supplier in the purchase plan, how many orderable lines, boxes/units, estimated total and skipped (non-executable) lines. Read-only; actual draft creation happens via the Order Placement button or draft_placement.',
+      description: 'Preview auto-purchasing: for each supplier in the purchase plan, how many orderable lines, units and skipped (non-executable) lines, with estimated totals broken down per currency (estTotalByCurrency). The top-level capitalByCurrency is authoritative; totalCapital is null when currencies are mixed — never add them into one figure without a dated FX conversion. Read-only; actual draft creation happens via the Order Placement button or draft_placement.',
       parameters: { type: 'object', properties: { supplierCode: { type: 'string' } } },
     },
   },
