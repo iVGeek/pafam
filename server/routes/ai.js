@@ -3,6 +3,7 @@
 const express = require('express');
 const router = express.Router();
 const ai = require('../services/ai');
+const auth = require('../services/auth');
 const { createLimiter } = require('../services/rateLimit');
 
 // Cap paid AI turns per signed-in user so a single session (or a stuck client
@@ -25,9 +26,15 @@ router.get('/ai/status', (req, res) => {
 
 // Live health check: provider reachable, configured models still exist and
 // support tool calls, key credit, and free models that could replace a dead
-// one. Safe to expose: no key material is returned.
-router.get('/ai/diagnose', async (req, res, next) => {
-  try { res.json(await ai.diagnose()); } catch (e) { next(e); }
+// one. It makes outbound provider calls and returns account/credit details, so
+// it is admin-only and rate-limited (1 per 5 minutes per admin).
+const diagnoseLimiter = createLimiter({ max: 1, windowMs: 5 * 60 * 1000 });
+router.get('/ai/diagnose', auth.requireRole('admin'), (req, res, next) => {
+  if (!diagnoseLimiter.consume(req.user.id)) {
+    res.setHeader('Retry-After', '300');
+    return res.status(429).json({ error: 'AI diagnostics may be run once every 5 minutes.' });
+  }
+  Promise.resolve(ai.diagnose()).then((r) => res.json(r)).catch(next);
 });
 
 // One turn of the conversation. The model may call read tools and draft tools;
@@ -35,7 +42,7 @@ router.get('/ai/diagnose', async (req, res, next) => {
 router.post('/ai/chat', chatGuard, async (req, res, next) => {
   try {
     const messages = (req.body && req.body.messages) || [];
-    res.json(await ai.chat({ messages }));
+    res.json(await ai.chat({ messages, role: req.user.role }));
   } catch (e) { next(e); }
 });
 
@@ -61,6 +68,7 @@ router.post('/ai/chat/stream', chatGuard, async (req, res) => {
   try {
     const out = await ai.chat({
       messages,
+      role: req.user.role,
       onEvent: (e) => {
         if (e.type === 'delta') send('delta', { text: e.text });
         else if (e.type === 'tool') send('tool', { name: e.name });

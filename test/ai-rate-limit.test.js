@@ -42,6 +42,7 @@ test('createLimiter hard-caps the number of keys', () => {
 let server;
 let base;
 let cookie;
+let viewerCookie;
 
 before(async () => {
   ai.setTransport(async () => ({
@@ -60,6 +61,14 @@ before(async () => {
   });
   assert.strictEqual(r.status, 200);
   cookie = r.headers.get('set-cookie');
+  require('../server/services/auth').createUser({ username: 'viewer', password: 'viewer123', role: 'viewer' });
+  const v = await fetch(`${base}/api/auth/login`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ username: 'viewer', password: 'viewer123' }),
+  });
+  assert.strictEqual(v.status, 200);
+  viewerCookie = v.headers.get('set-cookie');
 });
 
 after(() => { if (server) server.close(); });
@@ -86,4 +95,14 @@ test('http: AI chat is capped per signed-in user', async () => {
     body: JSON.stringify({ messages: [] }),
   });
   assert.strictEqual(anon.status, 401);
+});
+
+test('http: AI diagnose is admin-only and rate-limited', async () => {
+  const byViewer = await fetch(`${base}/api/ai/diagnose`, { headers: { cookie: viewerCookie } });
+  assert.strictEqual(byViewer.status, 403, 'viewer cannot reach provider/account diagnostics');
+  const first = await fetch(`${base}/api/ai/diagnose`, { headers: { cookie } });
+  assert.notStrictEqual(first.status, 403, 'admin passes the role gate');
+  const second = await fetch(`${base}/api/ai/diagnose`, { headers: { cookie } });
+  assert.strictEqual(second.status, 429, 'a second admin call within 5 minutes is throttled');
+  assert.ok(second.headers.get('retry-after'));
 });

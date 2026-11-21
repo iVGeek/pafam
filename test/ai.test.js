@@ -640,3 +640,55 @@ test('diagnose reports missing configured models and suggests free alternatives'
   assert.deepStrictEqual(d.freeAlternatives.map((m) => m.id), ['candidate:free', 'alive:free']);
   assert.strictEqual(d.key.remaining, 100);
 });
+
+test('admin-only AI tools are hidden from non-admin roles', () => {
+  const names = (role) => ai.toolsForRole(role).map((t) => t.function.name);
+  const all = names('admin');
+  for (const tool of ['list_audit', 'list_users', 'ai_diagnose']) {
+    assert.ok(all.includes(tool), 'admin keeps ' + tool);
+    assert.ok(!names('viewer').includes(tool), 'viewer cannot see ' + tool);
+    assert.ok(!names('buyer').includes(tool), 'buyer cannot see ' + tool);
+    assert.ok(!names('analyst').includes(tool), 'analyst cannot see ' + tool);
+  }
+  assert.strictEqual(names(null).length, all.length, 'internal callers keep the full set');
+});
+
+test('runTool blocks admin tools for non-admin roles but keeps internal calls', () => {
+  for (const tool of ['list_audit', 'list_users', 'ai_diagnose']) {
+    assert.match(ai.runTool(tool, {}, 'viewer').result.error || '', /administrators/);
+    assert.match(ai.runTool(tool, {}, 'buyer').result.error || '', /administrators/);
+    // Internal/test callers pass no role and still work.
+    assert.ok(!ai.runTool(tool, {}).result.error, 'internal call to ' + tool + ' still works');
+  }
+  // A non-admin tool is unaffected by the role argument.
+  assert.ok(!ai.runTool('list_suppliers', {}, 'viewer').result.error);
+});
+
+test('chat sends only role-allowed tools to the provider and blocks hallucinated admin calls', async () => {
+  setEnv({ AI_MODELS: 'test:model' });
+  let seenTools = null;
+  const seenMessages = [];
+  ai.setTransport(async ({ tools, messages }) => {
+    seenTools = tools.map((t) => t.function.name);
+    seenMessages.push(messages);
+    if (seenMessages.length === 1) {
+      // The model hallucinates an admin tool that was never offered to it.
+      return {
+        choices: [{
+          message: {
+            role: 'assistant', content: '',
+            tool_calls: [{ id: 'c1', type: 'function', function: { name: 'list_audit', arguments: '{}' } }],
+          },
+        }],
+        _model: 'test:model',
+      };
+    }
+    return { choices: [{ message: { role: 'assistant', content: 'done' } }], _model: 'test:model' };
+  });
+  const out = await ai.chat({ messages: [{ role: 'user', content: 'who changed that?' }], role: 'viewer' });
+  assert.strictEqual(out.reply, 'done');
+  assert.ok(!seenTools.includes('list_audit'), 'viewer never sees the admin tool in the tool list');
+  const toolMessage = seenMessages[1].find((m) => m.role === 'tool');
+  assert.ok(toolMessage, 'the hallucinated call still returns a tool result');
+  assert.match(toolMessage.content, /restricted to administrators/, 'and that result is a rejection');
+});

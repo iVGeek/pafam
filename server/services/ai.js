@@ -1675,9 +1675,30 @@ const TOOLS = [
   },
 ];
 
-function runTool(name, args) {
+// Tools that expose administrative data: the audit trail, the user directory
+// and provider/account diagnostics. Their direct API endpoints are admin-only;
+// the assistant must apply the same gate or a viewer could read them simply by
+// asking a question in /api/ai/chat.
+const ADMIN_TOOLS = new Set(['list_audit', 'list_users', 'ai_diagnose']);
+
+function toolsForRole(role) {
+  // role == null = trusted internal caller, same convention as runTool.
+  if (role == null || role === 'admin') return TOOLS;
+  return TOOLS.filter((t) => !ADMIN_TOOLS.has(t.function.name));
+}
+
+function toolAllowedForRole(name, role) {
+  // role == null means a trusted internal caller (tests, direct runTool from
+  // server code). HTTP routes always pass req.user.role explicitly.
+  return role == null || role === 'admin' || !ADMIN_TOOLS.has(name);
+}
+
+function runTool(name, args, role) {
   const fn = EXECUTORS[name];
   if (!fn) return { result: { error: 'unknown tool: ' + name } };
+  if (!toolAllowedForRole(name, role)) {
+    return { result: { error: 'That tool is restricted to administrators.' } };
+  }
   try {
     const out = fn(args || {}) || {};
     const proposal = out.proposal;
@@ -2118,7 +2139,7 @@ function draftDenied(reply) {
     || /\bnothing (was |has been )?(saved|prepared|created)\b/i.test(reply);
 }
 
-async function chat({ messages, onEvent } = {}) {
+async function chat({ messages, onEvent, role } = {}) {
   if (!enabled()) {
     const err = new Error('The assistant is not configured. Set AI_BASE_URL, AI_API_KEY and AI_MODEL on the server.');
     err.status = 503;
@@ -2190,7 +2211,7 @@ async function chat({ messages, onEvent } = {}) {
       toolChoice = { type: 'function', function: { name: offeredTool } };
       forcedAttempts += 1;
     }
-    const resp = await transport({ model: usedModel, messages: convo, tools: TOOLS, tool_choice: toolChoice }, onDelta);
+    const resp = await transport({ model: usedModel, messages: convo, tools: toolsForRole(role), tool_choice: toolChoice }, onDelta);
     if (resp && typeof resp === 'object' && resp._model) usedModel = resp._model;
     const msg = resp && resp.choices && resp.choices[0] && resp.choices[0].message;
     if (!msg) throw Object.assign(new Error('The AI provider returned an empty response.'), { status: 502 });
@@ -2214,7 +2235,7 @@ async function chat({ messages, onEvent } = {}) {
       emit({ type: 'tool', name: name || 'tool' });
       let args = {};
       try { args = call.function && call.function.arguments ? JSON.parse(call.function.arguments) : {}; } catch (_) { args = {}; }
-      const out = runTool(name, args);
+      const out = runTool(name, args, role);
       if (out.proposal) {
         // Models sometimes repeat the same draft call; one card is enough.
         const key = out.proposal.type + '|' + JSON.stringify(out.proposal.apply && out.proposal.apply.body);
@@ -2243,6 +2264,8 @@ module.exports = {
   diagnose,
   chat,
   runTool,
+  toolsForRole,
+  toolAllowedForRole,
   boundToolResult,
   toolResultMaxChars,
   toolContextMaxChars,
