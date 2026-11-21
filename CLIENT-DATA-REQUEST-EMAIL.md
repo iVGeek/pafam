@@ -57,8 +57,9 @@ work on your business we need three different kinds of input:
   name, quote/invoice currency, payment terms, region.
 - **Your company base currency**, plus **FX rates** (`10-fx-rates.xlsx`) for
   every supplier and customer currency to that base, with rate dates and
-  source. Without a rate the system silently converts at 1.0, which produces
-  wrong quotes without any error.
+  source. Without a rate the comparison, sourcing and deal calculator now
+  flag the 1:1 figure as an explicit assumption instead of presenting it as
+  a real conversion — but an assumed rate cannot be signed off for trading.
 
 ## 2. Real documents — needed to sign off the pilot
 

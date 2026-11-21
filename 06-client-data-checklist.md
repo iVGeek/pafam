@@ -462,7 +462,8 @@ but do not block on. The validator covers every check below.
   `priceType`/`priceListFormat` valid, landed-cost fields numeric. Every
   supplier/customer currency must reach the company base (`--base`, default
   `USD`) through a direct or inverse pair in `10-fx-rates.xlsx`; a missing pair
-  is a blocker because it would convert at 1.0 silently.
+  is a blocker — the runtime now flags 1:1 as an assumption, but an assumed
+  rate cannot be used for a signed-off quote.
 - **Raw files:** each file named in `03` is present under `raw-price-lists/`
   and parses through its profile; barcode validity rate is reported per file
   (below 90% is a blocker — we stop and discuss item 3a); currency and price

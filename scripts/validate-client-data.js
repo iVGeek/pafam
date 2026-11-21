@@ -665,7 +665,7 @@ function checkFx(ctx) {
     const inverse = ctx.ratePairs.has(`${ctx.base}>${currency}`);
     if (!direct && !inverse) {
       missing += 1;
-      ctx.report.blocker(item, `no FX path ${currency} -> ${ctx.base} (needed by ${who}); a missing pair converts at 1.0 silently`);
+      ctx.report.blocker(item, `no FX path ${currency} -> ${ctx.base} (needed by ${who}); the runtime flags 1:1 as an assumption, but an assumed rate cannot sign off a quote`);
     }
   }
   if (!missing) {
