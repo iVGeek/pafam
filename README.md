@@ -23,6 +23,10 @@ the ten SOW §4 criteria into a step-by-step test with evidence and a PO sign-of
 block. Before requesting client data, fill in the open PO/currency/FX decisions
 in [**Client Decisions Needed**](CLIENT-DECISIONS-NEEDED.md).
 
+Ready-to-send [**Client Status Update**](CLIENT-STATUS-UPDATE.md) — a short
+progress note covering the AWS migration, corrections to an earlier update, and
+the four items needed to start the pilot run.
+
 ## Supported supplier list layouts
 
 Drop a raw `.xls`/`.xlsx` onto **Import Lists** — the header row and layout are
