@@ -64,6 +64,80 @@ suppliers, settings, users and the audit log.
   uploaded PFI (Excel) to show price/quantity variance.
 - Base currency is a setting; every monetary figure must name its currency.
 
+## Non-negotiable desk rules (from the staff brief)
+- The desk sells into the USA. Default the destination to the US unless told
+  otherwise, and check destination/channel eligibility and lot traceability
+  before calling an offer executable. Never give legal or import clearance —
+  say a broker or adviser must confirm current requirements.
+- "Lowest cost" means lowest executable landed cost for the exact SKU and
+  quantity: MOQ met, genuinely in stock, unexpired, destination-eligible, dated
+  FX used, and all inbound costs included. Never rank by quoted unit price
+  alone. Run quantity scenarios because MOQ, tiers and freight change the result.
+- Landed unit cost = purchase price in USD + allocated inbound freight,
+  insurance, duty, brokerage, handling, non-recoverable taxes and inbound fees
+  per sellable unit. Respect Incoterms so a cost is not counted twice;
+  recoverable taxes affect cash funding, not permanent cost. If a material
+  cost is missing, say profitability is incomplete — never show a false zero.
+- Net revenue = selling price less discounts, rebates, returns allowance and
+  customer deductions. Gross profit = net revenue - landed cost; gross margin
+  = gross profit / net revenue. Contribution = gross profit less outbound
+  delivery, commission, transaction fees, storage, financing and expected
+  credit loss; contribution margin = contribution / net revenue. Keep markup
+  (on cost) separate. Capital efficiency = contribution / deployed capital;
+  simple annualised return = return x 365 / cash-cycle days, and is not a
+  guarantee. Show conservative, base and upside cases, plus a price-drop and
+  customer-default stress case, when reviewing a deal.
+- Every recommendation must be traceable: name the supplier, exact SKU,
+  executable quantity, customer matches and demand status, landed cost,
+  suggested selling price, contribution, cash requirement, expected collection
+  date and every missing assumption. Apply manager-set minimum margins, capital
+  limits and approval rules.
+- Barcodes are text: preserve leading zeros, validate length and check digit,
+  and keep the source value beside the canonical 14-digit GTIN. Never equate a
+  case barcode with a bottle without a verified units-per-case conversion.
+  Description matching only suggests candidates; never auto-merge products.
+  Route invalid or conflicting barcodes to the exception queue. Keep retail
+  packs, testers, gift sets, refills and damaged stock separate.
+- Each supplier list is a dated snapshot. Preserve past prices, original files,
+  row references and upload timestamps; re-importing the same file must not
+  duplicate offers and a new list must not overwrite history.
+- Never call the sum of supplier lists "total market inventory". Say "observed
+  available supply" with source count, confirmation freshness and coverage.
+  Keep our own stock, supplier-confirmed stock and estimated supply separate;
+  link duplicate offers of one owner's lot to one stock pool; exclude unknown,
+  stale and expired quantities from confirmed totals. Available to sell =
+  usable on hand - reservations, and inbound units are not included before
+  receipt. Stock location and selling territory are different — never count
+  one eligible pool twice.
+- Trends compare like-for-like SKU, condition, quantity, delivery terms and
+  territory. Plot 7/30/90/180-day minimum, median, range and number of
+  independent stock owners; keep actual purchases, actual sales, customer
+  target prices and public retail prices as separate series; show date gaps
+  instead of inventing observations; use a matched-supplier series where
+  possible. Forecast only with enough reliable history, backtest a simple
+  baseline, show ranges, and account for seasonality, promotions and stock-outs.
+- Alerts need evidence and a suggested action, with thresholds configurable by
+  brand or SKU. Keep confirmed unfilled orders, current wishlists and
+  probability-weighted opportunities separate — never add them together.
+- Customer demands are separate dated records with explicit status, evidence,
+  owner, last reconfirmation and expiry. Mark explicit requirements versus
+  inferred interest with confidence and staff approval. If size, EAN, currency,
+  units or price is unclear, leave it unresolved. Never invent a barcode,
+  promise or quantity. Merge repeated mentions into one open requirement with
+  version history. General brand interest is not firm SKU demand.
+- Customer-facing quotes must never reveal supplier names, buying costs or
+  cost-masked figures.
+- Plaud and reMarkable captures are text transcripts only unless the client
+  explicitly agrees otherwise and the route has been tested. Preserve the
+  original note and cite the exact excerpt for every extracted claim, confirm
+  customer identity first, and require staff approval before activation.
+  Never assume live device API access.
+- Ownership: purchasing owns supplier confirmations, sales owns reviewed
+  demands, accounts owns FX/cost inputs and collections, warehouse owns
+  quantities and lots, and a manager approves master-data exceptions and
+  buying limits. If a decision needs an owner outside the signed-in role, say
+  who must approve it.
+
 ## Modules (screens) in the app
 - Dashboard, Import Lists, Supplier Offers, Products & Matching, Exceptions,
   Lowest Landed Cost, Price Comparison, Deal Calculator, Offer Builder,
