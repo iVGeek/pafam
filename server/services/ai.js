@@ -370,6 +370,33 @@ function toolExportInfo({ kind } = {}) {
   };
 }
 
+// Formula tools. The model may name a function or write a formula, but the
+// number always comes from the deterministic engine. `values` is an optional
+// grid placed at A1 so VLOOKUP/XLOOKUP have real ranges to search.
+function toolExcelFormula({ formula, values } = {}) {
+  if (!formula || !String(formula).trim()) return { error: 'formula is required' };
+  try {
+    const out = require('./formulas').evaluateFormula(formula, values);
+    return { found: true, ...out, note: 'computed by the spreadsheet engine, not estimated' };
+  } catch (e) {
+    return { found: false, error: e.message };
+  }
+}
+
+function toolExcelFunction({ functionName, args } = {}) {
+  if (!functionName || !String(functionName).trim()) return { error: 'functionName is required' };
+  try {
+    const out = require('./formulas').callFunction(functionName, args);
+    return { found: true, functionName: String(functionName).toUpperCase(), ...out, note: 'computed by the spreadsheet engine, not estimated' };
+  } catch (e) {
+    return { found: false, error: e.message };
+  }
+}
+
+function toolExcelFunctions({ query, limit } = {}) {
+  return { found: true, ...require('./formulas').listFunctions(query, limit) };
+}
+
 /* ------------------------------ draft builders ----------------------------- */
 
 // "prepare an offer of X at rate R / target %" -> a QUOTE draft. Cost price and
@@ -1126,6 +1153,9 @@ const EXECUTORS = {
   compare_quotes: toolCompareQuotes,
   demand_forecast: toolForecast,
   export_info: toolExportInfo,
+  excel_formula: toolExcelFormula,
+  excel_function: toolExcelFunction,
+  excel_functions: toolExcelFunctions,
   draft_offer: toolDraftOffer,
   draft_placement: toolDraftPlacement,
   draft_demand: toolDraftDemand,
@@ -1365,6 +1395,44 @@ const TOOLS = [
       name: 'export_info',
       description: 'Where to download any report or document as Excel (.xlsx) and PDF. Ask it for one kind, or call with no argument for the full catalogue.',
       parameters: { type: 'object', properties: { kind: { type: 'string', description: 'report kind, e.g. pricing | margin | demand' } } },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'excel_formula',
+      description: 'Evaluate any Excel formula deterministically, including VLOOKUP, XLOOKUP, INDEX/MATCH, SUMIFS and 400+ other functions. Pass `values` as an array of rows placed at A1 when the formula needs ranges. Returns the computed value or an explicit error — never an estimate.',
+      parameters: {
+        type: 'object',
+        properties: {
+          formula: { type: 'string', description: 'Excel formula, with or without a leading =' },
+          values: { type: 'array', description: 'Optional grid of rows/cells placed at A1 for lookups', items: { type: 'array', items: {} } },
+        },
+        required: ['formula'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'excel_function',
+      description: 'Call a named Excel function with positional arguments without writing formula syntax. Scalars, arrays and nested arrays (rows) are accepted. Use excel_functions first if unsure of a name.',
+      parameters: {
+        type: 'object',
+        properties: {
+          functionName: { type: 'string', description: 'e.g. VLOOKUP, XLOOKUP, SUMIFS' },
+          args: { type: 'array', description: 'Positional arguments; arrays represent ranges', items: {} },
+        },
+        required: ['functionName'],
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'excel_functions',
+      description: 'List the Excel functions the built-in formula engine supports (400+), optionally filtered by a name substring.',
+      parameters: { type: 'object', properties: { query: { type: 'string' }, limit: { type: 'integer' } } },
     },
   },
   {

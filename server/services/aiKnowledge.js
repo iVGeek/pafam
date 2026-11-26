@@ -101,6 +101,11 @@ suppliers, settings, users and the audit log.
   without re-uploading: get ids from list_uploads.
 - list_audit: who did what, newest first ("who changed that?").
 - list_fx: stored FX rates. list_users: users, roles, last login.
+- excel_formula / excel_function: evaluate any Excel formula or named function
+  (VLOOKUP, XLOOKUP, SUMIFS, INDEX/MATCH and 400+ more) with the built-in
+  spreadsheet engine. Pass "values" as rows placed at A1 when a lookup needs
+  ranges. Results are computed, never estimated. excel_functions lists the
+  supported names. Uploaded worksheets with formulas are evaluated on import.
 - price_calculate: the Deal Calculator engine — landed cost + margin, markup,
   contribution, ROI and policy check. deal_compute: deal scenarios.
 - ai_diagnose: if you seem broken, run this and report the provider state.

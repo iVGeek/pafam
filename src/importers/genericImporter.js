@@ -2,6 +2,7 @@
 
 const XLSX = require('xlsx');
 const path = require('path');
+const formulas = require('../../server/services/formulas');
 const { detectProfile } = require('./profiles');
 const { emptyOffer, CASE_GTIN_FIELD } = require('../lib/template');
 const gtin = require('../lib/gtin');
@@ -57,7 +58,22 @@ function loadSheetRows(filePath) {
   const sheetName = wb.SheetNames[0];
   const ws = wb.Sheets[sheetName];
   const aoa = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, defval: '' });
-  return { sheetName, sheetNames: wb.SheetNames, aoa };
+  // A supplier list whose prices are calculated with VLOOKUP/XLOOKUP must be
+  // imported from the evaluated result, not from whatever value the sending
+  // machine happened to cache. Errors stay visible as errors — never as 0.
+  const evaluated = formulas.evaluateWorkbook(wb);
+  const computed = (evaluated.sheets && evaluated.sheets[sheetName]) || [];
+  for (const cell of computed) {
+    if (!aoa[cell.row]) aoa[cell.row] = [];
+    while (aoa[cell.row].length <= cell.col) aoa[cell.row].push('');
+    aoa[cell.row][cell.col] = cell.error || cell.value;
+  }
+  return {
+    sheetName,
+    sheetNames: wb.SheetNames,
+    aoa,
+    formulas: { count: evaluated.formulaCount, errors: evaluated.errors },
+  };
 }
 
 function findHeader(aoa) {
@@ -111,7 +127,7 @@ function resolveColumns(profile, headers) {
 }
 
 function extract(filePath, supplier) {
-  const { sheetName, aoa } = loadSheetRows(filePath);
+  const { sheetName, aoa, formulas: formulaInfo } = loadSheetRows(filePath);
   const found = findHeader(aoa);
   if (!found) throw new Error('No known header row / vendor profile matched in ' + filePath);
   const { rowIndex, headers, profile } = found;
@@ -208,7 +224,7 @@ function extract(filePath, supplier) {
     offers.push(offer);
   }
 
-  return { profile, sheetName, rowIndex: rowIndex + 1, headers, colMap, offers };
+  return { profile, sheetName, rowIndex: rowIndex + 1, headers, colMap, offers, formulas: formulaInfo };
 }
 
 module.exports = { extract, parseNumber, toText };
