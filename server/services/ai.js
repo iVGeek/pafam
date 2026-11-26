@@ -28,6 +28,7 @@ const authSvc = require('./auth');
 const fs = require('fs');
 const { parseList, diffLists } = require('./listdiff');
 const { SYSTEM_PROMPT } = require('./aiKnowledge');
+const acceptanceEvidence = require('./acceptanceEvidence');
 
 const MAX_STEPS_DEFAULT = 12;
 const MAX_TOKENS_DEFAULT = 4096;
@@ -237,6 +238,50 @@ function toolDashboard() {
     winsByType: analytics.winsByType(),
     alerts: alerts.counts(),
   };
+}
+
+// Exact integer counts straight from COUNT(*). Small models are unreliable at
+// counting array rows returned by list_* tools, so this is the only sanctioned
+// source for "how many records are there?" answers.
+const COUNT_TABLES = {
+  suppliers: 'suppliers',
+  products: 'products',
+  offers: 'offers',
+  uploads: 'uploads',
+  exceptions: 'exceptions',
+  customers: 'customers',
+  demands: 'demands',
+  inventory_lots: 'inventory_lots',
+  orders: 'orders',
+  quotes: 'quotes',
+  placements: 'placements',
+  shipments: 'shipments',
+  reservations: 'reservations',
+  captures: 'captures',
+  tasks: 'tasks',
+  alerts: 'alerts',
+  users: 'users',
+  price_history: 'price_history',
+};
+
+function toolRecordCounts({ entities } = {}) {
+  const requested = Array.isArray(entities) && entities.length
+    ? entities.map((e) => String(e))
+    : Object.keys(COUNT_TABLES);
+  const unknown = requested.filter((name) => !Object.prototype.hasOwnProperty.call(COUNT_TABLES, name));
+  if (unknown.length) return { error: 'unknown entity: ' + unknown.join(', ') + '. Use record_counts without arguments for the full list.' };
+  const counts = {};
+  for (const name of requested) {
+    counts[name] = db.prepare('SELECT COUNT(*) AS n FROM ' + COUNT_TABLES[name]).get().n;
+  }
+  return {
+    counts,
+    note: 'Exact COUNT(*) values from the database. Quote these integers directly; never count rows from a list_* result.',
+  };
+}
+
+function toolAcceptanceEvidence() {
+  return acceptanceEvidence.evidence();
 }
 
 function toolListAlerts({ unreadOnly, limit } = {}) {
@@ -1140,6 +1185,8 @@ const EXECUTORS = {
   list_demands: toolListDemands,
   get_settings: toolGetSettings,
   dashboard_overview: toolDashboard,
+  record_counts: toolRecordCounts,
+  acceptance_evidence: toolAcceptanceEvidence,
   list_alerts: toolListAlerts,
   list_orders: toolListOrders,
   get_order: toolGetOrder,
@@ -1289,7 +1336,32 @@ const TOOLS = [
     type: 'function',
     function: {
       name: 'dashboard_overview',
-      description: 'Whole-system snapshot: KPIs, offer/supplier/customer counts, wins by type and current alert counts.',
+      description: 'Whole-system snapshot: KPIs, offer/supplier/customer counts, wins by type and current alert counts. Do NOT use its counts as acceptance evidence.',
+      parameters: { type: 'object', properties: {} },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'record_counts',
+      description: 'Exact COUNT(*) integers for named record types. Call this whenever asked how many suppliers, products, offers, uploads, customers, demands, orders, inventory lots, exceptions or alerts exist. Never count rows in a list_* result by hand.',
+      parameters: {
+        type: 'object',
+        properties: {
+          entities: {
+            type: 'array',
+            items: { type: 'string' },
+            description: 'Optional list of entity names. Omit for all supported entities.',
+          },
+        },
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'acceptance_evidence',
+      description: 'AUTHORITATIVE pilot-acceptance status. Call this before any answer about acceptance criteria, pilot sign-off, completion or whether the system is ready. Returns dataMode (demo or real), PO sign-off and a status for each of the ten criteria. Never infer acceptance from dashboard counts.',
       parameters: { type: 'object', properties: {} },
     },
   },
@@ -1796,6 +1868,17 @@ function describeProvider(status, detail, modelId) {
       message: 'The AI provider rejected the API key. Check AI_API_KEY on the server.' };
   }
   if (status === 402) {
+    // OpenRouter uses several distinct 402 reasons. Calling all of them "no
+    // credit" hides the actionable fix and sends the loop through every model
+    // again, which makes an in-flight budget problem worse.
+    if (/in[-_ ]?flight|in[-_ ]?flight budget/i.test(d)) {
+      return { code: 'in_flight', retry: false, reason: 'provider in-flight budget is full',
+        message: 'The provider has too many requests in flight. Wait for the Retry-After period before trying again; retrying immediately makes it worse.' };
+    }
+    if (/weight_exceeds_budget|maximum cost exceeds|fewer max_tokens|prompt tokens limit exceeded/i.test(d)) {
+      return { code: 'budget_weight', retry: true, reason: 'request cost exceeds the account budget',
+        message: 'The provider rejected the request size, not the account balance. Lower AI_MAX_TOKENS or shorten the prompt/tool list (adding credit also raises the ceiling).' };
+    }
     return { code: 'credits', retry: true, reason: 'the account has no credit',
       message: 'The AI provider account is out of credit.' };
   }
@@ -1833,8 +1916,11 @@ function allFailed(failures) {
   const credits = failures.some((f) => f.code === 'credits');
   const offline = failures.every((f) => f.code === 'network' || f.code === 'timeout');
   let hint = '';
+  const inFlight = failures.find((f) => f.code === 'in_flight');
+  const wait = inFlight && inFlight.retryAfter ? ' Retry after ' + inFlight.retryAfter + ' seconds.' : '';
   if (offline) hint = ' Check the provider URL, this server\'s network access and AI_TIMEOUT_MS.';
-  else if (credits) hint = ' Top up the provider account or use a free model (npm run check:ai lists free ones).';
+  else if (inFlight) hint = ' Wait for the provider\'s Retry-After period before retrying; do not send more requests in the meantime.' + wait;
+  else if (credits) hint = ' Check the key balance and the request size; OpenRouter free models are unavailable while ZDR is on.';
   else if (rate) hint = ' The free-tier quota is exhausted - retry shortly; the assistant will switch to a cheap paid model automatically when one is available.';
   else hint = ' Every model in the chain failed; the assistant already tried the provider catalogue. Run "npm run check:ai" for a live report.';
   const err = new Error('The assistant could not reach any usable model, even after fallbacks: ' + parts.join('; ') + '.' + hint);
@@ -1980,15 +2066,18 @@ async function attempt(id, payload, onDelta) {
       try { data = JSON.parse(text); } catch (_) { data = null; }
       const detail = (data && data.error && (data.error.message || data.error.code)) || text || ('HTTP ' + res.status);
       const info = describeProvider(res.status, detail, id);
+      const retryAfter = res.headers && typeof res.headers.get === 'function'
+        ? Number(res.headers.get('retry-after')) || null : null;
       if (!info.retry) {
-        const err = new Error(info.message);
+        const err = new Error(info.message + (retryAfter ? ' Retry after ' + retryAfter + ' seconds.' : ''));
         err.status = 502;
         err.code = info.code;
         err.retry = false;
+        err.retryAfter = retryAfter;
         err.failures = [{ model: id, code: info.code, reason: info.reason }];
         throw err;
       }
-      return { failure: { model: id, code: info.code, reason: info.reason } };
+      return { failure: { model: id, code: info.code, reason: info.reason, retryAfter } };
     }
     const out = await readResponse(res, onDelta);
     if (out && typeof out === 'object') {
