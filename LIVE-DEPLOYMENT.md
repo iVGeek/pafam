@@ -38,7 +38,9 @@ tunnel; that is not yet configured.
 - Production AI chain: `AI_BASE_URL=https://openrouter.ai/api/v1`,
   `AI_MODEL=openai/gpt-6-luna`,
   `AI_MODELS=openai/gpt-6-luna,anthropic/claude-haiku-5.5,mistralai/mistral-small-3.2-24b-instruct`,
-  `AI_MAX_TOKENS=4096`. ZDR stays enabled in the OpenRouter account.
+  `AI_MAX_TOKENS=2048`. ZDR stays enabled in the OpenRouter account.
+  `4096` was rejected by OpenRouter with `weight_exceeds_budget` even with
+  $99.82 credit remaining; `2048` passes with the full prompt and tool set.
 
 ## Credentials
 

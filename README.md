@@ -217,7 +217,7 @@ logs, AMI pinning, teardown and troubleshooting.
 | `AI_AUTO_DISCOVER_MAX` | How many catalogue models to try when self-healing (free first, then cheap paid) | `4` |
 | `AI_DISCOVER_MAX_PRICE` | Highest prompt price, USD per 1M tokens, for a paid self-heal model | `1` |
 | `AI_MAX_STEPS` | Max tool rounds per turn (raise for wide multi-line drafts) | `12` |
-| `AI_MAX_TOKENS` | Max output tokens per provider request. Keeps the provider's credit pre-check from failing with 402 and silently falling back | `4096` |
+| `AI_MAX_TOKENS` | Max output tokens per provider request. Keeps the provider's credit pre-check from failing with 402 and silently falling back. `2048` lets the production chain pass OpenRouter's budget check on a $100 key; `4096` triggers `weight_exceeds_budget` | `2048` |
 | `AI_RATE_LIMIT_PER_HOUR` | Max AI chat calls per signed-in user per hour (`0` disables the cap) | `60` |
 | `AI_TOOL_RESULT_MAX_CHARS` | Max characters of one tool result sent back to the provider; larger answers are marked `TRUNCATED` | `20000` |
 | `AI_TOOL_CONTEXT_MAX_CHARS` | Total tool-result budget per AI turn, so many calls cannot overflow the model context | `60000` |
