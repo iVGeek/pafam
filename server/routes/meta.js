@@ -150,26 +150,39 @@ router.post('/exceptions/resolve-many', auth.requireRole('analyst'), (req, res) 
   res.json({ ok: true, resolved: n });
 });
 
+// Acceptance state is managed only through /api/acceptance so every change is
+// validated and gets a dedicated audit entry. Keep it out of the generic
+// settings round-trip (including the Settings screen's save-all form).
+function isAcceptanceKey(key) { return String(key).startsWith('acceptance_'); }
+
 router.get('/settings', (req, res) => {
   // Admins need the real webhook secret to configure devices; everyone else
   // gets a redacted value so a viewer cannot write to the public capture webhook.
   const isAdmin = Boolean(req.user && req.user.role === 'admin');
-  res.json(settingsFor(isAdmin));
+  const settings = settingsFor(isAdmin);
+  for (const key of Object.keys(settings)) if (isAcceptanceKey(key)) delete settings[key];
+  res.json(settings);
 });
 
 router.post('/settings', auth.requireRole('admin'), (req, res) => {
   const body = req.body || {};
-  for (const [k, v] of Object.entries(body)) setSetting(k, v);
+  const managed = [];
+  for (const [k, v] of Object.entries(body)) {
+    if (isAcceptanceKey(k)) { managed.push(k); continue; }
+    setSetting(k, v);
+  }
   // The Settings screen round-trips every field, including the real
   // capture_secret. Never copy a secret into the audit trail: a later
   // /api/audit or AI list_audit read would disclose it to a viewer.
   const safe = {};
   for (const [k, v] of Object.entries(body)) {
+    if (isAcceptanceKey(k)) continue;
     if (isSensitiveSetting(k)) { safe[k] = '[redacted]'; continue; }
     safe[k] = v;
   }
+  if (managed.length) safe.acceptance_managed = 'use /api/acceptance: ' + managed.join(', ');
   audit(req.user.username, 'update-settings', 'settings', null, JSON.stringify(safe));
-  res.json({ ok: true });
+  res.json({ ok: true, ignoredAcceptanceKeys: managed });
 });
 
 router.get('/fx', (req, res) => res.json(fx.listRates()));

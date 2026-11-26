@@ -1515,6 +1515,113 @@ routes.settings = async () => {
   });
 };
 
+// Admin-only pilot acceptance recorder. It never marks a criterion passed by
+// itself: the server decides status from data mode, PO sign-off and the
+// evidence references saved here. Every change is audited server-side.
+routes.acceptance = async () => {
+  const data = await GET('/acceptance');
+  const s = data.status || {};
+  const r = data.recorder || {};
+  const po = r.signoff || {};
+  const isReal = s.dataMode === 'real';
+  const allMet = s.verdict === 'all_met';
+
+  const rows = (r.criteria || []).map((c) => {
+    const st = (s.criteria || []).find((x) => x.id === c.id) || { status: 'unproven' };
+    const met = st.status === 'met';
+    return `<tr>
+      <td class="mono">${c.id}</td>
+      <td>${esc(c.title)}</td>
+      <td><span class="badge ${met ? 'good' : 'warn'}">${met ? 'met' : 'unproven'}</span></td>
+      <td><input data-crit="${c.id}" value="${esc(c.evidence)}" placeholder="Evidence pack reference, e.g. Evidence pack v3 / Q8 / signed" style="min-width:300px" /></td>
+      <td><button class="sm" data-critsave="${c.id}">Save</button> <button class="sm ghost" data-critclear="${c.id}">Clear</button></td>
+    </tr>`;
+  }).join('');
+
+  $('#view').innerHTML = `
+    <div class="panel">
+      <h2>Pilot acceptance recorder <span class="badge ${allMet ? 'good' : 'warn'}">${esc(s.verdict || 'not_confirmed')}</span></h2>
+      <div class="small muted" style="margin-bottom:12px">${esc(s.note || '')}</div>
+      <div class="row" style="gap:10px;flex-wrap:wrap">
+        <span class="badge ${isReal ? 'good' : 'warn'}">Data: ${esc(s.dataMode)}</span>
+        <span class="badge ${s.poSignoff ? 'good' : 'warn'}">PO sign-off: ${s.poSignoff ? esc(s.poSignoff.name) : 'none'}</span>
+        <span class="badge info">${s.met || 0} / ${s.total || 10} criteria met</span>
+      </div>
+      <div class="small muted" style="margin-top:10px">Demo or synthetic data can never be acceptance evidence. Do not record a criterion as met until the client real data, dated FX/accounts evidence and the PO signature are in the evidence pack.</div>
+    </div>
+
+    <div class="panel" style="margin-top:12px">
+      <h3>Data mode</h3>
+      <div class="row" style="gap:8px;flex-wrap:wrap">
+        <button class="ghost" id="accDemo">Mark as demo / synthetic</button>
+        <input id="accConfirm" placeholder="Type REAL CLIENT DATA to certify" style="min-width:240px" />
+        <button id="accReal">Mark as REAL client data</button>
+      </div>
+      <div class="small muted" style="margin-top:8px">Switching to real requires the exact confirmation text. Both changes are audited.</div>
+    </div>
+
+    <div class="panel" style="margin-top:12px">
+      <h3>PO sign-off</h3>
+      <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px">
+        <div class="field"><label>PO name</label><input id="poName" value="${esc(po.name || '')}" placeholder="Product owner full name" /></div>
+        <div class="field"><label>PO email</label><input id="poEmail" type="email" value="${esc(po.email || '')}" placeholder="po@client.com" /></div>
+        <div class="field"><label>Signature evidence reference</label><input id="poRef" value="${esc(po.evidenceRef || '')}" placeholder="Evidence pack reference containing the PO signature" /></div>
+      </div>
+      <div class="row" style="gap:8px;margin-top:8px">
+        <button id="poSave">Save sign-off</button>
+        <button class="ghost" id="poClear">Clear sign-off</button>
+      </div>
+      <div class="small muted" style="margin-top:8px">${po.recordedBy ? `Recorded by ${esc(po.recordedBy)}${po.recordedAt ? ' at ' + esc(po.recordedAt) : ''}.` : 'No sign-off recorded.'}</div>
+    </div>
+
+    <div class="panel" style="margin-top:12px">
+      <h3>Criteria evidence</h3>
+      <div class="table-wrap"><table>
+        <thead><tr><th>#</th><th>Criterion</th><th>Status</th><th>Evidence reference</th><th></th></tr></thead>
+        <tbody>${rows || '<tr><td colspan="5" class="muted">No criteria.</td></tr>'}</tbody>
+      </table></div>
+      <div class="small muted" style="margin-top:8px">A criterion counts as met only when data mode is real, the PO sign-off is complete and its evidence reference is recorded. Placeholder text (demo, sample, test, n/a, tbd) is rejected.</div>
+    </div>`;
+
+  $('#accDemo').addEventListener('click', async () => {
+    try { await POST('/acceptance/data-mode', { mode: 'demo' }); toast('Data mode: demo', 'ok'); await render(); }
+    catch (e) { toast(e.message, 'err'); }
+  });
+  $('#accReal').addEventListener('click', async () => {
+    try {
+      await POST('/acceptance/data-mode', { mode: 'real', confirm: $('#accConfirm').value });
+      toast('Data mode: real client data', 'ok'); await render();
+    } catch (e) { toast(e.message, 'err'); }
+  });
+  $('#poSave').addEventListener('click', async () => {
+    try {
+      await POST('/acceptance/signoff', {
+        name: $('#poName').value, email: $('#poEmail').value, evidenceRef: $('#poRef').value,
+      });
+      toast('PO sign-off saved', 'ok'); await render();
+    } catch (e) { toast(e.message, 'err'); }
+  });
+  $('#poClear').addEventListener('click', async () => {
+    try { await DEL('/acceptance/signoff'); toast('PO sign-off cleared', 'ok'); await render(); }
+    catch (e) { toast(e.message, 'err'); }
+  });
+  $$('#view [data-critsave]').forEach((btn) => btn.addEventListener('click', async () => {
+    const id = btn.dataset.critsave;
+    const input = $('#view [data-crit="' + id + '"]');
+    try {
+      await POST('/acceptance/criteria/' + id, { evidence: input.value });
+      toast('Criterion ' + id + ' evidence saved', 'ok'); await render();
+    } catch (e) { toast(e.message, 'err'); }
+  }));
+  $$('#view [data-critclear]').forEach((btn) => btn.addEventListener('click', async () => {
+    const id = btn.dataset.critclear;
+    try {
+      await DEL('/acceptance/criteria/' + id);
+      toast('Criterion ' + id + ' evidence cleared', 'ok'); await render();
+    } catch (e) { toast(e.message, 'err'); }
+  }));
+};
+
 routes.audit = async () => {
   const rows = await GET('/audit');
   $('#view').innerHTML = `<div class="panel"><h2>Audit log</h2>

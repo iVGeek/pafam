@@ -50,6 +50,7 @@ app.use('/api', auth.requireAuth);
 app.use('/api', auth.requirePasswordChanged);
 
 app.use('/api', require('./routes/meta'));
+app.use('/api', require('./routes/acceptance'));
 app.use('/api', require('./routes/imports'));
 app.use('/api', require('./routes/offers'));
 app.use('/api', require('./routes/products'));

@@ -122,7 +122,7 @@ const ROUTE_ICONS = {
   placements: 'truck', shipments: 'truck', lowest: 'award', compare: 'compare', pricing: 'calculator',
   lists: 'list', inventory: 'archive', customers: 'users', captures: 'inbox', alerts: 'bell',
   trends: 'trending', forecast: 'forecast', performance: 'activity', reports: 'download', 'ai-chat': 'sparkles',
-  suppliers: 'building', settings: 'gear', users: 'users', audit: 'scroll',
+  suppliers: 'building', settings: 'gear', users: 'users', acceptance: 'award', audit: 'scroll',
 };
 function decorateNav() {
   $$('#nav a').forEach((a) => {
@@ -152,7 +152,7 @@ const state = { route: 'dashboard', settings: {}, suppliers: [], user: null };
 const ROUTE_MIN = {
   dashboard: 'viewer', offers: 'viewer', products: 'viewer', compare: 'viewer', lowest: 'viewer', pricing: 'viewer', builder: 'viewer', lists: 'analyst',
   inventory: 'viewer', customers: 'viewer', demands: 'viewer', quotes: 'viewer', suppliers: 'viewer',
-  exceptions: 'viewer', imports: 'buyer', captures: 'analyst', alerts: 'viewer', trends: 'viewer', orders: 'viewer', placements: 'viewer', shipments: 'viewer', buying: 'viewer', forecast: 'viewer', performance: 'viewer', reports: 'viewer', settings: 'admin', users: 'admin', audit: 'admin',
+  exceptions: 'viewer', imports: 'buyer', captures: 'analyst', alerts: 'viewer', trends: 'viewer', orders: 'viewer', placements: 'viewer', shipments: 'viewer', buying: 'viewer', forecast: 'viewer', performance: 'viewer', reports: 'viewer', settings: 'admin', users: 'admin', acceptance: 'admin', audit: 'admin',
 };
 
 function showLogin() {

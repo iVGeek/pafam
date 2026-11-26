@@ -4,8 +4,9 @@
 //
 // The assistant must never infer that a criterion passed from record counts or
 // from demo data. A criterion is only "met" when an administrator has recorded
-// the evidence reference AND the data mode is real AND the PO has signed off.
-// Every other state is reported as unproven.
+// a real evidence reference AND the data mode is real AND the PO has signed off
+// with a reference to their signature in the evidence pack. Every other state
+// is reported as unproven.
 
 const { getSetting } = require('../db');
 
@@ -26,29 +27,53 @@ const CRITERIA = [
   { id: 10, title: 'Supplier costs do not appear on customer exports' },
 ];
 
+// Placeholder text is not evidence, even if an administrator writes it
+// straight into the settings table. Also used by the recorder to validate
+// input before it is stored.
+const PLACEHOLDER = /\b(?:demo|sample|synthetic|test|testing|n\/a|na|none|tbd|todo|placeholder|xxx+)\b/i;
+
+function isProof(value) {
+  const v = String(value == null ? '' : value).trim();
+  return v.length >= 4 && v.length <= 500 && !PLACEHOLDER.test(v);
+}
+
 function dataMode() {
   const mode = String(getSetting(DATA_MODE_KEY, 'demo') || 'demo').toLowerCase();
   return mode === 'real' ? 'real' : 'demo';
 }
 
-function signoff() {
+function rawSignoff() {
   const raw = String(getSetting(SIGNOFF_KEY, '') || '').trim();
   if (!raw) return null;
-  try {
-    const parsed = JSON.parse(raw);
-    if (parsed && typeof parsed === 'object') return parsed;
-  } catch (_) { /* a plain name is also acceptable */ }
-  return { name: raw };
+  let parsed = null;
+  try { parsed = JSON.parse(raw); } catch (_) { return null; }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return null;
+  return {
+    name: String(parsed.name || '').trim(),
+    email: String(parsed.email || '').trim(),
+    evidenceRef: String(parsed.evidenceRef || '').trim(),
+    recordedBy: String(parsed.recordedBy || '').trim() || null,
+    recordedAt: String(parsed.recordedAt || '').trim() || null,
+  };
+}
+
+function signoff() {
+  const s = rawSignoff();
+  if (!s || !s.name || !s.email || !isProof(s.evidenceRef)) return null;
+  return s;
+}
+
+function criterionEvidence(id) {
+  return String(getSetting(EVIDENCE_PREFIX + id, '') || '').trim();
 }
 
 function evidence() {
   const mode = dataMode();
   const signed = signoff();
-  const signedOff = Boolean(signed && (signed.name || signed.email));
   const criteria = CRITERIA.map((c) => {
-    const proof = String(getSetting(EVIDENCE_PREFIX + c.id, '') || '').trim();
     // Counts, product totals and other system statistics are not evidence.
-    const status = mode === 'real' && signedOff && proof && proof !== 'demo' ? 'met' : 'unproven';
+    const proof = criterionEvidence(c.id);
+    const status = mode === 'real' && signed && isProof(proof) ? 'met' : 'unproven';
     return {
       id: c.id,
       title: c.title,
@@ -59,17 +84,30 @@ function evidence() {
   const met = criteria.filter((c) => c.status === 'met').length;
   return {
     dataMode: mode,
-    poSignoff: signedOff ? signed : null,
+    poSignoff: signed,
     criteria,
     met,
     total: criteria.length,
-    verdict: mode === 'real' && signedOff && met === criteria.length ? 'all_met' : 'not_confirmed',
+    verdict: mode === 'real' && signed && met === criteria.length ? 'all_met' : 'not_confirmed',
     note: mode !== 'real'
       ? 'This database is marked demo/synthetic. No acceptance criterion can be met on it, whatever the record counts show.'
-      : !signedOff
-        ? 'The PO sign-off is not recorded. No acceptance criterion can be confirmed.'
+      : !signed
+        ? 'The PO sign-off (name, email and signature reference) is not recorded. No acceptance criterion can be confirmed.'
         : 'Only criteria with a recorded evidence reference are met; all others remain unproven.',
   };
 }
 
-module.exports = { CRITERIA, evidence, dataMode, DATA_MODE_KEY, SIGNOFF_KEY, EVIDENCE_PREFIX };
+// Raw recorder state for the admin UI: shows incomplete entries and who saved
+// them, which the authoritative evidence() deliberately hides as unproven.
+function recorderState() {
+  return {
+    dataMode: dataMode(),
+    signoff: rawSignoff(),
+    criteria: CRITERIA.map((c) => ({ id: c.id, title: c.title, evidence: criterionEvidence(c.id) })),
+  };
+}
+
+module.exports = {
+  CRITERIA, evidence, recorderState, dataMode, signoff, rawSignoff, isProof,
+  criterionEvidence, DATA_MODE_KEY, SIGNOFF_KEY, EVIDENCE_PREFIX,
+};

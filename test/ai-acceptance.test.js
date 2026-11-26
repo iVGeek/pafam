@@ -48,7 +48,9 @@ test('acceptance_evidence never confirms a criterion on demo data', () => {
 
 test('acceptance_evidence needs real data, PO sign-off and a recorded reference', () => {
   setSetting('acceptance_data_mode', 'real');
-  setSetting('acceptance_signoff', JSON.stringify({ name: 'PO Name', email: 'po@example.test' }));
+  setSetting('acceptance_signoff', JSON.stringify({
+    name: 'PO Name', email: 'po@example.test', evidenceRef: 'Evidence pack v3, PO signature page',
+  }));
 
   const signed = ai.runTool('acceptance_evidence', {}).result;
   assert.equal(signed.dataMode, 'real');
@@ -61,6 +63,29 @@ test('acceptance_evidence needs real data, PO sign-off and a recorded reference'
   assert.equal(withProof.criteria[0].status, 'met');
   assert.equal(withProof.criteria[1].status, 'unproven');
   assert.equal(withProof.verdict, 'not_confirmed');
+});
+
+test('incomplete sign-offs and placeholder references never count as evidence', () => {
+  setSetting('acceptance_data_mode', 'real');
+  setSetting('acceptance_criterion_1', 'signed evidence pack reference');
+
+  setSetting('acceptance_signoff', JSON.stringify({ name: 'PO Name', email: 'po@example.test' }));
+  assert.equal(ai.runTool('acceptance_evidence', {}).result.met, 0, 'signature reference is mandatory');
+
+  setSetting('acceptance_signoff', JSON.stringify({
+    name: 'PO Name', email: 'po@example.test', evidenceRef: 'sample signature',
+  }));
+  assert.equal(ai.runTool('acceptance_evidence', {}).result.met, 0, 'placeholder is not a signature');
+
+  setSetting('acceptance_signoff', JSON.stringify({
+    name: 'PO Name', email: 'po@example.test', evidenceRef: 'Evidence pack v3, PO signature page',
+  }));
+  setSetting('acceptance_criterion_2', 'demo evidence');
+  const out = ai.runTool('acceptance_evidence', {}).result;
+  assert.equal(out.met, 1, 'only the real reference counts');
+  assert.equal(out.criteria[1].status, 'unproven');
+
+  setSetting('acceptance_data_mode', 'demo');
 });
 
 test('acceptance and count tools are visible to every role', () => {
@@ -90,6 +115,8 @@ test('prompt forbids inferred acceptance and hand-counted rows', () => {
     'If dataMode is "demo"',
     'call record_counts and quote its exact',
     'Never count rows yourself',
+    'You cannot record',
+    'Admin → Acceptance',
   ]) {
     assert.ok(SYSTEM_PROMPT.includes(phrase), 'missing rule: ' + phrase);
   }

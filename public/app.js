@@ -28,6 +28,7 @@ const TITLES = {
   shipments: ['Shipment Costs', 'Allocate freight, duty and handling across the lines they belong to'],
   users: ['Users & Roles', 'Accounts and role-based access'],
   audit: ['Audit Log', 'Who did what, when'],
+  acceptance: ['Acceptance', 'Admin-only recorder for real-data pilot evidence and PO sign-off'],
   'ai-chat': ['AI Assistant', 'A copilot that can read the whole system and prepare drafts for you to confirm'],
 };
 

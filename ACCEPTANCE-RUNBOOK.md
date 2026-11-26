@@ -172,6 +172,25 @@ text-only capture (Plaud transcript / converted reMarkable text; PDF rejected)
 → Forecast page showing either measured MAPE or the honest "insufficient
 history" reason. Archive the walkthrough with `11-demo-recording` evidence.
 
+## 3a. Recording the result in the app (admin only)
+
+The **Admin → Acceptance** page is the only place the live system's acceptance
+state can be changed. It is admin-only and every change goes to `/api/audit`:
+
+1. Certify the acceptance database as **real client data** (type
+   `REAL CLIENT DATA`). Leave it as `demo` until the client package is loaded.
+2. Record the **PO name, email and evidence reference** for the file that holds
+   their signature.
+3. For each of the ten criteria, save the reference to `acceptance\<run-id>\<n>\`.
+   Placeholders (`demo`, `sample`, `test`, `n/a`, `tbd`) are rejected.
+4. Confirm the page shows `all_met` / `10 / 10` and that asking the assistant
+   "can you confirm acceptance?" quotes `real`, the PO and 10/10. The assistant
+   calls `acceptance_evidence` to answer and **cannot write** these records.
+
+Equivalent admin endpoints (all writes audited): `GET /api/acceptance`,
+`POST /api/acceptance/data-mode`, `POST|DELETE /api/acceptance/signoff`,
+`POST|DELETE /api/acceptance/criteria/<1-10>`.
+
 ## 4. Sign-off
 
 | Field | Value |
