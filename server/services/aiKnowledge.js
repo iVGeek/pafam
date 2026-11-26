@@ -138,6 +138,98 @@ suppliers, settings, users and the audit log.
   buying limits. If a decision needs an owner outside the signed-in role, say
   who must approve it.
 
+## Staff brief — detailed fields and controls
+- One row per offer means one exact SKU, packaging condition, stock lot,
+  location and quantity/tier. Unknown values stay blank or null, never zero.
+  Preserve the supplier's original EAN and description.
+- Cite supplier ID and name, offer ID, list date, valid-until, last stock
+  confirmation, source file and row. State the original currency, price basis
+  (per unit or case), units per case, quantity unit, MOQ, order multiple and
+  price-tier minimum/maximum.
+- Record stock country and warehouse, country of origin, Incoterm and named
+  place, ready date, lead time, payment terms and freight inclusions. Record
+  permitted destination/channels, US suitability, authenticity evidence, stock
+  owner ID, unique lot reference and stock confidence.
+- After a barcode match still verify brand, fragrance, concentration, size,
+  set contents and condition: the same code does not prove identical goods,
+  packaging or authenticity. Barcode checks support identity, not physical
+  authenticity. An approved comparison group may relate products without
+  merging their inventory.
+- FX is a dated rate expressed as USD per unit of source currency. Retain the
+  original currency, rate source/date and any booked rate. Convert case prices
+  to per-bottle prices before comparing offers.
+- Cash return compares actual cash received dates with actual cash paid dates;
+  for partial payments show the outstanding balance and dated cash flows.
+  Store the financing rate and funding dates, use daily balances when there
+  are several payments or receipts, and use XIRR only where dated cash flows
+  support it. Track refundable deposits, supplier advances and customer
+  deposits in cash flows.
+- Define each cost once. Allocate shipment costs by a documented driver —
+  chargeable weight, volume or value — and confirm the allocated total
+  reconciles to the shipment. Broker-confirmed duty and import inputs must be
+  specific to the origin, classification and date.
+- Own stock: on hand, reserved, quarantined, available to sell and in transit,
+  by warehouse and lot. Available to sell = usable on hand - reservations;
+  inbound units are not included before receipt.
+- Supplier stock: latest valid confirmed quantity per distinct stock owner and
+  lot, with confirmation date, location, destination eligibility and
+  confidence. Where ownership is unknown, flag possible overlap and show a
+  range or unverified quantity separately. Keep firm, indicative, incoming and
+  quantity-on-request separate; expired or stale offers leave active totals
+  but remain in history.
+- An estimate of total territory stock needs independent coverage evidence and
+  a documented estimation method. Never extrapolate from supplier counts alone.
+- Trends compare supplier ask prices and comparable landed costs over
+  7/30/90/180 days, and also plot active confirmed stock, independent supplier
+  count, stock-outs, inbound units, customer demand and our sell-through.
+  Weight by stock quantity only when the quantities are verified and
+  deduplicated, and always show the unweighted median. Use configurable
+  freshness windows and outlier flags.
+- Alert examples: new profitable offers matching demand, significant price
+  changes, rising demand with falling supply, stale supplier confirmations,
+  falling margins, aged inventory, overdue collections and expiring wishlists.
+  Each alert needs its evidence and a suggested action.
+- One customer ID links company, contacts, US delivery destination, selling
+  channels, account owner, agreed currency, payment terms, credit limit and
+  purchase history. Each demand is a separate dated record capturing exact
+  SKU/EAN, brand, fragrance, size, concentration, packaging requirement,
+  approved substitutes, quantity/unit, target price and currency, delivery
+  basis, destination, needed-by date, payment terms, status, evidence link,
+  meeting date, owner, last reconfirmation, explicit/inferred flag, match
+  confidence, staff approval and expiry.
+- Name captures as customer ID + meeting date + staff member; confirm customer
+  identity before attaching; preserve the original note or transcript and its
+  source location. Extract product mentions, quantities, target prices,
+  delivery deadlines, channel restrictions, objections, competitor quotes and
+  follow-up tasks, each with its exact source excerpt. A note must not silently
+  overwrite a confirmed order or create duplicate demand.
+- For Plaud, start with transcript and summary exports and test the supported
+  Zapier/MCP/CLI route on the actual account. For reMarkable, start with
+  exported text. If PDF or OCR is explicitly agreed and tested, validate SKU
+  numbers carefully. Never assume a public or live device API.
+- Rank suppliers by executable landed cost, fill rate, on-time delivery,
+  claims, authenticity evidence, payment terms and confirmation accuracy — not
+  cheapest quote alone. Rank opportunities by contribution, credible
+  sell-through, cash cycle, customer credit and concentration risk. Respect
+  caps on speculative buying and exposure per SKU, brand, supplier and customer.
+- Maximum buy price = conservative achievable selling price less all deal
+  costs and the required contribution. Calculate the customer-specific minimum
+  sell price consistently.
+- Inventory aging buckets: 0-30, 31-90, 91-180, 181-365 and over 365 days;
+  show days of cover, stock turn, markdown exposure and profit by lot. Track
+  quote conversion, lost-sale reasons, realised versus expected margin,
+  supplier fill rate, customer repeat purchases, overdue debt and cash
+  deployment, each tied to a named owner.
+- Keep an audit trail, back up data, test restoration, and restrict customer
+  notes and commercial costs to authorised staff. For every deal capture US
+  destination and channel eligibility, lot traceability, packaging and label
+  evidence, and origin/import review status.
+- Never state that an acceptance criterion is met unless a tool result proves
+  it on the data in question. Completion means staff can identify a profitable
+  executable opportunity for a customer without manually joining supplier
+  lists, trace every recommendation to its source and assumptions, and
+  reconcile inventory and realised profit to actual transactions.
+
 ## Modules (screens) in the app
 - Dashboard, Import Lists, Supplier Offers, Products & Matching, Exceptions,
   Lowest Landed Cost, Price Comparison, Deal Calculator, Offer Builder,

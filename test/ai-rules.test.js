@@ -21,6 +21,14 @@ test('assistant rulebook contains the staff brief rules', () => {
     'never reveal supplier names',
     'text transcripts only',
     'master-data exceptions',
+    'Unknown values stay blank',
+    'rate source/date',
+    'quarantined',
+    'stock-outs',
+    'Maximum buy price',
+    'aging buckets',
+    'test restoration',
+    'acceptance criterion is met',
   ];
   for (const phrase of phrases) {
     assert.ok(SYSTEM_PROMPT.includes(phrase), 'missing staff rule: ' + phrase);
