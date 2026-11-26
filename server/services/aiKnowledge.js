@@ -96,7 +96,7 @@ suppliers, settings, users and the audit log.
   and keep the source value beside the canonical 14-digit GTIN. Never equate a
   case barcode with a bottle without a verified units-per-case conversion.
   Description matching only suggests candidates; never auto-merge products.
-  Route invalid or conflicting barcodes to the exception queue. Keep retail
+  Route missing, invalid or conflicting barcodes to the exception queue. Keep retail
   packs, testers, gift sets, refills and damaged stock separate.
 - Each supplier list is a dated snapshot. Preserve past prices, original files,
   row references and upload timestamps; re-importing the same file must not
@@ -111,8 +111,8 @@ suppliers, settings, users and the audit log.
   one eligible pool twice.
 - Trends compare like-for-like SKU, condition, quantity, delivery terms and
   territory. Plot 7/30/90/180-day minimum, median, range and number of
-  independent stock owners; keep actual purchases, actual sales, customer
-  target prices and public retail prices as separate series; show date gaps
+  independent stock owners; keep actual purchase prices, actual wholesale sale
+  prices, customer target prices and public retail prices as separate series; show date gaps
   instead of inventing observations; use a matched-supplier series where
   possible. Forecast only with enough reliable history, backtest a simple
   baseline, show ranges, and account for seasonality, promotions and stock-outs.
@@ -229,6 +229,62 @@ suppliers, settings, users and the audit log.
   executable opportunity for a customer without manually joining supplier
   lists, trace every recommendation to its source and assumptions, and
   reconcile inventory and realised profit to actual transactions.
+
+## Staff brief — remaining details and references
+- Follow the operating workflow in order: upload list -> map columns -> validate
+  barcodes and units -> review exceptions -> approve offers -> compare landed
+  costs -> match customer demand -> prepare purchase recommendation and
+  customer quote -> record orders, receipts, deliveries and payments ->
+  measure realised performance. Never skip the offer-approval gate.
+- Demand strength comes from explicit status, evidence, quantity/price fit and
+  recency of reconfirmation — never from brand interest alone. Status values
+  are wishlist, active request, quote, confirmed order, fulfilled, lost and
+  expired. Expired requirements must not trigger an eligible profitable match.
+- Keep an internal SKU and barcode alias table so valid UPC and EAN aliases
+  resolve to the same product. Product identity fields include original
+  EAN/UPC as text, internal SKU, brand, fragrance, concentration, size in ml,
+  gender/category and set contents. Packaging fields include retail/tester,
+  with or without cap and box, sealed or unboxed, damage, batch/lot and
+  manufacture date only if verified.
+- Mine notes for price sensitivity, preferred brands, unacceptable packaging
+  and replenishment patterns as well as SKU mentions. General brand interest
+  informs prospecting only. Capture extraction confidence separately from
+  match confidence, and cite the exact source excerpt or page for every claim.
+- When asked whether prices are rising or falling or supply is tightening,
+  interpret the matched like-for-like series and state the direction with
+  evidence. Flag stock that should be sold using aging, days of cover, stock
+  turn and markdown exposure.
+- Quote drafts must state quantity, validity, delivery terms and payment terms,
+  and show customer-specific delivered contribution. Track follow-ups,
+  acceptance and lost-sale reasons. Never reveal supplier names or buying costs.
+- Scenario cases vary selling price, FX, freight, delay and sell-through; add a
+  price-drop and customer-default stress case. For the brief's worked example:
+  1,000 bottles at $30 plus $3,000 inbound = $33 landed; sell at $40 gives
+  $7,000 gross profit and 17.5% margin; $2,000 other deal costs give $5,000
+  contribution and 12.5% contribution margin; on $35,000 capital the deal
+  return is 14.29%, and a 90-day cycle implies 57.94% simple annualised return
+  assuming repetition — not a forecast.
+- Partial receipts and returns must produce reviewed results, not silent
+  assumptions. A new dated list must not be added to earlier stock snapshots.
+- A broker or adviser must confirm perfume transport requirements before
+  execution, as well as current import requirements; the brief does not supply
+  legal clearance.
+- For reMarkable, supported cloud routes are Google Drive, Dropbox and OneDrive,
+  with handwriting conversion where needed; start with exported text, and use
+  PDF/OCR only if explicitly agreed and tested, validating SKU numbers
+  carefully. For Plaud, start with transcript and summary exports.
+- Reference links the desk uses: GS1 GTIN https://www.gs1.org/standards/id-keys/gtin ,
+  Verified by GS1 https://www.gs1.org/services/verified-by-gs1 , canonical
+  representation https://www.gs1.org/edi-xml/technical-user-guide/Item_Numbers ,
+  Plaud export https://support.plaud.ai/hc/en-us/articles/50835453223705-Export-recordings-transcripts-and-summaries ,
+  Plaud API access https://support.plaud.ai/hc/en-us/articles/60726890231449-How-can-I-get-API-access-to-my-Plaud-data ,
+  reMarkable integrations https://support.remarkable.com/articles/Knowledge/Integrations ,
+  reMarkable handwriting conversion https://support.remarkable.com/articles/Knowledge/Convert-handwritten-notes-into-text .
+  These support identification and export routes only; they do not prove
+  connector availability on our account or authenticate stock.
+- For handover, point to the available Excel exports, the GL journal and stock
+  snapshot exports, and the machine-readable integration contract. Never claim
+  a full database dump unless a tool confirms one exists.
 
 ## Modules (screens) in the app
 - Dashboard, Import Lists, Supplier Offers, Products & Matching, Exceptions,
