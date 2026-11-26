@@ -249,13 +249,15 @@ Provider examples:
 | **GitHub Models** (free) | `https://models.github.ai/inference` | `openai/gpt-4o-mini` | GitHub PAT with the `models:read` scope |
 | OpenAI | `https://api.openai.com/v1` | `gpt-4o-mini` | OpenAI key |
 | Groq (free tier) | `https://api.groq.com/openai/v1` | `llama-3.3-70b-versatile` | Groq key |
-| OpenRouter (cheap paid, ZDR-safe) | `https://openrouter.ai/api/v1` | `openai/gpt-6-luna` | OpenRouter key |
+| OpenRouter (ultra-cheap paid, ZDR-safe) | `https://openrouter.ai/api/v1` | `upstage/solar-mini-4-5` | OpenRouter key |
 | OpenRouter (free — ZDR must be relaxed) | `https://openrouter.ai/api/v1` | `nvidia/nemotron-3.5-lightning:free` | OpenRouter key |
 | Google Gemini | `https://generativelanguage.googleapis.com/v1beta/openai/` | `gemini-1.5-flash` | Google key |
 | Ollama (local) | `http://localhost:11434/v1` | `llama3.1` | *(none)* |
 
-A small paid model such as `openai/gpt-6-luna` costs well under a cent per
-question and does not hit the free-tier daily limit. Tool/function calling is
+A small paid model such as `upstage/solar-mini-4-5` costs about $0.0001 for a
+full rulebook + tool turn and does not hit the free-tier daily limit. Premium
+models can be rejected by OpenRouter's `weight_exceeds_budget` pre-check even
+when the key has credit. Tool/function calling is
 mandatory — some provider slugs that look suitable (for example
 `openai/gpt-4o-mini` via OpenRouter) reject tool calls, so confirm with
 `npm run check:ai` before choosing one.

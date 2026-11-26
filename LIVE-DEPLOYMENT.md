@@ -36,11 +36,13 @@ tunnel; that is not yet configured.
 - Host `/var/data` is mounted to container `/var/data` (persistent disk).
 - Runtime secrets and AI config live in `/opt/perfumes/.env` (never committed).
 - Production AI chain: `AI_BASE_URL=https://openrouter.ai/api/v1`,
-  `AI_MODEL=openai/gpt-6-luna`,
-  `AI_MODELS=openai/gpt-6-luna,anthropic/claude-haiku-5.5,mistralai/mistral-small-3.2-24b-instruct`,
+  `AI_MODEL=upstage/solar-mini-4-5`,
+  `AI_MODELS=upstage/solar-mini-4-5,mistralai/mistral-nemo,mistralai/mistral-small-3.2-24b-instruct,openai/gpt-6-luna,anthropic/claude-haiku-5.5`,
   `AI_MAX_TOKENS=2048`. ZDR stays enabled in the OpenRouter account.
-  `4096` was rejected by OpenRouter with `weight_exceeds_budget` even with
-  $99.82 credit remaining; `2048` passes with the full prompt and tool set.
+  `4096` was rejected with `weight_exceeds_budget` even with $99.82 credit
+  remaining. The premium models were also rejected on request cost, so an
+  ultra-cheap tool-capable model is primary (~$0.0001 per full turn); no top-up
+  is needed. The earlier chain is retained as last-resort fallbacks.
 
 ## Credentials
 
